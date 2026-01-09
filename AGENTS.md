@@ -19,13 +19,48 @@ The app spawns `pi --mode rpc` as a subprocess and communicates via JSON-RPC ove
 - `RPCEvent` - Events received from pi (agent lifecycle, message updates, tool execution)
 - All types are `Sendable` for Swift 6 concurrency
 
+### Data Storage
+
+All app data is stored in `~/Library/Application Support/me.aliou.pi-desktop/`:
+
+```
+~/Library/Application Support/me.aliou.pi-desktop/
+├── bin/
+│   └── pi                    # Downloaded pi binary
+├── agent/                    # Pi agent sessions (PI_AGENT_DIR)
+├── worktrees/               # Git worktrees for sessions
+├── sessions/
+│   └── index.json           # Session metadata
+├── logs/                    # Application logs
+└── version.json             # Binary version info
+```
+
+**AppPaths** (`Services/AppPaths.swift`):
+- Centralized path management using `FileManager`
+- All paths resolve to Application Support directory
+- Automatically creates directories on first access
+
+### Binary Management
+
+**BinaryUpdateService** (`Services/BinaryUpdateService.swift`):
+- Downloads pi binary from GitHub releases on first launch
+- Checks for updates every 24 hours (throttled)
+- Shows "Update available" banner when new version exists
+- User-triggered updates (not automatic)
+
+**SetupView** (`Views/SetupView.swift`):
+- Shown on first launch when binary is missing
+- Shows download progress
+- Blocks app until binary is installed
+- Retry button on failure
+
 ### Session Management
 
 Each session creates an isolated environment:
 
-1. **Git worktree** - Created in `data/worktrees/wt-{random}/` from the selected repo
-2. **Pi agent directory** - `data/agent/` (shared, contains pi's session files)
-3. **App metadata** - Stored in `data/sessions/index.json`
+1. **Git worktree** - Created in `worktrees/wt-{random}/` from the selected repo
+2. **Pi agent directory** - `agent/` (shared, contains pi's session files)
+3. **App metadata** - Stored in `sessions/index.json`
 
 **SessionStore** (`Models/Session.swift`):
 - Persists session list to `index.json`
@@ -120,7 +155,7 @@ Uses [Textual](https://github.com/gonzalezreal/textual) library with custom styl
 ### Prerequisites
 
 - Xcode 16+ (Swift 6)
-- Pi binary in `bin/pi` (run `scripts/download-pi.sh`)
+- Pi binary is downloaded automatically on first launch
 
 ### Running the App
 
@@ -138,11 +173,11 @@ App Sandbox is **disabled** in entitlements to allow subprocess spawning and fil
 
 ### Data Location
 
-All data stored in `~/tmp/2026-01-07-poc/pi/data/` (hardcoded for POC).
+All data stored in `~/Library/Application Support/me.aliou.pi-desktop/`.
 
 ### Debugging
 
-Log files are written to `data/logs/pi-{timestamp}.log`. Use the global logging functions:
+Log files are written to `logs/pi-{timestamp}.log` within Application Support. Use the global logging functions:
 
 ```swift
 logDebug("Verbose info")

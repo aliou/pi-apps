@@ -19,111 +19,175 @@ struct MainView: View {
     @State private var sidebarWidth: CGFloat = 280
     @State private var debugPanelWidth: CGFloat = 320
     
+    // Binary/update state
+    @State private var binaryReady = false
+    @State private var updateAvailable: String?
+    @State private var showUpdateSheet = false
+    @State private var updateDismissed = false
+    
     var body: some View {
+        Group {
+            if !binaryReady {
+                // Show setup view when binary is missing
+                SetupView {
+                    binaryReady = true
+                }
+            } else {
+                mainContent
+            }
+        }
+        .onAppear {
+            checkBinaryAndUpdates()
+        }
+        .sheet(isPresented: $showUpdateSheet) {
+            UpdateSheet()
+        }
+    }
+    
+    @ViewBuilder
+    private var mainContent: some View {
         ZStack {
-            HStack(spacing: 0) {
-                // Sidebar
-                if titlebarState.showSidebar {
-                    SidebarView(
-                        sessions: sessionStore.sessions,
-                        selectedSessionId: selectedSessionId,
-                        onSelectSession: { session in
-                            selectSession(session)
-                        },
-                        onDeleteSession: { session, deleteWorktree in
-                            deleteSession(session, deleteWorktree: deleteWorktree)
-                        },
-                        onNewSession: {
-                            showNewSession = true
-                            selectedSessionId = nil
-                            Task {
-                                await appState.disconnect()
-                            }
-                        }
+            VStack(spacing: 0) {
+                // Update banner (if available and not dismissed)
+                if let version = updateAvailable, !updateDismissed {
+                    UpdateAvailableBanner(
+                        version: version,
+                        onUpdate: { showUpdateSheet = true },
+                        onDismiss: { updateDismissed = true }
                     )
-                    .frame(width: sidebarWidth)
-                    
-                    // Divider
-                    Rectangle()
-                        .fill(Theme.borderMuted)
-                        .frame(width: 1)
                 }
                 
-                // Main content
-                Group {
-                    if showNewSession {
-                        NewSessionView { folderPath, prompt in
-                            startNewSession(folderPath: folderPath, prompt: prompt)
-                        }
-                    } else if let sessionId = selectedSessionId,
-                              let session = sessionStore.sessions.first(where: { $0.id == sessionId }) {
-                        SessionContentView(
-                            session: session,
-                            appState: appState,
-                            sessionStore: sessionStore
-                        )
-                    } else {
-                        // Fallback - show new session view
-                        NewSessionView { folderPath, prompt in
-                            startNewSession(folderPath: folderPath, prompt: prompt)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-                // Debug panel
-                if titlebarState.showDebugPanel {
-                    Rectangle()
-                        .fill(Theme.borderMuted)
-                        .frame(width: 1)
-                    
-                    DebugPanelView(store: debugStore)
-                        .frame(width: debugPanelWidth)
-                }
+                mainLayout
             }
             
-            // Floating titlebar buttons - traffic lights are ~8px from top, 12px diameter
-            HStack {
-                // Sidebar toggle - positioned after traffic lights
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        titlebarState.showSidebar.toggle()
-                    }
-                } label: {
-                    Image(systemName: "sidebar.leading")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .hoverEffect()
-                
-                Spacer()
-                
-                // Debug toggle
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        titlebarState.showDebugPanel.toggle()
-                    }
-                } label: {
-                    Image(systemName: "ladybug")
-                        .font(.system(size: 14))
-                        .foregroundColor(titlebarState.showDebugPanel ? .orange : .secondary)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .hoverEffect()
-            }
-            .padding(.leading, 78)
-            .padding(.trailing, 8)
-            .padding(.top, 1)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            titlebarButtons
         }
         .background(Theme.pageBg)
         .ignoresSafeArea()
         .toolbar(.hidden)
         .onAppear {
             appState.debugStore = debugStore
+        }
+    }
+    
+    @ViewBuilder
+    private var mainLayout: some View {
+        HStack(spacing: 0) {
+            // Sidebar
+            if titlebarState.showSidebar {
+                SidebarView(
+                    sessions: sessionStore.sessions,
+                    selectedSessionId: selectedSessionId,
+                    onSelectSession: { session in
+                        selectSession(session)
+                    },
+                    onDeleteSession: { session, deleteWorktree in
+                        deleteSession(session, deleteWorktree: deleteWorktree)
+                    },
+                    onNewSession: {
+                        showNewSession = true
+                        selectedSessionId = nil
+                        Task {
+                            await appState.disconnect()
+                        }
+                    }
+                )
+                .frame(width: sidebarWidth)
+                
+                // Divider
+                Rectangle()
+                    .fill(Theme.borderMuted)
+                    .frame(width: 1)
+            }
+            
+            // Main content
+            Group {
+                if showNewSession {
+                    NewSessionView { folderPath, prompt in
+                        startNewSession(folderPath: folderPath, prompt: prompt)
+                    }
+                } else if let sessionId = selectedSessionId,
+                          let session = sessionStore.sessions.first(where: { $0.id == sessionId }) {
+                    SessionContentView(
+                        session: session,
+                        appState: appState,
+                        sessionStore: sessionStore
+                    )
+                } else {
+                    // Fallback - show new session view
+                    NewSessionView { folderPath, prompt in
+                        startNewSession(folderPath: folderPath, prompt: prompt)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            
+            // Debug panel
+            if titlebarState.showDebugPanel {
+                Rectangle()
+                    .fill(Theme.borderMuted)
+                    .frame(width: 1)
+                
+                DebugPanelView(store: debugStore)
+                    .frame(width: debugPanelWidth)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var titlebarButtons: some View {
+        // Floating titlebar buttons - traffic lights are ~8px from top, 12px diameter
+        HStack {
+            // Sidebar toggle - positioned after traffic lights
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    titlebarState.showSidebar.toggle()
+                }
+            } label: {
+                Image(systemName: "sidebar.leading")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .hoverEffect()
+            
+            Spacer()
+            
+            // Debug toggle
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    titlebarState.showDebugPanel.toggle()
+                }
+            } label: {
+                Image(systemName: "ladybug")
+                    .font(.system(size: 14))
+                    .foregroundColor(titlebarState.showDebugPanel ? .orange : .secondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .hoverEffect()
+        }
+        .padding(.leading, 78)
+        .padding(.trailing, 8)
+        .padding(.top, 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+    
+    private func checkBinaryAndUpdates() {
+        // Check if binary exists
+        binaryReady = AppPaths.piExecutableExists
+        
+        // If binary exists, check for updates in background
+        if binaryReady {
+            Task {
+                let result = await BinaryUpdateService.shared.checkForUpdates()
+                await MainActor.run {
+                    if case .updateAvailable(let version) = result {
+                        updateAvailable = version
+                    }
+                }
+            }
         }
     }
     

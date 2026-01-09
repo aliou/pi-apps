@@ -22,9 +22,8 @@ actor Logger {
     private var fileHandle: FileHandle?
     
     private init() {
-        // Log to data directory
-        let logDir = URL(fileURLWithPath: AppPaths.basePath).appendingPathComponent("logs")
-        try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+        // Log to Application Support logs directory
+        let logDir = AppPaths.logsDirectory
         
         let timestamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")

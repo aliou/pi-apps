@@ -620,8 +620,10 @@ actor RPCClient {
 // MARK: - Convenience Extensions
 
 extension RPCClient {
-    /// Default path to the pi executable (local development binary)
-    nonisolated static let defaultExecutablePath = "/Users/alioudiallo/tmp/2026-01-07-poc/pi/bin/pi"
+    /// Default path to the pi executable (from Application Support)
+    nonisolated static var defaultExecutablePath: String {
+        AppPaths.piExecutablePath
+    }
     
     /// Create a client configured for development
     nonisolated static func development() -> RPCClient {

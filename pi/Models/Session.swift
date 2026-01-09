@@ -74,24 +74,7 @@ struct Session: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - App Paths
-
-enum AppPaths {
-    /// Base data directory (will be ~/Library/Application Support/PiDesktop/ in release)
-    static let basePath = "/Users/alioudiallo/tmp/2026-01-07-poc/pi/data"
-    
-    /// Pi agent directory (PI_AGENT_DIR)
-    static var agentPath: String { basePath + "/agent" }
-    
-    /// Git worktrees directory
-    static var worktreesPath: String { basePath + "/worktrees" }
-    
-    /// App sessions index
-    static var sessionsPath: String { basePath + "/sessions" }
-    
-    /// Path to pi executable
-    static let piExecutablePath = "/Users/alioudiallo/tmp/2026-01-07-poc/pi/bin/pi"
-}
+// AppPaths is now in Services/AppPaths.swift
 
 // MARK: - SessionStore
 
