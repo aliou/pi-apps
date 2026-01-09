@@ -178,7 +178,7 @@ struct MainView: View {
         // Check if binary exists
         binaryReady = AppPaths.piExecutableExists
         
-        // If binary exists, check for updates in background
+        // If binary exists, check for updates on launch
         if binaryReady {
             Task {
                 let result = await BinaryUpdateService.shared.checkForUpdates()

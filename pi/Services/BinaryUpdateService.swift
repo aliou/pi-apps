@@ -78,8 +78,7 @@ actor BinaryUpdateService {
     private let platform = "darwin"
     private let arch = "arm64"
     
-    /// Minimum interval between update checks (24 hours)
-    private let updateCheckInterval: TimeInterval = 24 * 60 * 60
+
     
     private var versionInfo: VersionInfo
     
@@ -171,20 +170,8 @@ actor BinaryUpdateService {
         progress(1.0, "Done!")
     }
     
-    /// Check for updates (respects throttling)
-    func checkForUpdates(force: Bool = false) async -> UpdateCheckResult {
-        // Check throttling
-        if !force, let lastCheck = versionInfo.lastCheckDate {
-            let elapsed = Date().timeIntervalSince(lastCheck)
-            if elapsed < updateCheckInterval {
-                // Use cached result
-                if updateAvailable, let latest = latestKnownVersion {
-                    return .updateAvailable(version: latest)
-                }
-                return .upToDate
-            }
-        }
-        
+    /// Check for updates (called on app launch)
+    func checkForUpdates() async -> UpdateCheckResult {
         do {
             let release = try await fetchLatestRelease()
             let latestVersion = release.tagName
