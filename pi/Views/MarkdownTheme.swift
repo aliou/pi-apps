@@ -7,12 +7,12 @@ import SwiftUI
 import Textual
 
 struct PiMarkdownStyle: StructuredText.Style {
-    let inlineStyle: InlineStyle = InlineStyle()
+    let inlineStyle = InlineStyle()
         .code(.monospaced, .fontScale(0.9))
         .strong(.fontWeight(.semibold))
         .emphasis(.italic)
         .link(.foregroundColor(Theme.mdLink))
-    
+
     let headingStyle = PiHeadingStyle()
     let paragraphStyle = StructuredText.DefaultParagraphStyle.default
     let blockQuoteStyle = PiBlockQuoteStyle()

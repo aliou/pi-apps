@@ -12,11 +12,11 @@ import AppKit
 
 struct HoverEffect: ViewModifier {
     var cornerRadius: CGFloat = 6
-    var hoverBackground: Color = Color.white.opacity(0.1)
-    var showPointer: Bool = true
-    
+    var hoverBackground = Color.white.opacity(0.1)
+    var showPointer = true
+
     @State private var isHovered = false
-    
+
     func body(content: Content) -> some View {
         content
             .background(
@@ -40,7 +40,7 @@ struct HoverEffect: ViewModifier {
 
 struct PointerCursor: ViewModifier {
     var onHover: ((Bool) -> Void)?
-    
+
     func body(content: Content) -> some View {
         content
             .onHover { hovering in
@@ -69,7 +69,7 @@ extension View {
             showPointer: showPointer
         ))
     }
-    
+
     /// Adds pointer cursor on hover (no background change)
     func pointerCursor(onHover: ((Bool) -> Void)? = nil) -> some View {
         modifier(PointerCursor(onHover: onHover))

@@ -9,50 +9,50 @@ import SwiftUI
 
 struct SetupView: View {
     @State private var downloadProgress: Double = 0
-    @State private var statusMessage: String = "Preparing..."
-    @State private var isDownloading: Bool = false
+    @State private var statusMessage = "Preparing..."
+    @State private var isDownloading = false
     @State private var error: String?
-    
+
     let onComplete: () -> Void
-    
+
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
-            
+
             // App icon / logo
             Image(systemName: "terminal.fill")
                 .font(.system(size: 64))
                 .foregroundColor(Theme.accent)
-            
+
             Text("Pi Desktop")
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundColor(Theme.text)
-            
+
             Text("Setting up for first use")
                 .font(.system(size: 14))
                 .foregroundColor(Theme.textSecondary)
-            
+
             Spacer()
-            
+
             // Progress section
             VStack(spacing: 16) {
-                if let error = error {
+                if let error {
                     // Error state
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 32))
                             .foregroundColor(Theme.error)
-                        
+
                         Text("Download Failed")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(Theme.text)
-                        
+
                         Text(error)
                             .font(.system(size: 13))
                             .foregroundColor(Theme.textSecondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
-                        
+
                         Button("Retry") {
                             startDownload()
                         }
@@ -66,7 +66,7 @@ struct SetupView: View {
                             .progressViewStyle(.linear)
                             .frame(width: 300)
                             .tint(Theme.accent)
-                        
+
                         Text(statusMessage)
                             .font(.system(size: 13))
                             .foregroundColor(Theme.textSecondary)
@@ -77,7 +77,7 @@ struct SetupView: View {
                         Text("Pi needs to download its CLI component")
                             .font(.system(size: 14))
                             .foregroundColor(Theme.textSecondary)
-                        
+
                         Button("Download") {
                             startDownload()
                         }
@@ -86,9 +86,9 @@ struct SetupView: View {
                 }
             }
             .frame(height: 120)
-            
+
             Spacer()
-            
+
             // Footer
             Text("Downloading from github.com/badlogic/pi-mono")
                 .font(.system(size: 11))
@@ -102,13 +102,13 @@ struct SetupView: View {
             startDownload()
         }
     }
-    
+
     private func startDownload() {
         error = nil
         isDownloading = true
         downloadProgress = 0
         statusMessage = "Preparing..."
-        
+
         Task {
             do {
                 try await BinaryUpdateService.shared.downloadLatestBinary { progress, message in
@@ -117,7 +117,7 @@ struct SetupView: View {
                         self.statusMessage = message
                     }
                 }
-                
+
                 await MainActor.run {
                     onComplete()
                 }
@@ -153,24 +153,24 @@ struct UpdateAvailableBanner: View {
     let version: String
     let onUpdate: () -> Void
     let onDismiss: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "arrow.down.circle.fill")
                 .foregroundColor(Theme.accent)
-            
+
             Text("Update available: \(version)")
                 .font(.system(size: 13))
                 .foregroundColor(Theme.text)
-            
+
             Spacer()
-            
+
             Button("Update") {
                 onUpdate()
             }
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(Theme.accent)
-            
+
             Button {
                 onDismiss()
             } label: {
@@ -196,36 +196,36 @@ struct UpdateAvailableBanner: View {
 
 struct UpdateSheet: View {
     @Environment(\.dismiss) private var dismiss
-    
+
     @State private var downloadProgress: Double = 0
-    @State private var statusMessage: String = "Preparing..."
-    @State private var isDownloading: Bool = false
+    @State private var statusMessage = "Preparing..."
+    @State private var isDownloading = false
     @State private var error: String?
-    @State private var completed: Bool = false
-    
+    @State private var completed = false
+
     var body: some View {
         VStack(spacing: 20) {
             Text("Update Pi")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(Theme.text)
-            
-            if let error = error {
+
+            if let error {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 32))
                         .foregroundColor(Theme.error)
-                    
+
                     Text(error)
                         .font(.system(size: 13))
                         .foregroundColor(Theme.textSecondary)
                         .multilineTextAlignment(.center)
-                    
+
                     HStack(spacing: 12) {
                         Button("Cancel") {
                             dismiss()
                         }
                         .buttonStyle(SecondaryButtonStyle())
-                        
+
                         Button("Retry") {
                             startUpdate()
                         }
@@ -237,15 +237,15 @@ struct UpdateSheet: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 32))
                         .foregroundColor(Theme.success)
-                    
+
                     Text("Update complete!")
                         .font(.system(size: 14))
                         .foregroundColor(Theme.text)
-                    
+
                     Text("The new version will be used for new sessions.")
                         .font(.system(size: 13))
                         .foregroundColor(Theme.textSecondary)
-                    
+
                     Button("Done") {
                         dismiss()
                     }
@@ -258,7 +258,7 @@ struct UpdateSheet: View {
                         .progressViewStyle(.linear)
                         .frame(width: 250)
                         .tint(Theme.accent)
-                    
+
                     Text(statusMessage)
                         .font(.system(size: 13))
                         .foregroundColor(Theme.textSecondary)
@@ -268,13 +268,13 @@ struct UpdateSheet: View {
                     Text("Download and install the latest version?")
                         .font(.system(size: 14))
                         .foregroundColor(Theme.textSecondary)
-                    
+
                     HStack(spacing: 12) {
                         Button("Cancel") {
                             dismiss()
                         }
                         .buttonStyle(SecondaryButtonStyle())
-                        
+
                         Button("Update") {
                             startUpdate()
                         }
@@ -287,13 +287,13 @@ struct UpdateSheet: View {
         .frame(width: 350)
         .background(Theme.cardBg)
     }
-    
+
     private func startUpdate() {
         error = nil
         isDownloading = true
         downloadProgress = 0
         statusMessage = "Preparing..."
-        
+
         Task {
             do {
                 try await BinaryUpdateService.shared.applyUpdate { progress, message in
@@ -302,7 +302,7 @@ struct UpdateSheet: View {
                         self.statusMessage = message
                     }
                 }
-                
+
                 await MainActor.run {
                     self.isDownloading = false
                     self.completed = true
@@ -338,7 +338,7 @@ struct SecondaryButtonStyle: ButtonStyle {
 // MARK: - Preview
 
 #Preview("Setup View") {
-    SetupView(onComplete: {})
+    SetupView {}
         .frame(width: 500, height: 400)
 }
 

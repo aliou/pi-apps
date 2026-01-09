@@ -12,7 +12,7 @@ enum ConversationItem: Identifiable {
     case userMessage(id: String, text: String)
     case assistantText(id: String, text: String)
     case toolCall(id: String, name: String, args: String?, output: String?, status: ToolCallStatus, isExpanded: Bool)
-    
+
     var id: String {
         switch self {
         case .userMessage(let id, _): return id
@@ -36,10 +36,10 @@ struct ConversationView: View {
     @Binding var expandedToolCalls: Set<String>
     let onSendMessage: (String) -> Void
     let onAbort: () -> Void
-    
+
     @State private var inputText = ""
     @FocusState private var isInputFocused: Bool
-    
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -49,7 +49,7 @@ struct ConversationView: View {
                             itemView(item)
                                 .id(item.id)
                         }
-                        
+
                         if isProcessing {
                             HStack(spacing: 8) {
                                 ProgressView()
@@ -62,7 +62,7 @@ struct ConversationView: View {
                             .padding(.leading, 16)
                             .id("processing")
                         }
-                        
+
                         Color.clear
                             .frame(height: 1)
                             .id("bottom")
@@ -76,15 +76,15 @@ struct ConversationView: View {
                     }
                 }
             }
-            
+
             Divider()
                 .background(Theme.darkGray)
-            
+
             inputArea
         }
         .background(Theme.pageBg)
     }
-    
+
     @ViewBuilder
     private func itemView(_ item: ConversationItem) -> some View {
         switch item {
@@ -96,7 +96,7 @@ struct ConversationView: View {
             toolCallView(id: id, name: name, args: args, output: output, status: status)
         }
     }
-    
+
     private func userMessageView(_ text: String) -> some View {
         HStack {
             Spacer()
@@ -111,14 +111,14 @@ struct ConversationView: View {
         }
         .padding(.leading, 60)
     }
-    
+
     private func assistantTextView(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
                 .fill(Theme.accent)
                 .frame(width: 6, height: 6)
                 .padding(.top, 6)
-            
+
             StructuredText(markdown: text)
                 .textual.structuredTextStyle(PiMarkdownStyle())
                 .textual.textSelection(.enabled)
@@ -128,11 +128,11 @@ struct ConversationView: View {
         }
         .padding(.trailing, 40)
     }
-    
+
     private func toolCallView(id: String, name: String, args: String?, output: String?, status: ToolCallStatus) -> some View {
         let isExpanded = expandedToolCalls.contains(id)
         let parsedArgs = parseArgs(args)
-        
+
         return VStack(alignment: .leading, spacing: 0) {
             // Header
             Button {
@@ -148,11 +148,11 @@ struct ConversationView: View {
                     Circle()
                         .fill(Theme.toolStatusColor(status))
                         .frame(width: 6, height: 6)
-                    
+
                     toolHeaderText(name: name, args: parsedArgs)
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(Theme.dim)
@@ -160,9 +160,9 @@ struct ConversationView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            
+
             // Expanded content
-            if isExpanded, let output = output, !output.isEmpty {
+            if isExpanded, let output, !output.isEmpty {
                 toolOutputView(name: name, output: output)
                     .padding(.top, 8)
             }
@@ -172,7 +172,7 @@ struct ConversationView: View {
         .background(toolBackground(status: status))
         .cornerRadius(8)
     }
-    
+
     @ViewBuilder
     private func toolHeaderText(name: String, args: [String: Any]) -> some View {
         switch name {
@@ -180,7 +180,7 @@ struct ConversationView: View {
             let path = shortenPath(args["path"] as? String ?? "")
             let offset = args["offset"] as? Int
             let limit = args["limit"] as? Int
-            
+
             HStack(spacing: 4) {
                 Text("read")
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
@@ -188,18 +188,18 @@ struct ConversationView: View {
                 Text(path.isEmpty ? "..." : path)
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(Theme.accent)
-                if let offset = offset {
+                if let offset {
                     Text(":\(offset)")
                         .font(.system(size: 13, design: .monospaced))
                         .foregroundColor(.yellow)
-                    if let limit = limit {
+                    if let limit {
                         Text("-\(offset + limit - 1)")
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(.yellow)
                     }
                 }
             }
-            
+
         case "write":
             let path = shortenPath(args["path"] as? String ?? "")
             HStack(spacing: 4) {
@@ -210,7 +210,7 @@ struct ConversationView: View {
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(Theme.accent)
             }
-            
+
         case "edit":
             let path = shortenPath(args["path"] as? String ?? "")
             HStack(spacing: 4) {
@@ -221,7 +221,7 @@ struct ConversationView: View {
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(Theme.accent)
             }
-            
+
         case "bash":
             let command = args["command"] as? String ?? ""
             HStack(spacing: 4) {
@@ -233,7 +233,7 @@ struct ConversationView: View {
                     .foregroundColor(Theme.muted)
                     .lineLimit(1)
             }
-            
+
         case "ls":
             let path = shortenPath(args["path"] as? String ?? ".")
             let limit = args["limit"] as? Int
@@ -244,13 +244,13 @@ struct ConversationView: View {
                 Text(path)
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(Theme.accent)
-                if let limit = limit {
+                if let limit {
                     Text("(limit \(limit))")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(Theme.dim)
                 }
             }
-            
+
         case "find":
             let pattern = args["pattern"] as? String ?? ""
             let path = shortenPath(args["path"] as? String ?? ".")
@@ -265,7 +265,7 @@ struct ConversationView: View {
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(Theme.dim)
             }
-            
+
         case "grep":
             let pattern = args["pattern"] as? String ?? ""
             let path = shortenPath(args["path"] as? String ?? ".")
@@ -280,13 +280,13 @@ struct ConversationView: View {
                 Text("in \(path)")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(Theme.dim)
-                if let glob = glob {
+                if let glob {
                     Text("(\(glob))")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(Theme.dim)
                 }
             }
-            
+
         default:
             HStack(spacing: 4) {
                 Text(name)
@@ -301,14 +301,14 @@ struct ConversationView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private func toolOutputView(name: String, output: String) -> some View {
         let lines = output.components(separatedBy: .newlines)
         let maxPreviewLines = 10
         let displayLines = Array(lines.prefix(maxPreviewLines))
         let remaining = lines.count - maxPreviewLines
-        
+
         VStack(alignment: .leading, spacing: 4) {
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -317,7 +317,7 @@ struct ConversationView: View {
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(Theme.muted)
                     }
-                    
+
                     if remaining > 0 {
                         Text("... (\(remaining) more lines)")
                             .font(.system(size: 12, design: .monospaced))
@@ -332,11 +332,11 @@ struct ConversationView: View {
         .background(Theme.pageBg)
         .cornerRadius(4)
     }
-    
+
     private func toolBackground(status: ToolCallStatus) -> Color {
         Theme.toolStatusBg(status)
     }
-    
+
     private var inputArea: some View {
         HStack(spacing: 12) {
             TextField("Message...", text: $inputText, axis: .vertical)
@@ -348,7 +348,7 @@ struct ConversationView: View {
                 .onSubmit {
                     sendMessage()
                 }
-            
+
             if isProcessing {
                 Button {
                     onAbort()
@@ -374,25 +374,25 @@ struct ConversationView: View {
         .padding(.vertical, 12)
         .background(Theme.inputBg)
     }
-    
+
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         inputText = ""
         onSendMessage(text)
     }
-    
+
     // MARK: - Helpers
-    
+
     private func parseArgs(_ args: String?) -> [String: Any] {
-        guard let args = args,
+        guard let args,
               let data = args.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return [:]
         }
         return json
     }
-    
+
     private func argsToString(_ args: [String: Any]) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: args, options: [.sortedKeys]),
               let string = String(data: data, encoding: .utf8) else {
@@ -400,7 +400,7 @@ struct ConversationView: View {
         }
         return string
     }
-    
+
     private func shortenPath(_ path: String) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if path.hasPrefix(home) {
@@ -408,7 +408,7 @@ struct ConversationView: View {
         }
         return path
     }
-    
+
     private func truncateText(_ text: String, maxLength: Int) -> String {
         let cleaned = text.replacingOccurrences(of: "\n", with: " ")
         if cleaned.count > maxLength {
@@ -426,7 +426,7 @@ struct ConversationView: View {
             .userMessage(id: "1", text: "Find all TODO comments"),
             .assistantText(id: "2", text: "I'll search for **TODO** comments.\n\n```swift\nlet x = 1\n```"),
             .toolCall(id: "3", name: "grep", args: "{\"pattern\":\"TODO\",\"path\":\".\"}", output: "src/main.swift:10: // TODO: fix this", status: .success, isExpanded: true),
-            .toolCall(id: "4", name: "bash", args: "{\"command\":\"ls -la\"}", output: nil, status: .running, isExpanded: false),
+            .toolCall(id: "4", name: "bash", args: "{\"command\":\"ls -la\"}", output: nil, status: .running, isExpanded: false)
         ],
         isProcessing: false,
         expandedToolCalls: .constant(["3"]),

@@ -1,2 +1,8 @@
 bin/
 data/
+
+# Nix / pre-commit
+.pre-commit-config.yaml
+
+# SwiftLint cache
+.swiftlint/

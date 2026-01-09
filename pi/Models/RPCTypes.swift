@@ -23,7 +23,7 @@ struct PromptCommand: RPCCommand, Sendable {
     let allowedTools: [String]?
     let disallowedTools: [String]?
     let mcpConfigPaths: [String]?
-    
+
     init(
         message: String,
         customSystemPrompt: String? = nil,
@@ -103,13 +103,13 @@ struct RPCError: Decodable, Error {
 /// Raw response for initial parsing to determine routing
 struct RawRPCMessage: Decodable, Sendable {
     let type: String
-    
+
     // Response fields
     let command: String?
     let success: Bool?
     let data: AnyCodable?
     let error: RPCError?
-    
+
     // Event fields (varies by event type)
     let message: RawMessage?
     let assistantMessageEvent: AssistantMessageEvent?
@@ -123,14 +123,14 @@ struct RawRPCMessage: Decodable, Sendable {
     let messages: [RawMessage]?
     let messageId: String?
     let stopReason: String?
-    
+
     // auto_retry events
     let attempt: Int?
     let maxAttempts: Int?
     let delayMs: Int?
     let errorMessage: String?
     let finalError: String?
-    
+
     // hook_error events
     let extensionPath: String?
     let event: String?
@@ -171,13 +171,13 @@ struct Model: Codable, Identifiable, Hashable, Sendable {
     let maxOutputTokens: Int?
     let supportsImages: Bool?
     let supportsToolUse: Bool?
-    
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(provider)
     }
-    
-    static func == (lhs: Model, rhs: Model) -> Bool {
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id && lhs.provider == rhs.provider
     }
 }
@@ -227,18 +227,18 @@ struct Message: Codable, Identifiable, Sendable {
     let content: MessageContent?
     let timestamp: Date?
     let model: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case id, role, content, timestamp, model
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         role = try container.decode(MessageRole.self, forKey: .role)
         content = try container.decodeIfPresent(MessageContent.self, forKey: .content)
         model = try container.decodeIfPresent(String.self, forKey: .model)
-        
+
         // Handle timestamp as ISO8601 string or nil
         if let timestampString = try container.decodeIfPresent(String.self, forKey: .timestamp) {
             let formatter = ISO8601DateFormatter()
@@ -261,7 +261,7 @@ enum MessageRole: String, Codable, Sendable {
 enum MessageContent: Codable, Sendable {
     case text(String)
     case structured([ContentBlock])
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let text = try? container.decode(String.self) {
@@ -270,7 +270,7 @@ enum MessageContent: Codable, Sendable {
             self = .structured(blocks)
         } else {
             throw DecodingError.typeMismatch(
-                MessageContent.self,
+                Self.self,
                 DecodingError.Context(
                     codingPath: decoder.codingPath,
                     debugDescription: "Expected String or [ContentBlock]"
@@ -278,7 +278,7 @@ enum MessageContent: Codable, Sendable {
             )
         }
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
@@ -351,7 +351,7 @@ enum AssistantMessageEvent: Codable, Sendable {
     case contentBlockStart(index: Int, blockType: ContentBlockType)
     case contentBlockEnd(index: Int)
     case unknown(type: String)
-    
+
     enum CodingKeys: String, CodingKey {
         case type
         case delta
@@ -364,111 +364,111 @@ enum AssistantMessageEvent: Codable, Sendable {
         case contentIndex  // Present but unused
         case partial       // Present but unused
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = try container.decode(String.self, forKey: .type)
-        
+
         switch type {
         case "text_delta":
             let delta = try container.decodeIfPresent(String.self, forKey: .delta) ?? ""
             self = .textDelta(delta: delta)
-            
+
         case "text_start", "text_end":
             // Start/end markers - treat as empty delta
             self = .textDelta(delta: "")
-            
+
         case "thinking_delta":
             let delta = try container.decodeIfPresent(String.self, forKey: .delta) ?? ""
             self = .thinkingDelta(delta: delta)
-            
+
         case "thinking_start", "thinking_end":
             // Start/end markers - treat as empty delta
             self = .thinkingDelta(delta: "")
-            
+
         case "tool_use_start", "toolcall_start":
             let toolCallId = try container.decodeIfPresent(String.self, forKey: .toolCallId) ?? ""
             let toolName = try container.decodeIfPresent(String.self, forKey: .toolName) ?? ""
             self = .toolUseStart(toolCallId: toolCallId, toolName: toolName)
-            
+
         case "tool_use_input_delta", "toolcall_delta":
             let toolCallId = try container.decodeIfPresent(String.self, forKey: .toolCallId) ?? ""
             let delta = try container.decodeIfPresent(String.self, forKey: .delta) ?? ""
             self = .toolUseInputDelta(toolCallId: toolCallId, delta: delta)
-            
+
         case "tool_use_end", "toolcall_end":
             let toolCallId = try container.decodeIfPresent(String.self, forKey: .toolCallId) ?? ""
             self = .toolUseEnd(toolCallId: toolCallId)
-            
+
         case "message_start", "start":
             let messageId = try container.decodeIfPresent(String.self, forKey: .messageId) ?? ""
             self = .messageStart(messageId: messageId)
-            
+
         case "message_end", "done":
             let stopReason = try container.decodeIfPresent(String.self, forKey: .stopReason)
             self = .messageEnd(stopReason: stopReason)
-            
+
         case "content_block_start":
             let index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
             let blockType = try container.decodeIfPresent(ContentBlockType.self, forKey: .blockType) ?? .text
             self = .contentBlockStart(index: index, blockType: blockType)
-            
+
         case "content_block_end":
             let index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
             self = .contentBlockEnd(index: index)
-            
+
         case "error":
             // Error event - treat as message end with error
             self = .messageEnd(stopReason: "error")
-            
+
         default:
             self = .unknown(type: type)
         }
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        
+
         switch self {
         case .textDelta(let delta):
             try container.encode("text_delta", forKey: .type)
             try container.encode(delta, forKey: .delta)
-            
+
         case .thinkingDelta(let delta):
             try container.encode("thinking_delta", forKey: .type)
             try container.encode(delta, forKey: .delta)
-            
+
         case .toolUseStart(let toolCallId, let toolName):
             try container.encode("tool_use_start", forKey: .type)
             try container.encode(toolCallId, forKey: .toolCallId)
             try container.encode(toolName, forKey: .toolName)
-            
+
         case .toolUseInputDelta(let toolCallId, let delta):
             try container.encode("tool_use_input_delta", forKey: .type)
             try container.encode(toolCallId, forKey: .toolCallId)
             try container.encode(delta, forKey: .delta)
-            
+
         case .toolUseEnd(let toolCallId):
             try container.encode("tool_use_end", forKey: .type)
             try container.encode(toolCallId, forKey: .toolCallId)
-            
+
         case .messageStart(let messageId):
             try container.encode("message_start", forKey: .type)
             try container.encode(messageId, forKey: .messageId)
-            
+
         case .messageEnd(let stopReason):
             try container.encode("message_end", forKey: .type)
             try container.encodeIfPresent(stopReason, forKey: .stopReason)
-            
+
         case .contentBlockStart(let index, let blockType):
             try container.encode("content_block_start", forKey: .type)
             try container.encode(index, forKey: .index)
             try container.encode(blockType, forKey: .blockType)
-            
+
         case .contentBlockEnd(let index):
             try container.encode("content_block_end", forKey: .type)
             try container.encode(index, forKey: .index)
-            
+
         case .unknown(let type):
             try container.encode(type, forKey: .type)
         }
@@ -480,14 +480,14 @@ enum AssistantMessageEvent: Codable, Sendable {
 /// Type-erased Codable wrapper for dynamic JSON values
 struct AnyCodable: Codable, @unchecked Sendable {
     let value: Any
-    
+
     init(_ value: Any) {
         self.value = value
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        
+
         if container.decodeNil() {
             value = NSNull()
         } else if let bool = try? container.decode(Bool.self) {
@@ -498,13 +498,13 @@ struct AnyCodable: Codable, @unchecked Sendable {
             value = double
         } else if let string = try? container.decode(String.self) {
             value = string
-        } else if let array = try? container.decode([AnyCodable].self) {
-            value = array.map { $0.value }
-        } else if let dict = try? container.decode([String: AnyCodable].self) {
+        } else if let array = try? container.decode([Self].self) {
+            value = array.map(\.value)
+        } else if let dict = try? container.decode([String: Self].self) {
             value = dict.mapValues { $0.value }
         } else {
             throw DecodingError.typeMismatch(
-                AnyCodable.self,
+                Self.self,
                 DecodingError.Context(
                     codingPath: decoder.codingPath,
                     debugDescription: "Cannot decode AnyCodable"
@@ -512,10 +512,10 @@ struct AnyCodable: Codable, @unchecked Sendable {
             )
         }
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        
+
         switch value {
         case is NSNull:
             try container.encodeNil()
@@ -528,9 +528,9 @@ struct AnyCodable: Codable, @unchecked Sendable {
         case let string as String:
             try container.encode(string)
         case let array as [Any]:
-            try container.encode(array.map { AnyCodable($0) })
+            try container.encode(array.map { Self($0) })
         case let dict as [String: Any]:
-            try container.encode(dict.mapValues { AnyCodable($0) })
+            try container.encode(dict.mapValues { Self($0) })
         default:
             throw EncodingError.invalidValue(
                 value,
@@ -541,12 +541,12 @@ struct AnyCodable: Codable, @unchecked Sendable {
             )
         }
     }
-    
+
     /// Convert to JSON Data
     func toJSONData() throws -> Data {
         try JSONSerialization.data(withJSONObject: value)
     }
-    
+
     /// Pretty-printed JSON string
     var jsonString: String? {
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: .prettyPrinted) else {

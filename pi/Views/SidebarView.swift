@@ -13,7 +13,7 @@ struct SidebarView: View {
     let onSelectSession: (Session) -> Void
     let onDeleteSession: (Session, Bool) -> Void
     let onNewSession: () -> Void
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // New session button
@@ -34,7 +34,7 @@ struct SidebarView: View {
             .padding(.horizontal, 12)
             .padding(.top, 36) // Account for titlebar area (28px titlebar + 8px margin)
             .padding(.bottom, 16)
-            
+
             // Sessions header
             HStack {
                 Text("Sessions")
@@ -42,9 +42,9 @@ struct SidebarView: View {
                     .foregroundColor(Theme.muted)
                     .textCase(.uppercase)
                     .tracking(0.5)
-                
+
                 Spacer()
-                
+
                 Button(action: {}) {
                     Image(systemName: "line.3.horizontal.decrease")
                         .font(.system(size: 12))
@@ -54,7 +54,7 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
-            
+
             // Sessions list
             ScrollView {
                 LazyVStack(spacing: 2) {
@@ -69,7 +69,7 @@ struct SidebarView: View {
                 }
                 .padding(.horizontal, 8)
             }
-            
+
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -84,11 +84,11 @@ private struct SessionRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onDelete: (Bool) -> Void
-    
+
     @State private var isHovering = false
     @State private var showDeleteConfirm = false
     @State private var deleteWorktree = false
-    
+
     var body: some View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 4) {
@@ -98,9 +98,9 @@ private struct SessionRow: View {
                         .foregroundColor(Theme.text)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    
+
                     Spacer(minLength: 4)
-                    
+
                     if isHovering {
                         Button {
                             showDeleteConfirm = true
@@ -119,7 +119,7 @@ private struct SessionRow: View {
                             .foregroundColor(Theme.dim)
                     }
                 }
-                
+
                 Text(session.projectName)
                     .font(.system(size: 11))
                     .foregroundColor(Theme.dim)
@@ -151,15 +151,15 @@ private struct SessionRow: View {
             }
         }
     }
-    
+
     private var rowBackground: Color {
         if isSelected {
             return Theme.selectedBg
-        } else if isHovering {
-            return Theme.hoverBg
-        } else {
-            return .clear
         }
+        if isHovering {
+            return Theme.hoverBg
+        }
+        return .clear
     }
 }
 
@@ -168,7 +168,7 @@ private struct SessionRow: View {
 private func timeAgo(from date: Date) -> String {
     let now = Date()
     let interval = now.timeIntervalSince(date)
-    
+
     let seconds = Int(interval)
     let minutes = seconds / 60
     let hours = minutes / 60
@@ -176,22 +176,26 @@ private func timeAgo(from date: Date) -> String {
     let weeks = days / 7
     let months = days / 30
     let years = days / 365
-    
+
     if seconds < 60 {
         return "now"
-    } else if minutes < 60 {
-        return "\(minutes)m ago"
-    } else if hours < 24 {
-        return "\(hours)h ago"
-    } else if days < 7 {
-        return "\(days)d ago"
-    } else if weeks < 4 {
-        return "\(weeks)w ago"
-    } else if months < 12 {
-        return "\(months)mo ago"
-    } else {
-        return "\(years)y ago"
     }
+    if minutes < 60 {
+        return "\(minutes)m ago"
+    }
+    if hours < 24 {
+        return "\(hours)h ago"
+    }
+    if days < 7 {
+        return "\(days)d ago"
+    }
+    if weeks < 4 {
+        return "\(weeks)w ago"
+    }
+    if months < 12 {
+        return "\(months)mo ago"
+    }
+    return "\(years)y ago"
 }
 
 // MARK: - Color Extension
@@ -216,8 +220,8 @@ private func timeAgo(from date: Date) -> String {
                 repoRoot: "/Users/test/Projects/image-processor",
                 relativePath: "src",
                 worktreeName: "wt-def456",
-                createdAt: Date().addingTimeInterval(-86400 * 2),
-                updatedAt: Date().addingTimeInterval(-86400 * 2)
+                createdAt: Date().addingTimeInterval(-86_400 * 2),
+                updatedAt: Date().addingTimeInterval(-86_400 * 2)
             ),
             Session(
                 title: "Setup CI/CD pipeline",
@@ -225,8 +229,8 @@ private func timeAgo(from date: Date) -> String {
                 repoRoot: "/Users/test/Projects/devops",
                 relativePath: "",
                 worktreeName: "wt-ghi789",
-                createdAt: Date().addingTimeInterval(-86400 * 5),
-                updatedAt: Date().addingTimeInterval(-86400 * 5)
+                createdAt: Date().addingTimeInterval(-86_400 * 5),
+                updatedAt: Date().addingTimeInterval(-86_400 * 5)
             )
         ],
         selectedSessionId: nil,

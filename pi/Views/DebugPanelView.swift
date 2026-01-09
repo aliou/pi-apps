@@ -15,12 +15,12 @@ struct DebugEvent: Identifiable {
     let type: EventType
     let summary: String
     let details: String?
-    
+
     enum EventType {
         case sent
         case received
         case error
-        
+
         var color: Color {
             switch self {
             case .sent: return Theme.border
@@ -28,7 +28,7 @@ struct DebugEvent: Identifiable {
             case .error: return Theme.error
             }
         }
-        
+
         var icon: String {
             switch self {
             case .sent: return "arrow.up.circle.fill"
@@ -45,12 +45,12 @@ struct DebugEvent: Identifiable {
 class DebugEventStore: ObservableObject {
     @Published var events: [DebugEvent] = []
     private let maxEvents = 500
-    
+
     // Throttling for batch updates
     private var pendingEvents: [DebugEvent] = []
     private var flushTask: Task<Void, Never>?
     private let flushInterval: UInt64 = 100_000_000 // 100ms in nanoseconds
-    
+
     private func scheduleFlush() {
         flushTask?.cancel()
         flushTask = Task {
@@ -59,23 +59,23 @@ class DebugEventStore: ObservableObject {
             await flush()
         }
     }
-    
+
     private func flush() {
         guard !pendingEvents.isEmpty else { return }
-        
+
         events.append(contentsOf: pendingEvents)
         pendingEvents.removeAll()
-        
+
         if events.count > maxEvents {
             events.removeFirst(events.count - maxEvents)
         }
     }
-    
+
     func addEvent(_ event: DebugEvent) {
         pendingEvents.append(event)
         scheduleFlush()
     }
-    
+
     func addSent(command: String, details: String? = nil) {
         addEvent(DebugEvent(
             timestamp: Date(),
@@ -84,7 +84,7 @@ class DebugEventStore: ObservableObject {
             details: details
         ))
     }
-    
+
     func addReceived(type: String, summary: String, details: String? = nil) {
         addEvent(DebugEvent(
             timestamp: Date(),
@@ -93,7 +93,7 @@ class DebugEventStore: ObservableObject {
             details: details
         ))
     }
-    
+
     func addError(_ message: String, details: String? = nil) {
         addEvent(DebugEvent(
             timestamp: Date(),
@@ -102,7 +102,7 @@ class DebugEventStore: ObservableObject {
             details: details
         ))
     }
-    
+
     func clear() {
         pendingEvents.removeAll()
         events.removeAll()
@@ -115,15 +115,15 @@ struct DebugPanelView: View {
     @ObservedObject var store: DebugEventStore
     @State private var selectedEventId: UUID?
     @State private var autoScroll = true
-    
+
     private let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
         return f
     }()
-    
-    @State private var logPath: String = ""
-    
+
+    @State private var logPath = ""
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -131,14 +131,14 @@ struct DebugPanelView: View {
                 Text("RPC Debug")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Theme.muted)
-                
+
                 Spacer()
-                
+
                 Toggle("Auto-scroll", isOn: $autoScroll)
                     .toggleStyle(.checkbox)
                     .font(.system(size: 10))
                     .foregroundColor(Theme.dim)
-                
+
                 Button("Clear") {
                     store.clear()
                 }
@@ -150,7 +150,7 @@ struct DebugPanelView: View {
             .padding(.vertical, 6)
             .padding(.top, 28) // Account for titlebar area
             .background(Theme.cardBg)
-            
+
             // Log file path (clickable)
             if !logPath.isEmpty {
                 Button {
@@ -168,10 +168,10 @@ struct DebugPanelView: View {
                 .buttonStyle(.plain)
                 .help(logPath)
             }
-            
+
             Divider()
                 .background(Theme.borderMuted)
-            
+
             // Events list
             ScrollViewReader { proxy in
                 ScrollView {
@@ -180,7 +180,7 @@ struct DebugPanelView: View {
                             eventRow(event)
                                 .id(event.id)
                         }
-                        
+
                         Color.clear
                             .frame(height: 1)
                             .id("bottom")
@@ -194,14 +194,14 @@ struct DebugPanelView: View {
                     }
                 }
             }
-            
+
             // Selected event details
             if let selectedId = selectedEventId,
                let event = store.events.first(where: { $0.id == selectedId }),
                let details = event.details {
                 Divider()
                     .background(Theme.borderMuted)
-                
+
                 ScrollView {
                     Text(details)
                         .font(.system(size: 10, design: .monospaced))
@@ -219,7 +219,7 @@ struct DebugPanelView: View {
             logPath = await Logger.shared.logFilePath
         }
     }
-    
+
     private func eventRow(_ event: DebugEvent) -> some View {
         Button {
             if selectedEventId == event.id {
@@ -233,19 +233,19 @@ struct DebugPanelView: View {
                     .font(.system(size: 8))
                     .foregroundColor(event.type.color)
                     .frame(width: 12)
-                
+
                 Text(timeFormatter.string(from: event.timestamp))
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundColor(Theme.dim)
-                
+
                 Text(event.summary)
                     .font(.system(size: 10))
                     .foregroundColor(Theme.text)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                
+
                 Spacer(minLength: 0)
-                
+
                 if event.details != nil {
                     Image(systemName: selectedEventId == event.id ? "chevron.down" : "chevron.right")
                         .font(.system(size: 8))
@@ -273,7 +273,7 @@ struct DebugPanelView: View {
     store.addReceived(type: "tool_execution_end", summary: "bash success")
     store.addReceived(type: "agent_end", summary: "")
     store.addError("Connection lost", details: "Process terminated with exit code 1")
-    
+
     return DebugPanelView(store: store)
         .frame(width: 300, height: 400)
 }

@@ -8,18 +8,17 @@
 import Foundation
 
 struct SessionFileParser {
-    
     static func parse(fileAt path: String) -> [ConversationItem] {
         guard let data = FileManager.default.contents(atPath: path),
               let content = String(data: data, encoding: .utf8) else {
             return []
         }
-        
+
         var items: [ConversationItem] = []
         var toolCallIndex: [String: Int] = [:]  // toolCallId -> index in items
-        
+
         let lines = content.components(separatedBy: .newlines)
-        
+
         for line in lines {
             guard !line.isEmpty,
                   let lineData = line.data(using: .utf8),
@@ -27,33 +26,33 @@ struct SessionFileParser {
                   let type = json["type"] as? String else {
                 continue
             }
-            
+
             if type == "message", let message = json["message"] as? [String: Any] {
                 parseMessage(message, into: &items, toolCallIndex: &toolCallIndex)
             }
         }
-        
+
         return items
     }
-    
+
     private static func parseMessage(
         _ message: [String: Any],
         into items: inout [ConversationItem],
         toolCallIndex: inout [String: Int]
     ) {
         guard let role = message["role"] as? String else { return }
-        
+
         switch role {
         case "user":
             if let text = extractUserText(from: message), !text.isEmpty {
                 items.append(.userMessage(id: UUID().uuidString, text: text))
             }
-            
+
         case "assistant":
             if let contentArray = message["content"] as? [[String: Any]] {
                 for block in contentArray {
                     guard let blockType = block["type"] as? String else { continue }
-                    
+
                     switch blockType {
                     case "text":
                         if let text = block["text"] as? String, !text.isEmpty {
@@ -78,7 +77,7 @@ struct SessionFileParser {
                     }
                 }
             }
-            
+
         case "toolResult":
             if let toolCallId = message["toolCallId"] as? String,
                let index = toolCallIndex[toolCallId],
@@ -94,12 +93,12 @@ struct SessionFileParser {
                     isExpanded: isExpanded
                 )
             }
-            
+
         default:
             break
         }
     }
-    
+
     private static func extractUserText(from message: [String: Any]) -> String? {
         if let content = message["content"] as? String {
             return content
@@ -114,26 +113,26 @@ struct SessionFileParser {
         }
         return nil
     }
-    
+
     private static func formatArguments(_ args: Any?) -> String? {
-        guard let args = args else { return nil }
-        
+        guard let args else { return nil }
+
         if let dict = args as? [String: Any],
            let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
            let string = String(data: data, encoding: .utf8) {
             return string
         }
-        
+
         if let string = args as? String {
             return string
         }
-        
+
         return nil
     }
-    
+
     private static func extractToolResultContent(_ content: Any?) -> String? {
-        guard let content = content else { return nil }
-        
+        guard let content else { return nil }
+
         if let contentArray = content as? [[String: Any]] {
             return contentArray.compactMap { block -> String? in
                 if block["type"] as? String == "text" {
@@ -142,11 +141,11 @@ struct SessionFileParser {
                 return nil
             }.joined(separator: "\n")
         }
-        
+
         if let string = content as? String {
             return string
         }
-        
+
         return nil
     }
 }
