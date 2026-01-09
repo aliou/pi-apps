@@ -12,8 +12,8 @@ import Combine
 class TitlebarState: ObservableObject {
     static let shared = TitlebarState()
 
-    @Published var showSidebar = true
-    @Published var showDebugPanel = true
+    @AppStorage("showSidebar") var showSidebar = true
+    @AppStorage("showDebugPanel") var showDebugPanel = false
 
     private init() {}
 }

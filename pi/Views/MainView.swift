@@ -153,20 +153,6 @@ struct MainView: View {
             .hoverEffect()
 
             Spacer()
-
-            // Debug toggle
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    titlebarState.showDebugPanel.toggle()
-                }
-            } label: {
-                Image(systemName: "ladybug")
-                    .font(.system(size: 14))
-                    .foregroundColor(titlebarState.showDebugPanel ? .orange : .secondary)
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .hoverEffect()
         }
         .padding(.leading, 78)
         .padding(.trailing, 8)
