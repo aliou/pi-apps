@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PiCore
 
 // MARK: - RPC Client Errors
 
@@ -20,6 +21,7 @@ enum RPCClientError: Error, LocalizedError {
     case serverError(RPCError)
     case pipeBroken
     case alreadyRunning
+    case noModelsAvailable
 
     var errorDescription: String? {
         switch self {
@@ -43,6 +45,18 @@ enum RPCClientError: Error, LocalizedError {
             return "Communication pipe is broken"
         case .alreadyRunning:
             return "RPC client is already running"
+        case .noModelsAvailable:
+            return "No API keys configured"
+        }
+    }
+
+    /// Whether this error requires authentication setup
+    var requiresAuthSetup: Bool {
+        switch self {
+        case .noModelsAvailable:
+            return true
+        default:
+            return false
         }
     }
 }
@@ -73,7 +87,9 @@ actor RPCClient {
     private var _events: AsyncStream<RPCEvent>?
 
     private var readBuffer = Data()
+    private var stderrBuffer = ""
     private var isRunning = false
+    private var detectedNoModels = false
 
     private let executablePath: String
     private let environment: [String: String]?
@@ -165,6 +181,10 @@ actor RPCClient {
         startReadingStdout()
         startReadingStderr()
 
+        // Reset detection state
+        detectedNoModels = false
+        stderrBuffer = ""
+
         // Launch process
         do {
             try process.run()
@@ -172,6 +192,20 @@ actor RPCClient {
         } catch {
             cleanup()
             throw error
+        }
+
+        // Wait briefly to check if process crashes immediately (e.g., no API keys)
+        try await Task.sleep(nanoseconds: 200_000_000) // 200ms
+
+        // Check if process died during startup
+        if !process.isRunning {
+            isRunning = false
+            cleanup()
+
+            if detectedNoModels {
+                throw RPCClientError.noModelsAvailable
+            }
+            throw RPCClientError.processTerminated(exitCode: process.terminationStatus)
         }
     }
 
@@ -390,17 +424,29 @@ actor RPCClient {
 
         let handle = stderrPipe.fileHandleForReading
 
-        handle.readabilityHandler = { handle in
+        handle.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else {
                 handle.readabilityHandler = nil
                 return
             }
 
-            // Log stderr for debugging
+            // Log stderr for debugging and detect specific errors
             if let text = String(data: data, encoding: .utf8) {
                 logWarn("pi stderr: \(text.trimmingCharacters(in: .whitespacesAndNewlines))")
+
+                // Check for "No models available" error
+                Task { [weak self] in
+                    await self?.appendStderr(text)
+                }
             }
+        }
+    }
+
+    private func appendStderr(_ text: String) {
+        stderrBuffer += text
+        if stderrBuffer.contains("No models available") {
+            detectedNoModels = true
         }
     }
 

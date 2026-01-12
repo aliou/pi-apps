@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PiCore
 
 struct SetupView: View {
     @State private var downloadProgress: Double = 0

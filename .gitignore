@@ -6,3 +6,11 @@ data/
 
 # SwiftLint cache
 .swiftlint/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# direnv
+.direnv/
+.envrc

@@ -141,24 +141,35 @@ actor BinaryUpdateService {
 
         progress(0.8, "Extracting...")
 
-        // Extract
+        // Extract to temp directory
         try extractTarGz(at: tarPath, to: tempDir)
 
         progress(0.9, "Installing...")
 
-        // Move to bin directory
-        let extractedBinary = tempDir.appendingPathComponent("pi")
-        let targetPath = AppPaths.piExecutable
+        // Clear existing bin directory contents (except preserve any user config)
+        let binDir = AppPaths.binDirectory
+        let fm = FileManager.default
 
-        // Remove old binary if exists
-        if FileManager.default.fileExists(atPath: targetPath.path) {
-            try FileManager.default.removeItem(at: targetPath)
+        // Remove old contents
+        if let contents = try? fm.contentsOfDirectory(at: binDir, includingPropertiesForKeys: nil) {
+            for item in contents {
+                try? fm.removeItem(at: item)
+            }
         }
 
-        try FileManager.default.moveItem(at: extractedBinary, to: targetPath)
+        // Move all extracted files to bin directory
+        let extractedContents = try fm.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil)
+        for item in extractedContents {
+            // Skip the tarball itself
+            if item.lastPathComponent == "pi.tar.gz" { continue }
 
-        // Make executable
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: targetPath.path)
+            let destination = binDir.appendingPathComponent(item.lastPathComponent)
+            try fm.moveItem(at: item, to: destination)
+        }
+
+        // Make binary executable
+        let binaryPath = AppPaths.piExecutable
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binaryPath.path)
 
         // Update version info
         versionInfo.currentVersion = version

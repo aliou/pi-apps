@@ -5,6 +5,7 @@
 
 import SwiftUI
 import Textual
+import PiCore
 
 struct PiMarkdownStyle: StructuredText.Style {
     let inlineStyle = InlineStyle()

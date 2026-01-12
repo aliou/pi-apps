@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import PiCore
 
 struct MainView: View {
     @StateObject private var sessionStore = SessionStore()
@@ -21,6 +22,7 @@ struct MainView: View {
 
     // Binary/update state
     @State private var binaryReady = false
+    @State private var authReady = false
     @State private var updateAvailable: String?
     @State private var showUpdateSheet = false
     @State private var updateDismissed = false
@@ -31,6 +33,7 @@ struct MainView: View {
                 // Show setup view when binary is missing
                 SetupView {
                     binaryReady = true
+                    checkAuth()
                 }
             } else {
                 mainContent
@@ -42,6 +45,24 @@ struct MainView: View {
         .sheet(isPresented: $showUpdateSheet) {
             UpdateSheet()
         }
+        .sheet(isPresented: .constant(!authReady && binaryReady)) {
+            AuthSetupView {
+                checkAuth()
+            }
+            .interactiveDismissDisabled()
+        }
+    }
+
+    private func checkAuth() {
+        let agentPath = AppPaths.agentDirectory
+        let authJson = agentPath.appendingPathComponent("auth.json")
+        let modelsJson = agentPath.appendingPathComponent("models.json")
+
+        // Use attributesOfItem which detects both files and symlinks
+        let authExists = (try? FileManager.default.attributesOfItem(atPath: authJson.path)) != nil
+        let modelsExists = (try? FileManager.default.attributesOfItem(atPath: modelsJson.path)) != nil
+
+        authReady = authExists || modelsExists
     }
 
     @ViewBuilder
@@ -164,8 +185,10 @@ struct MainView: View {
         // Check if binary exists
         binaryReady = AppPaths.piExecutableExists
 
-        // If binary exists, check for updates on launch
+        // If binary exists, check for auth and updates
         if binaryReady {
+            checkAuth()
+
             Task {
                 let result = await BinaryUpdateService.shared.checkForUpdates()
                 await MainActor.run {
@@ -239,23 +262,33 @@ struct SessionContentView: View {
             Divider()
                 .background(Theme.borderMuted)
 
-            // Conversation
-            ConversationView(
-                items: appState.conversationItems,
-                isProcessing: appState.isProcessing,
-                expandedToolCalls: $expandedToolCalls,
-                onSendMessage: { message in
-                    sessionStore.touchSession(session.id)
+            // Show auth setup if needed, otherwise conversation
+            if appState.needsAuthSetup {
+                AuthSetupView {
+                    // Retry connection after auth setup
                     Task {
-                        await appState.sendMessage(message)
-                    }
-                },
-                onAbort: {
-                    Task {
-                        await appState.abort()
+                        await appState.connect(to: session, sessionStore: sessionStore)
                     }
                 }
-            )
+            } else {
+                // Conversation
+                ConversationView(
+                    items: appState.conversationItems,
+                    isProcessing: appState.isProcessing,
+                    expandedToolCalls: $expandedToolCalls,
+                    onSendMessage: { message in
+                        sessionStore.touchSession(session.id)
+                        Task {
+                            await appState.sendMessage(message)
+                        }
+                    },
+                    onAbort: {
+                        Task {
+                            await appState.abort()
+                        }
+                    }
+                )
+            }
         }
     }
 
@@ -297,6 +330,7 @@ class AppState: ObservableObject {
     @Published private(set) var isProcessing = false
     @Published private(set) var conversationItems: [ConversationItem] = []
     @Published private(set) var error: String?
+    @Published private(set) var needsAuthSetup = false
 
     var debugStore: DebugEventStore?
 
@@ -318,6 +352,8 @@ class AppState: ObservableObject {
 
         currentSession = session
         self.sessionStoreRef = sessionStore
+        self.needsAuthSetup = false
+        self.error = nil
         debugStore?.addSent(command: "connect", details: "workingDirectory: \(session.workingDirectory)")
 
         // Load conversation from session file first (if exists)
@@ -351,6 +387,12 @@ class AppState: ObservableObject {
                     currentSession?.piSessionFile = sessionFile
                 }
             }
+        } catch let error as RPCClientError {
+            self.error = error.localizedDescription
+            self.needsAuthSetup = error.requiresAuthSetup
+            debugStore?.addError("Connection failed", details: error.localizedDescription)
+            logError("Connection failed: \(error.localizedDescription)")
+            isConnected = false
         } catch {
             self.error = error.localizedDescription
             debugStore?.addError("Connection failed", details: error.localizedDescription)

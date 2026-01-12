@@ -5,6 +5,7 @@
 
 import SwiftUI
 import Textual
+import PiCore
 
 // MARK: - Conversation Item
 
@@ -20,12 +21,6 @@ enum ConversationItem: Identifiable {
         case .toolCall(let id, _, _, _, _, _): return id
         }
     }
-}
-
-enum ToolCallStatus {
-    case running
-    case success
-    case error
 }
 
 // MARK: - ConversationView

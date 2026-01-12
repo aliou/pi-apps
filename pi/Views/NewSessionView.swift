@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PiCore
 
 struct NewSessionView: View {
     let onStartSession: (_ folderPath: String, _ prompt: String) -> Void

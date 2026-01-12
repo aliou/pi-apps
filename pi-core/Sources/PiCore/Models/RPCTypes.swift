@@ -1,8 +1,6 @@
 //
 //  RPCTypes.swift
-//  pi
-//
-//  Created by Aliou Diallo on 2026-01-07.
+//  PiCore
 //
 
 import Foundation
@@ -11,20 +9,20 @@ import Foundation
 
 /// Base protocol for all RPC commands
 @preconcurrency
-protocol RPCCommand: Encodable, Sendable {
+public protocol RPCCommand: Encodable, Sendable {
     var type: String { get }
 }
 
 /// Prompt command - send a message to the agent
-struct PromptCommand: RPCCommand, Sendable {
-    let type = "prompt"
-    let message: String
-    let customSystemPrompt: String?
-    let allowedTools: [String]?
-    let disallowedTools: [String]?
-    let mcpConfigPaths: [String]?
+public struct PromptCommand: RPCCommand, Sendable {
+    public let type = "prompt"
+    public let message: String
+    public let customSystemPrompt: String?
+    public let allowedTools: [String]?
+    public let disallowedTools: [String]?
+    public let mcpConfigPaths: [String]?
 
-    init(
+    public init(
         message: String,
         customSystemPrompt: String? = nil,
         allowedTools: [String]? = nil,
@@ -40,144 +38,165 @@ struct PromptCommand: RPCCommand, Sendable {
 }
 
 /// Abort command - cancel ongoing operation
-struct AbortCommand: RPCCommand, Sendable {
-    let type = "abort"
+public struct AbortCommand: RPCCommand, Sendable {
+    public let type = "abort"
+    public init() {}
 }
 
 /// Get current state
-struct GetStateCommand: RPCCommand, Sendable {
-    let type = "get_state"
+public struct GetStateCommand: RPCCommand, Sendable {
+    public let type = "get_state"
+    public init() {}
 }
 
 /// Get available models
-struct GetAvailableModelsCommand: RPCCommand, Sendable {
-    let type = "get_available_models"
+public struct GetAvailableModelsCommand: RPCCommand, Sendable {
+    public let type = "get_available_models"
+    public init() {}
 }
 
 /// Set the active model
-struct SetModelCommand: RPCCommand, Sendable {
-    let type = "set_model"
-    let provider: String
-    let modelId: String
+public struct SetModelCommand: RPCCommand, Sendable {
+    public let type = "set_model"
+    public let provider: String
+    public let modelId: String
+
+    public init(provider: String, modelId: String) {
+        self.provider = provider
+        self.modelId = modelId
+    }
 }
 
 /// Get conversation history
-struct GetMessagesCommand: RPCCommand, Sendable {
-    let type = "get_messages"
+public struct GetMessagesCommand: RPCCommand, Sendable {
+    public let type = "get_messages"
+    public init() {}
 }
 
 /// Start a new session
-struct NewSessionCommand: RPCCommand, Sendable {
-    let type = "new_session"
+public struct NewSessionCommand: RPCCommand, Sendable {
+    public let type = "new_session"
+    public init() {}
 }
 
 /// Switch to an existing session
-struct SwitchSessionCommand: RPCCommand, Sendable {
-    let type = "switch_session"
-    let sessionPath: String
+public struct SwitchSessionCommand: RPCCommand, Sendable {
+    public let type = "switch_session"
+    public let sessionPath: String
+
+    public init(sessionPath: String) {
+        self.sessionPath = sessionPath
+    }
 }
 
 /// Clear conversation
-struct ClearConversationCommand: RPCCommand, Sendable {
-    let type = "clear_conversation"
+public struct ClearConversationCommand: RPCCommand, Sendable {
+    public let type = "clear_conversation"
+    public init() {}
 }
 
 // MARK: - RPC Response
 
 /// Generic RPC response wrapper
-struct RPCResponse<T: Decodable & Sendable>: Decodable, Sendable {
-    let type: String
-    let command: String
-    let success: Bool
-    let data: T?
-    let error: RPCError?
+public struct RPCResponse<T: Decodable & Sendable>: Decodable, Sendable {
+    public let type: String
+    public let command: String
+    public let success: Bool
+    public let data: T?
+    public let error: RPCError?
 }
 
 /// RPC error details
-struct RPCError: Decodable, Error {
-    let code: String?
-    let message: String
-    let details: String?
+public struct RPCError: Decodable, Error, Sendable {
+    public let code: String?
+    public let message: String
+    public let details: String?
+
+    public init(code: String?, message: String, details: String?) {
+        self.code = code
+        self.message = message
+        self.details = details
+    }
 }
 
 /// Raw response for initial parsing to determine routing
-struct RawRPCMessage: Decodable, Sendable {
-    let type: String
+public struct RawRPCMessage: Decodable, Sendable {
+    public let type: String
 
     // Response fields
-    let command: String?
-    let success: Bool?
-    let data: AnyCodable?
-    let error: RPCError?
+    public let command: String?
+    public let success: Bool?
+    public let data: AnyCodable?
+    public let error: RPCError?
 
     // Event fields (varies by event type)
-    let message: RawMessage?
-    let assistantMessageEvent: AssistantMessageEvent?
-    let toolCallId: String?
-    let toolName: String?
-    let args: AnyCodable?
-    let partialResult: ToolPartialResult?
-    let result: ToolResult?
-    let isError: Bool?
-    let context: StateContext?
-    let messages: [RawMessage]?
-    let messageId: String?
-    let stopReason: String?
+    public let message: RawMessage?
+    public let assistantMessageEvent: AssistantMessageEvent?
+    public let toolCallId: String?
+    public let toolName: String?
+    public let args: AnyCodable?
+    public let partialResult: ToolPartialResult?
+    public let result: ToolResult?
+    public let isError: Bool?
+    public let context: StateContext?
+    public let messages: [RawMessage]?
+    public let messageId: String?
+    public let stopReason: String?
 
     // auto_retry events
-    let attempt: Int?
-    let maxAttempts: Int?
-    let delayMs: Int?
-    let errorMessage: String?
-    let finalError: String?
+    public let attempt: Int?
+    public let maxAttempts: Int?
+    public let delayMs: Int?
+    public let errorMessage: String?
+    public let finalError: String?
 
     // hook_error events
-    let extensionPath: String?
-    let event: String?
+    public let extensionPath: String?
+    public let event: String?
 }
 
 /// Raw message from RPC (simplified version)
-struct RawMessage: Decodable, Sendable {
-    let role: String?
-    let content: AnyCodable?
+public struct RawMessage: Decodable, Sendable {
+    public let role: String?
+    public let content: AnyCodable?
 }
 
 /// Partial result from tool execution update
-struct ToolPartialResult: Decodable, Sendable {
-    let content: [ToolContent]?
-    let details: AnyCodable?
+public struct ToolPartialResult: Decodable, Sendable {
+    public let content: [ToolContent]?
+    public let details: AnyCodable?
 }
 
 /// Tool result from tool execution end
-struct ToolResult: Decodable, Sendable {
-    let content: [ToolContent]?
-    let details: AnyCodable?
+public struct ToolResult: Decodable, Sendable {
+    public let content: [ToolContent]?
+    public let details: AnyCodable?
 }
 
 /// Content in tool results
-struct ToolContent: Decodable, Sendable {
-    let type: String
-    let text: String?
+public struct ToolContent: Decodable, Sendable {
+    public let type: String
+    public let text: String?
 }
 
 // MARK: - Model
 
 /// Represents an available AI model
-struct Model: Codable, Identifiable, Hashable, Sendable {
-    let id: String
-    let name: String
-    let provider: String
-    let contextWindow: Int?
-    let maxOutputTokens: Int?
-    let supportsImages: Bool?
-    let supportsToolUse: Bool?
+public struct Model: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let provider: String
+    public let contextWindow: Int?
+    public let maxOutputTokens: Int?
+    public let supportsImages: Bool?
+    public let supportsToolUse: Bool?
 
-    func hash(into hasher: inout Hasher) {
+    public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(provider)
     }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id && lhs.provider == rhs.provider
     }
 }
@@ -185,54 +204,54 @@ struct Model: Codable, Identifiable, Hashable, Sendable {
 // MARK: - State
 
 /// Current agent state
-struct StateContext: Codable, Sendable {
-    let workingDirectory: String?
-    let model: Model?
-    let conversationId: String?
-    let messageCount: Int?
-    let isProcessing: Bool?
+public struct StateContext: Codable, Sendable {
+    public let workingDirectory: String?
+    public let model: Model?
+    public let conversationId: String?
+    public let messageCount: Int?
+    public let isProcessing: Bool?
 }
 
 /// Response for get_state command
-struct GetStateResponse: Decodable, Sendable {
-    let model: Model?
-    let thinkingLevel: String?
-    let isStreaming: Bool?
-    let isCompacting: Bool?
-    let steeringMode: String?
-    let followUpMode: String?
-    let sessionFile: String?
-    let sessionId: String?
-    let autoCompactionEnabled: Bool?
-    let messageCount: Int?
-    let pendingMessageCount: Int?
+public struct GetStateResponse: Decodable, Sendable {
+    public let model: Model?
+    public let thinkingLevel: String?
+    public let isStreaming: Bool?
+    public let isCompacting: Bool?
+    public let steeringMode: String?
+    public let followUpMode: String?
+    public let sessionFile: String?
+    public let sessionId: String?
+    public let autoCompactionEnabled: Bool?
+    public let messageCount: Int?
+    public let pendingMessageCount: Int?
 }
 
 /// Response for get_available_models command
-struct GetAvailableModelsResponse: Decodable, Sendable {
-    let models: [Model]
+public struct GetAvailableModelsResponse: Decodable, Sendable {
+    public let models: [Model]
 }
 
 /// Response for prompt command
-struct PromptResponse: Decodable, Sendable {
-    let messageId: String?
+public struct PromptResponse: Decodable, Sendable {
+    public let messageId: String?
 }
 
 // MARK: - Messages
 
 /// A conversation message
-struct Message: Codable, Identifiable, Sendable {
-    let id: String
-    let role: MessageRole
-    let content: MessageContent?
-    let timestamp: Date?
-    let model: String?
+public struct Message: Codable, Identifiable, Sendable {
+    public let id: String
+    public let role: MessageRole
+    public let content: MessageContent?
+    public let timestamp: Date?
+    public let model: String?
 
     enum CodingKeys: String, CodingKey {
         case id, role, content, timestamp, model
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         role = try container.decode(MessageRole.self, forKey: .role)
@@ -250,7 +269,7 @@ struct Message: Codable, Identifiable, Sendable {
     }
 }
 
-enum MessageRole: String, Codable, Sendable {
+public enum MessageRole: String, Codable, Sendable {
     case user
     case assistant
     case system
@@ -258,11 +277,11 @@ enum MessageRole: String, Codable, Sendable {
 }
 
 /// Message content - can be text or structured
-enum MessageContent: Codable, Sendable {
+public enum MessageContent: Codable, Sendable {
     case text(String)
     case structured([ContentBlock])
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let text = try? container.decode(String.self) {
             self = .text(text)
@@ -279,7 +298,7 @@ enum MessageContent: Codable, Sendable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .text(let text):
@@ -291,17 +310,17 @@ enum MessageContent: Codable, Sendable {
 }
 
 /// Content block within a message
-struct ContentBlock: Codable, Sendable {
-    let type: ContentBlockType
-    let text: String?
-    let thinking: String?
-    let toolCallId: String?
-    let toolName: String?
-    let input: AnyCodable?
-    let output: String?
+public struct ContentBlock: Codable, Sendable {
+    public let type: ContentBlockType
+    public let text: String?
+    public let thinking: String?
+    public let toolCallId: String?
+    public let toolName: String?
+    public let input: AnyCodable?
+    public let output: String?
 }
 
-enum ContentBlockType: String, Codable, Sendable {
+public enum ContentBlockType: String, Codable, Sendable {
     case text
     case thinking
     case toolUse = "tool_use"
@@ -311,7 +330,7 @@ enum ContentBlockType: String, Codable, Sendable {
 // MARK: - RPC Events
 
 /// All possible RPC events from the server
-enum RPCEvent: Sendable {
+public enum RPCEvent: Sendable {
     case agentStart
     case agentEnd(success: Bool, error: RPCError?)
     case turnStart
@@ -331,7 +350,7 @@ enum RPCEvent: Sendable {
     case unknown(type: String, raw: Data)
 }
 
-enum ToolStatus: String, Codable, Sendable {
+public enum ToolStatus: String, Codable, Sendable {
     case success
     case error
     case cancelled
@@ -340,7 +359,7 @@ enum ToolStatus: String, Codable, Sendable {
 // MARK: - Assistant Message Events
 
 /// Events for streaming assistant message updates
-enum AssistantMessageEvent: Codable, Sendable {
+public enum AssistantMessageEvent: Codable, Sendable {
     case textDelta(delta: String)
     case thinkingDelta(delta: String)
     case toolUseStart(toolCallId: String, toolName: String)
@@ -361,11 +380,11 @@ enum AssistantMessageEvent: Codable, Sendable {
         case stopReason
         case index
         case blockType
-        case contentIndex  // Present but unused
-        case partial       // Present but unused
+        case contentIndex
+        case partial
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = try container.decode(String.self, forKey: .type)
 
@@ -375,7 +394,6 @@ enum AssistantMessageEvent: Codable, Sendable {
             self = .textDelta(delta: delta)
 
         case "text_start", "text_end":
-            // Start/end markers - treat as empty delta
             self = .textDelta(delta: "")
 
         case "thinking_delta":
@@ -383,7 +401,6 @@ enum AssistantMessageEvent: Codable, Sendable {
             self = .thinkingDelta(delta: delta)
 
         case "thinking_start", "thinking_end":
-            // Start/end markers - treat as empty delta
             self = .thinkingDelta(delta: "")
 
         case "tool_use_start", "toolcall_start":
@@ -418,7 +435,6 @@ enum AssistantMessageEvent: Codable, Sendable {
             self = .contentBlockEnd(index: index)
 
         case "error":
-            // Error event - treat as message end with error
             self = .messageEnd(stopReason: "error")
 
         default:
@@ -426,7 +442,7 @@ enum AssistantMessageEvent: Codable, Sendable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
 
         switch self {
@@ -478,14 +494,14 @@ enum AssistantMessageEvent: Codable, Sendable {
 // MARK: - AnyCodable Helper
 
 /// Type-erased Codable wrapper for dynamic JSON values
-struct AnyCodable: Codable, @unchecked Sendable {
-    let value: Any
+public struct AnyCodable: Codable, @unchecked Sendable {
+    public let value: Any
 
-    init(_ value: Any) {
+    public init(_ value: Any) {
         self.value = value
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
         if container.decodeNil() {
@@ -513,7 +529,7 @@ struct AnyCodable: Codable, @unchecked Sendable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
 
         switch value {
@@ -543,12 +559,12 @@ struct AnyCodable: Codable, @unchecked Sendable {
     }
 
     /// Convert to JSON Data
-    func toJSONData() throws -> Data {
+    public func toJSONData() throws -> Data {
         try JSONSerialization.data(withJSONObject: value)
     }
 
     /// Pretty-printed JSON string
-    var jsonString: String? {
+    public var jsonString: String? {
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: .prettyPrinted) else {
             return nil
         }
@@ -558,14 +574,14 @@ struct AnyCodable: Codable, @unchecked Sendable {
 
 // MARK: - Conversation Response
 
-struct GetMessagesResponse: Decodable, Sendable {
-    let messages: [Message]
+public struct GetMessagesResponse: Decodable, Sendable {
+    public let messages: [Message]
 }
 
-struct NewSessionResponse: Decodable, Sendable {
-    let cancelled: Bool
+public struct NewSessionResponse: Decodable, Sendable {
+    public let cancelled: Bool
 }
 
-struct SwitchSessionResponse: Decodable, Sendable {
-    let cancelled: Bool
+public struct SwitchSessionResponse: Decodable, Sendable {
+    public let cancelled: Bool
 }

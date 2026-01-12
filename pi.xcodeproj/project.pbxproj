@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		51716A0B2F0ED89100C1BFB3 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 51716A0A2F0ED89100C1BFB3 /* Textual */; };
+		51B4FE5F2F11B53500F02450 /* PiCore in Frameworks */ = {isa = PBXBuildFile; productRef = 51B4FE5E2F11B53500F02450 /* PiCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				51B4FE5F2F11B53500F02450 /* PiCore in Frameworks */,
 				51716A0B2F0ED89100C1BFB3 /* Textual in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -38,6 +40,7 @@
 			isa = PBXGroup;
 			children = (
 				517169762F0E45F100C1BFB3 /* pi */,
+				51B4FE5D2F11B53500F02450 /* Frameworks */,
 				517169752F0E45F100C1BFB3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -48,6 +51,13 @@
 				517169742F0E45F100C1BFB3 /* pi.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		51B4FE5D2F11B53500F02450 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -71,6 +81,7 @@
 			name = pi;
 			packageProductDependencies = (
 				51716A0A2F0ED89100C1BFB3 /* Textual */,
+				51B4FE5E2F11B53500F02450 /* PiCore */,
 			);
 			productName = pi;
 			productReference = 517169742F0E45F100C1BFB3 /* pi.app */;
@@ -355,6 +366,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 51716A092F0ED89100C1BFB3 /* XCRemoteSwiftPackageReference "textual" */;
 			productName = Textual;
+		};
+		51B4FE5E2F11B53500F02450 /* PiCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PiCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

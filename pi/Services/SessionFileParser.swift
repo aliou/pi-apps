@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PiCore
 
 struct SessionFileParser {
     static func parse(fileAt path: String) -> [ConversationItem] {
