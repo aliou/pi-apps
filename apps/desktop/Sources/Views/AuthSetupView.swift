@@ -110,9 +110,9 @@ struct AuthSetupView: View {
                             .foregroundColor(Theme.text)
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("1. Install pi CLI: npm install -g @anthropic/pi")
+                            Text("1. Install pi CLI: npm install -g @mariozechner/pi-coding-agent")
                             Text("2. Run: pi")
-                            Text("3. Follow the prompts to add your API key")
+                            Text("3. Use /login to authenticate with your provider")
                             Text("4. Return here and click retry")
                         }
                         .font(.system(size: 12, design: .monospaced))
