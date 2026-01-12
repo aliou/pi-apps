@@ -234,7 +234,7 @@ actor RPCClient {
     }
 
     /// Send a command and wait for response
-    func send<C: RPCCommand, R: Decodable>(_ command: C) async throws -> R {
+    func send<C: RPCCommand, R: Decodable & Sendable>(_ command: C) async throws -> R {
         guard isRunning else {
             throw RPCClientError.notRunning
         }

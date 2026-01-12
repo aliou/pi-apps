@@ -1,0 +1,68 @@
+name: pi-desktop
+options:
+  bundleIdPrefix: ""
+  deploymentTarget:
+    macOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+configFiles:
+  Debug: ../../Config/Debug.xcconfig
+  Release: ../../Config/Release.xcconfig
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "6.0"
+
+packages:
+  PiCore:
+    path: ../../packages/pi-core
+  Textual:
+    url: https://github.com/gonzalezreal/textual
+    from: 0.2.0
+
+targets:
+  Pi:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        type: syncedFolder
+    resources:
+      - path: Resources
+        type: syncedFolder
+    settings:
+      base:
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/Pi.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: $(PI_DESKTOP_BUNDLE_ID)
+        PRODUCT_NAME: Pi
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+    dependencies:
+      - package: PiCore
+        product: PiCore
+      - package: Textual
+        product: Textual
+
+schemes:
+  Pi:
+    build:
+      targets:
+        Pi: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release

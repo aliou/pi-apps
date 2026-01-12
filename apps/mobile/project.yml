@@ -1,0 +1,51 @@
+name: pi-mobile
+options:
+  bundleIdPrefix: ""
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: ../../Config/Debug.xcconfig
+  Release: ../../Config/Release.xcconfig
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "6.0"
+
+packages:
+  PiCore:
+    path: ../../packages/pi-core
+
+targets:
+  Pi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        type: syncedFolder
+    resources:
+      - path: Resources
+        type: syncedFolder
+    settings:
+      base:
+        INFOPLIST_FILE: Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: $(PI_MOBILE_BUNDLE_ID)
+        PRODUCT_NAME: Pi
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - package: PiCore
+        product: PiCore
+
+schemes:
+  Pi:
+    build:
+      targets:
+        Pi: all
+    run:
+      config: Debug

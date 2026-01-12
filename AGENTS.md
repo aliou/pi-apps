@@ -1,6 +1,23 @@
-# Pi Desktop App - Agent Guide
+# Pi Apps - Agent Guide
 
-macOS desktop client for the `pi` CLI coding agent. Communicates via RPC with a pi subprocess, provides a Claude Code Desktop-style UI.
+Native Apple platform clients for the `pi` CLI coding agent. Currently includes macOS desktop app, with iOS support planned.
+
+## Project Structure
+
+```
+pi-apps/
+├── apps/
+│   ├── desktop/              # macOS app
+│   │   ├── project.yml       # XcodeGen spec
+│   │   ├── Sources/          # Swift source files
+│   │   └── Resources/        # Assets, Info.plist, entitlements
+│   └── mobile/               # iOS app (placeholder)
+├── packages/
+│   └── pi-core/              # Shared Swift package
+├── Config/                   # Build configuration (xcconfig files)
+├── Makefile                  # Build automation
+└── flake.nix                 # Nix dev environment
+```
 
 ## Architecture
 
@@ -8,13 +25,13 @@ macOS desktop client for the `pi` CLI coding agent. Communicates via RPC with a 
 
 The app spawns `pi --mode rpc` as a subprocess and communicates via JSON-RPC over stdin/stdout.
 
-**RPCClient** (`Services/RPCClient.swift`):
+**RPCClient** (`apps/desktop/Sources/Services/RPCClient.swift`):
 - Actor-based for thread safety
 - Sends commands: `prompt`, `abort`, `get_messages`
 - Receives events: `agent_start`, `agent_end`, `message_update`, `tool_execution_start/end`, etc.
 - Handles terminal escape sequences in output (strips ANSI codes)
 
-**Key RPC types** (`Models/RPCTypes.swift`):
+**Key RPC types** (`packages/pi-core/Sources/PiCore/Models/RPCTypes.swift`):
 - `RPCCommand` - Commands sent to pi (prompt, abort, get_messages)
 - `RPCEvent` - Events received from pi (agent lifecycle, message updates, tool execution)
 - All types are `Sendable` for Swift 6 concurrency
@@ -35,20 +52,20 @@ All app data is stored in `~/Library/Application Support/me.aliou.pi-desktop/`:
 └── version.json             # Binary version info
 ```
 
-**AppPaths** (`Services/AppPaths.swift`):
+**AppPaths** (`apps/desktop/Sources/Services/AppPaths.swift`):
 - Centralized path management using `FileManager`
 - All paths resolve to Application Support directory
 - Automatically creates directories on first access
 
 ### Binary Management
 
-**BinaryUpdateService** (`Services/BinaryUpdateService.swift`):
+**BinaryUpdateService** (`apps/desktop/Sources/Services/BinaryUpdateService.swift`):
 - Downloads pi binary from GitHub releases on first launch
 - Checks for updates every 24 hours (throttled)
 - Shows "Update available" banner when new version exists
 - User-triggered updates (not automatic)
 
-**SetupView** (`Views/SetupView.swift`):
+**SetupView** (`apps/desktop/Sources/Views/SetupView.swift`):
 - Shown on first launch when binary is missing
 - Shows download progress
 - Blocks app until binary is installed
@@ -62,19 +79,19 @@ Each session creates an isolated environment:
 2. **Pi agent directory** - `agent/` (shared, contains pi's session files)
 3. **App metadata** - Stored in `sessions/index.json`
 
-**SessionStore** (`Models/Session.swift`):
+**SessionStore** (`apps/desktop/Sources/Models/Session.swift`):
 - Persists session list to `index.json`
 - Tracks: id, title, repo root, worktree name, pi session file path
 - Sessions survive app restarts
 
-**SessionFileParser** (`Services/SessionFileParser.swift`):
+**SessionFileParser** (`apps/desktop/Sources/Services/SessionFileParser.swift`):
 - Parses pi's JSONL session files to rebuild conversation state
 - Merges tool results into tool calls (avoids duplicate IDs)
 - Used when resuming sessions
 
 ### Git Worktree Isolation
 
-**GitService** (`Services/GitService.swift`):
+**GitService** (`apps/desktop/Sources/Services/GitService.swift`):
 - `findRepoRoot(for:)` - Finds .git directory from selected path
 - `createWorktree(repoRoot:name:)` - Creates worktree for session
 - `deleteWorktree(repoRoot:name:)` - Cleans up on session delete
@@ -83,7 +100,7 @@ Worktrees keep the user's working directory clean while the agent makes changes.
 
 ## Theme System
 
-All colors are defined in `Theme/Theme.swift` using asset catalog colors that adapt to light/dark mode.
+All colors are defined in `packages/pi-core/Sources/PiCore/Theme/Theme.swift` using asset catalog colors that adapt to light/dark mode.
 
 ### Using Theme Colors
 
@@ -110,7 +127,7 @@ Theme.toolStatusBg(status)     // pending/success/error backgrounds
 
 ### Adding New Colors
 
-1. Create color set in `Assets.xcassets/{name}.colorset/Contents.json`
+1. Create color set in `apps/desktop/Resources/Assets.xcassets/{name}.colorset/Contents.json`
 2. Add light and dark variants
 3. Reference in `Theme.swift`: `static let newColor = Color("newColor")`
 
@@ -155,25 +172,50 @@ Uses [Textual](https://github.com/gonzalezreal/textual) library with custom styl
 ### Prerequisites
 
 - Xcode 16+ (Swift 6)
+- Nix (for development environment)
 - Pi binary is downloaded automatically on first launch
+
+### Quick Start
+
+```bash
+# Enter development environment
+nix develop
+
+# First-time setup (creates Local.xcconfig, generates project)
+make setup
+
+# Open in Xcode
+make xcode
+```
+
+### Build Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | First-time setup |
+| `make generate` | Regenerate Xcode project from YAML spec |
+| `make build` | Build debug version |
+| `make build-release` | Build release version |
+| `make test` | Run tests |
+| `make clean` | Remove generated projects and build artifacts |
+| `make xcode` | Generate project and open in Xcode |
+
+### Configuration
+
+Each developer needs their own bundle IDs to avoid code signing conflicts. On first `make setup`, a `Config/Local.xcconfig` is created. Edit it:
+
+```xcconfig
+PI_DESKTOP_BUNDLE_ID = dev.yourname.pi.desktop
+PI_MOBILE_BUNDLE_ID = dev.yourname.pi.mobile
+```
 
 ### Running the App
 
 **Never open the app programmatically.** Always let the user open/run the app from Xcode. This allows proper debugging, console output visibility, and avoids permission issues with the subprocess.
 
-### Building
-
-```bash
-xcodebuild -project pi.xcodeproj -scheme pi -configuration Debug build
-```
-
 ### Sandbox
 
 App Sandbox is **disabled** in entitlements to allow subprocess spawning and file access.
-
-### Data Location
-
-All data stored in `~/Library/Application Support/me.aliou.pi-desktop/`.
 
 ### Debugging
 
@@ -195,16 +237,20 @@ The debug panel (ladybug icon) shows:
 
 ### Adding a New View
 
-1. Create SwiftUI view in `Views/`
+1. Create SwiftUI view in `apps/desktop/Sources/Views/`
 2. Use `Theme.*` for all colors
 3. Add to navigation in `MainView.swift`
 
 ### Adding RPC Event Handling
 
-1. Add event type to `RPCEventType` enum in `RPCTypes.swift`
+1. Add event type to `RPCEventType` enum in `packages/pi-core/Sources/PiCore/Models/RPCTypes.swift`
 2. Handle in `RPCClient.parseEvent()` 
 3. Surface to UI via callback or published property
 
 ### Modifying Tool Call Display
 
-Edit `toolCallView()` in `ConversationView.swift`. Tool-specific formatting is in `formatToolCall()`.
+Edit `toolCallView()` in `apps/desktop/Sources/Views/ConversationView.swift`. Tool-specific formatting is in `formatToolCall()`.
+
+### Adding Shared Code
+
+Add to `packages/pi-core/Sources/PiCore/`. The package is automatically linked via the XcodeGen project spec.

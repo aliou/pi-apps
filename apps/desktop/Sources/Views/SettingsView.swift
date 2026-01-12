@@ -117,10 +117,10 @@ struct GeneralSettingsView: View {
 
         Task {
             do {
-                try await BinaryUpdateService.shared.applyUpdate { progress, status in
+                try await BinaryUpdateService.shared.applyUpdate { @Sendable progress, status in
                     Task { @MainActor in
-                        updateProgress = progress
-                        updateStatus = status
+                        self.updateProgress = progress
+                        self.updateStatus = status
                     }
                 }
                 await MainActor.run {

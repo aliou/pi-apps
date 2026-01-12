@@ -112,7 +112,7 @@ struct SetupView: View {
 
         Task {
             do {
-                try await BinaryUpdateService.shared.downloadLatestBinary { progress, message in
+                try await BinaryUpdateService.shared.downloadLatestBinary { @Sendable progress, message in
                     Task { @MainActor in
                         self.downloadProgress = progress
                         self.statusMessage = message
@@ -297,7 +297,7 @@ struct UpdateSheet: View {
 
         Task {
             do {
-                try await BinaryUpdateService.shared.applyUpdate { progress, message in
+                try await BinaryUpdateService.shared.applyUpdate { @Sendable progress, message in
                     Task { @MainActor in
                         self.downloadProgress = progress
                         self.statusMessage = message

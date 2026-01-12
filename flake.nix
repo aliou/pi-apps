@@ -1,5 +1,5 @@
 {
-  description = "Pi Desktop App";
+  description = "Pi Apps - Native Apple platform clients for Pi";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -30,7 +30,6 @@
             versions = [ ];
           };
 
-          # Wrapper script that sets up environment for swiftlint to find Xcode's SourceKit
           swiftlintWrapper = pkgs.writeShellScriptBin "swiftlint" ''
             export DYLD_FRAMEWORK_PATH="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib"
             export PATH="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
@@ -52,15 +51,27 @@
           devShells.default = pkgs.mkShellNoCC {
             packages = [
               swiftlintWrapper
+              pkgs.xcodegen
+              pkgs.gnumake
             ];
 
             shellHook = ''
               export PATH="${xcodeWrapper}/bin:$PATH"
               export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
               export DYLD_FRAMEWORK_PATH="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib"
-              # Use system linker for Xcode builds
               export LD=/usr/bin/clang
               ${config.pre-commit.installationScript}
+              
+              echo ""
+              echo "Pi Apps Development Environment"
+              echo "================================"
+              echo ""
+              echo "Quick start:"
+              echo "  make setup    - First-time setup"
+              echo "  make xcode    - Open in Xcode"
+              echo "  make build    - Build from command line"
+              echo "  make help     - Show all commands"
+              echo ""
             '';
           };
         };

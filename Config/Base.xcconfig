@@ -1,0 +1,7 @@
+// Base settings for all targets and configurations
+SWIFT_VERSION = 6.0
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM =
+
+// Include local overrides (optional include - won't fail if missing)
+#include? "Local.xcconfig"
