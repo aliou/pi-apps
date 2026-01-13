@@ -57,7 +57,7 @@ class DebugEventStore: ObservableObject {
         flushTask = Task {
             try? await Task.sleep(nanoseconds: flushInterval)
             guard !Task.isCancelled else { return }
-            await flush()
+            flush()
         }
     }
 

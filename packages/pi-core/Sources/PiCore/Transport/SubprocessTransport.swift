@@ -3,7 +3,10 @@
 //  PiCore
 //
 //  Subprocess-based RPC transport for local pi agent
+//  macOS only - iOS cannot spawn subprocesses
 //
+
+#if os(macOS)
 
 import Foundation
 
@@ -181,10 +184,8 @@ public actor SubprocessTransport: RPCTransport {
             encoder.keyEncodingStrategy = .convertToSnakeCase
             let paramsData = try encoder.encode(AnyCodable(params))
             if let paramsDict = try JSONSerialization.jsonObject(with: paramsData) as? [String: Any] {
-                for (key, value) in paramsDict {
-                    if key != "type" { // Don't overwrite type
-                        commandDict[key] = value
-                    }
+                for (key, value) in paramsDict where key != "type" {
+                    commandDict[key] = value
                 }
             }
         }
@@ -193,7 +194,7 @@ public actor SubprocessTransport: RPCTransport {
         var lineData = jsonData
         lineData.append(0x0A) // newline
 
-        let responseData: Data = try await withCheckedThrowingContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             Task {
                 // Use method as request ID (legacy behavior)
                 await connection.registerRequest(
@@ -213,8 +214,6 @@ public actor SubprocessTransport: RPCTransport {
                 }
             }
         }
-
-        return responseData
     }
 
     // MARK: - Reading
@@ -300,3 +299,5 @@ public actor SubprocessTransport: RPCTransport {
         readBuffer = Data()
     }
 }
+
+#endif
