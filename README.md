@@ -4,10 +4,9 @@ Native Apple platform clients for the Pi coding agent.
 
 ## Quick Start
 
-```bash
-# Enter development environment
-nix develop
+See [Installation](#installation) below to set up your development environment, then:
 
+```bash
 # First-time setup
 make setup
 
@@ -51,4 +50,21 @@ PI_MOBILE_BUNDLE_ID = dev.yourname.pi.mobile
 ## Requirements
 
 - macOS with Xcode installed
-- Nix (for development environment)
+- Development tools (see installation options below)
+
+## Installation
+
+### Option 1: Using Nix
+
+```bash
+# Enter development environment
+nix develop
+```
+
+### Option 2: Using Homebrew
+
+```bash
+brew install xcodegen swiftlint
+```
+
+> **Note:** When using Homebrew, pre-commit hooks for SwiftLint are not automatically configured. You can manually run `swiftlint` before committing or set up your own pre-commit hooks.
