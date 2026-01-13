@@ -21,9 +21,11 @@ struct SetupView: View {
             Spacer()
 
             // App icon / logo
-            Image(systemName: "terminal.fill")
-                .font(.system(size: 64))
-                .foregroundColor(Theme.accent)
+            Image("PiLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 64, height: 64)
+                .foregroundStyle(Theme.accent)
 
             Text("Pi Desktop")
                 .font(.system(size: 28, weight: .semibold))

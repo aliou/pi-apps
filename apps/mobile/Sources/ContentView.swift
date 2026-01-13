@@ -5,8 +5,10 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                Image(systemName: "message.circle.fill")
-                    .font(.system(size: 60))
+                Image("PiLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 60, height: 60)
                     .foregroundStyle(Theme.accent)
 
                 Text("Pi")
