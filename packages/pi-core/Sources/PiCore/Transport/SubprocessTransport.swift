@@ -10,6 +10,21 @@
 
 import Foundation
 
+/// Type-erasing wrapper for Encodable values
+private struct AnyEncodable: Encodable {
+    private let encodeFunc: (Encoder) throws -> Void
+
+    init<T: Encodable>(_ value: T) {
+        encodeFunc = { encoder in
+            try value.encode(to: encoder)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try encodeFunc(encoder)
+    }
+}
+
 /// Subprocess-based RPC transport for local pi agent
 public actor SubprocessTransport: RPCTransport {
 
@@ -143,7 +158,7 @@ public actor SubprocessTransport: RPCTransport {
     ) async throws -> R {
         let data = try await sendInternal(method: method, sessionId: sessionId, params: params)
 
-        // Decode legacy response format
+        // Decode response format
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
@@ -182,7 +197,8 @@ public actor SubprocessTransport: RPCTransport {
         if let params {
             let encoder = JSONEncoder()
             encoder.keyEncodingStrategy = .convertToSnakeCase
-            let paramsData = try encoder.encode(AnyCodable(params))
+            // Encode the params directly (not wrapped in AnyCodable)
+            let paramsData = try encoder.encode(AnyEncodable(params))
             if let paramsDict = try JSONSerialization.jsonObject(with: paramsData) as? [String: Any] {
                 for (key, value) in paramsDict where key != "type" {
                     commandDict[key] = value
@@ -251,7 +267,7 @@ public actor SubprocessTransport: RPCTransport {
                 continue
             }
 
-            // Strip ANSI escape sequences
+            // Strip ANSI/OSC escape sequences (defensive measure for extensions that output them)
             let cleanedString = stripANSIEscapeCodes(lineString)
 
             guard let jsonStartIndex = cleanedString.firstIndex(of: "{") else {
@@ -269,9 +285,15 @@ public actor SubprocessTransport: RPCTransport {
 
     /// Strip ANSI escape codes from a string
     private func stripANSIEscapeCodes(_ string: String) -> String {
-        // Match ANSI escape sequences: ESC[ followed by parameters and a command letter
-        let pattern = "\\x1b\\[[0-9;]*[a-zA-Z]"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+        // Match multiple types of escape sequences:
+        // 1. CSI sequences: ESC[ followed by parameters and a command letter
+        // 2. OSC sequences: ESC] followed by content ending with BEL (\u{07}) or ST (ESC\)
+        let patterns = [
+            "\\x1b\\[[0-9;]*[a-zA-Z]",           // CSI sequences
+            "\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)?"   // OSC sequences (BEL or ST terminator)
+        ]
+        let combined = patterns.joined(separator: "|")
+        guard let regex = try? NSRegularExpression(pattern: combined) else {
             return string
         }
         let range = NSRange(string.startIndex..., in: string)
