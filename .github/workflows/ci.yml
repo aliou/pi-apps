@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build and test the PiCore Swift package
+  build-package:
+    name: Build PiCore Package
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build PiCore (macOS)
+        working-directory: packages/pi-core
+        run: swift build
+
+      - name: Test PiCore
+        working-directory: packages/pi-core
+        run: swift test
+
+      - name: Build PiCore (iOS)
+        working-directory: packages/pi-core
+        run: |
+          xcodebuild build \
+            -scheme PiCore \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipPackagePluginValidation
+
+  # Build the desktop (macOS) app
+  build-desktop:
+    name: Build Desktop App
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Create Local.xcconfig
+        run: cp Config/Local.xcconfig.example Config/Local.xcconfig
+
+      - name: Generate Xcode projects
+        run: make generate
+
+      - name: Build Desktop App (Debug)
+        run: |
+          xcodebuild build \
+            -project apps/desktop/pi-desktop.xcodeproj \
+            -scheme Pi \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build Desktop App (Release)
+        run: |
+          xcodebuild build \
+            -project apps/desktop/pi-desktop.xcodeproj \
+            -scheme Pi \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+  # Build the mobile (iOS) app
+  build-mobile:
+    name: Build Mobile App
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Create Local.xcconfig
+        run: cp Config/Local.xcconfig.example Config/Local.xcconfig
+
+      - name: Generate Xcode projects
+        run: make generate
+
+      - name: Build Mobile App (Debug)
+        run: |
+          xcodebuild build \
+            -project apps/mobile/pi-mobile.xcodeproj \
+            -scheme Pi \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build Mobile App (Release)
+        run: |
+          xcodebuild build \
+            -project apps/mobile/pi-mobile.xcodeproj \
+            -scheme Pi \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+  # Run SwiftLint for code quality
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Run SwiftLint
+        run: swiftlint --strict
