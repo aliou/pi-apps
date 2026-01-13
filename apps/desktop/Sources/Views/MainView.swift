@@ -25,7 +25,6 @@ struct MainView: View {
     @State private var authReady = false
     @State private var updateAvailable: String?
     @State private var showUpdateSheet = false
-    @State private var updateDismissed = false
 
     var body: some View {
         Group {
@@ -69,15 +68,6 @@ struct MainView: View {
     private var mainContent: some View {
         ZStack {
             VStack(spacing: 0) {
-                // Update banner (if available and not dismissed)
-                if let version = updateAvailable, !updateDismissed {
-                    UpdateAvailableBanner(
-                        version: version,
-                        onUpdate: { showUpdateSheet = true },
-                        onDismiss: { updateDismissed = true }
-                    )
-                }
-
                 mainLayout
             }
 
