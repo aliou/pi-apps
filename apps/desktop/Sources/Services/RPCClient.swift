@@ -64,7 +64,7 @@ enum RPCClientError: Error, LocalizedError {
     }
 
     /// Create from transport error
-    static func from(_ error: RPCTransportError) -> RPCClientError {
+    static func from(_ error: RPCTransportError) -> Self {
         switch error {
         case .notConnected:
             return .notRunning
