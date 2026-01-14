@@ -734,7 +734,7 @@ public struct AnyCodable: Codable, @unchecked Sendable {
 
         // Unwrap nested AnyCodable
         let unwrappedValue: Any
-        if let nested = value as? AnyCodable {
+        if let nested = value as? Self {
             unwrappedValue = nested.value
         } else {
             unwrappedValue = value

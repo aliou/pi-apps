@@ -182,7 +182,7 @@ public actor WebSocketTransport: RPCTransport {
         params: (any Encodable & Sendable)?
     ) async throws -> Data {
         // Allow hello to be sent before we're "connected"
-        guard let webSocketTask, (_isConnected || method == "hello") else {
+        guard let webSocketTask, _isConnected || method == "hello" else {
             throw RPCTransportError.notConnected
         }
 
@@ -197,7 +197,7 @@ public actor WebSocketTransport: RPCTransport {
         let encoder = JSONEncoder()
         let requestData = try encoder.encode(request)
 
-        let responseData: Data = try await withCheckedThrowingContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             Task {
                 await connection.registerRequest(
                     id: requestId,
@@ -217,8 +217,6 @@ public actor WebSocketTransport: RPCTransport {
                 }
             }
         }
-
-        return responseData
     }
 
     // MARK: - Receiving

@@ -98,9 +98,9 @@ public protocol RPCTransport: Sendable {
 
 // MARK: - Default Legacy Implementation
 
-public extension RPCTransport {
+extension RPCTransport {
     /// Default implementation of legacy send using new interface
-    func send<C: RPCCommand, R: Decodable & Sendable>(_ command: C) async throws -> R {
+    public func send<C: RPCCommand, R: Decodable & Sendable>(_ command: C) async throws -> R {
         try await send(method: command.type, sessionId: nil, params: command)
     }
 
