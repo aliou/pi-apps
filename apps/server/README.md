@@ -167,6 +167,29 @@ bun run typecheck
 bun run dev
 ```
 
+## Docker
+
+Build the image:
+
+```bash
+docker build -t pi-server ./apps/server
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 3000:3000 -v $PWD/pi-server-data:/data pi-server
+```
+
+Set API keys and auth via the data directory:
+
+```bash
+# pi-server-data/.env
+OPENAI_API_KEY=sk-...
+
+# pi-server-data/auth.json (symlink or copy from ~/.pi/agent/auth.json)
+```
+
 ## Deployment
 
 Build a standalone binary:
