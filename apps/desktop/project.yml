@@ -52,11 +52,25 @@ targets:
       - package: Textual
         product: Textual
 
+  PiUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: UITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Pi
+
 schemes:
   Pi Desktop:
     build:
       targets:
         Pi: all
+    test:
+      targets:
+        - PiUITests
     run:
       config: Debug
     profile:
