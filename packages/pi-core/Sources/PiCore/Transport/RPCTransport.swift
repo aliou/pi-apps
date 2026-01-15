@@ -105,7 +105,7 @@ extension RPCTransport {
     }
 
     /// Default implementation of legacy sendVoid using new interface
-    func sendVoid<C: RPCCommand>(_ command: C) async throws {
+    public func sendVoid<C: RPCCommand>(_ command: C) async throws {
         try await sendVoid(method: command.type, sessionId: nil, params: command)
     }
 }
