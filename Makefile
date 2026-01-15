@@ -6,7 +6,7 @@ XCODEGEN := xcodegen
 # Project
 WORKSPACE := PiApps.xcworkspace
 DESKTOP_PROJECT := apps/desktop/pi-desktop.xcodeproj
-DESKTOP_SCHEME := Pi
+DESKTOP_SCHEME := Pi Desktop
 
 # Default target
 all: build
@@ -47,7 +47,7 @@ generate:
 build: generate
 	@echo "==> Building Pi (Debug)..."
 	@xcodebuild -project $(DESKTOP_PROJECT) \
-		-scheme $(DESKTOP_SCHEME) \
+		-scheme "$(DESKTOP_SCHEME)" \
 		-configuration Debug \
 		build \
 		| grep -E "^(Build|Compile|Link|error:|warning:)" || true
@@ -55,7 +55,7 @@ build: generate
 build-release: generate
 	@echo "==> Building Pi (Release)..."
 	@xcodebuild -project $(DESKTOP_PROJECT) \
-		-scheme $(DESKTOP_SCHEME) \
+		-scheme "$(DESKTOP_SCHEME)" \
 		-configuration Release \
 		build \
 		| grep -E "^(Build|Compile|Link|error:|warning:)" || true
@@ -67,7 +67,7 @@ build-release: generate
 test: generate
 	@echo "==> Running tests..."
 	@xcodebuild -project $(DESKTOP_PROJECT) \
-		-scheme $(DESKTOP_SCHEME) \
+		-scheme "$(DESKTOP_SCHEME)" \
 		-configuration Debug \
 		test \
 		| grep -E "^(Test|Executed|error:|warning:|\\*\\*)" || true

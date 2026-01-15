@@ -285,7 +285,10 @@ public actor RPCConnection {
 
     /// Parse AssistantMessageEvent from a dictionary
     private func parseAssistantMessageEvent(from dict: [String: Any]) -> AssistantMessageEvent {
-        let eventDict = dict["event"] as? [String: Any] ?? dict
+        // Server sends "assistantMessageEvent", legacy sends "event"
+        let eventDict = dict["assistantMessageEvent"] as? [String: Any]
+            ?? dict["event"] as? [String: Any]
+            ?? dict
         let eventType = eventDict["type"] as? String ?? ""
 
         switch eventType {
