@@ -53,7 +53,7 @@ targets:
         product: Textual
 
 schemes:
-  Pi:
+  Pi Desktop:
     build:
       targets:
         Pi: all

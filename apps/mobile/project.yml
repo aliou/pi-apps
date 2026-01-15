@@ -44,7 +44,7 @@ targets:
         product: PiCore
 
 schemes:
-  Pi:
+  Pi Mobile:
     build:
       targets:
         Pi: all
