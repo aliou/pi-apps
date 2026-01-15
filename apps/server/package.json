@@ -1,0 +1,22 @@
+{
+  "name": "pi-server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build --compile src/index.ts --outfile dist/pi-server && cp node_modules/@mariozechner/pi-coding-agent/package.json dist/",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write ."
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "^0.45.5",
+    "hono": "^4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

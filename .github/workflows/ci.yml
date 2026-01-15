@@ -53,7 +53,7 @@ jobs:
         run: |
           xcodebuild build \
             -project apps/desktop/pi-desktop.xcodeproj \
-            -scheme Pi \
+            -scheme "Pi Desktop" \
             -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGN_IDENTITY="-" \
@@ -64,7 +64,7 @@ jobs:
         run: |
           xcodebuild build \
             -project apps/mobile/pi-mobile.xcodeproj \
-            -scheme Pi \
+            -scheme "Pi Mobile" \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGN_IDENTITY="-" \

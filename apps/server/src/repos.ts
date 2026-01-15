@@ -1,0 +1,62 @@
+/**
+ * Repo configuration management.
+ */
+
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { RepoConfig, ReposConfig } from "./types.js";
+
+const DEFAULT_REPOS_CONFIG: ReposConfig = {
+  repos: [],
+};
+
+/**
+ * Load repos configuration from data directory.
+ */
+export function loadRepos(dataDir: string): ReposConfig {
+  const configPath = join(dataDir, "repos.json");
+
+  if (!existsSync(configPath)) {
+    // Create default config
+    writeFileSync(configPath, JSON.stringify(DEFAULT_REPOS_CONFIG, null, 2));
+    return DEFAULT_REPOS_CONFIG;
+  }
+
+  try {
+    const content = readFileSync(configPath, "utf-8");
+    return JSON.parse(content) as ReposConfig;
+  } catch (error) {
+    console.error(`Failed to load repos.json: ${error}`);
+    return DEFAULT_REPOS_CONFIG;
+  }
+}
+
+/**
+ * Get a repo by ID.
+ */
+export function getRepo(
+  dataDir: string,
+  repoId: string,
+): RepoConfig | undefined {
+  const config = loadRepos(dataDir);
+  return config.repos.find((r) => r.id === repoId);
+}
+
+/**
+ * Validate that a repo path exists and is a git repository.
+ */
+export function validateRepo(repo: RepoConfig): {
+  valid: boolean;
+  error?: string;
+} {
+  if (!existsSync(repo.path)) {
+    return { valid: false, error: `Path does not exist: ${repo.path}` };
+  }
+
+  const gitDir = join(repo.path, ".git");
+  if (!existsSync(gitDir)) {
+    return { valid: false, error: `Not a git repository: ${repo.path}` };
+  }
+
+  return { valid: true };
+}

@@ -24,7 +24,7 @@ public struct WSRequest: Encodable, Sendable {
     public let id: String
     public let sessionId: String?
     public let method: String
-    public let params: AnyCodable?
+    private let paramsData: Data?
 
     public init(
         id: String = UUID().uuidString,
@@ -37,7 +37,12 @@ public struct WSRequest: Encodable, Sendable {
         self.id = id
         self.sessionId = sessionId
         self.method = method
-        self.params = params.map { AnyCodable($0) }
+        // Pre-encode params to JSON data so we can embed it directly
+        if let params {
+            self.paramsData = try? JSONEncoder().encode(params)
+        } else {
+            self.paramsData = nil
+        }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -52,9 +57,10 @@ public struct WSRequest: Encodable, Sendable {
         try container.encodeIfPresent(sessionId, forKey: .sessionId)
         try container.encode(method, forKey: .method)
 
-        // Encode params if they exist, using their underlying value
-        if let params {
-            try container.encode(params, forKey: .params)
+        // Encode params by decoding the pre-encoded JSON and re-encoding as raw JSON
+        if let paramsData,
+           let paramsDict = try? JSONSerialization.jsonObject(with: paramsData) {
+            try container.encode(AnyCodable(paramsDict), forKey: .params)
         }
     }
 }

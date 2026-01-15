@@ -53,6 +53,7 @@
               swiftlintWrapper
               pkgs.xcodegen
               pkgs.gnumake
+              pkgs.bun
             ];
 
             shellHook = ''
@@ -66,11 +67,15 @@
               echo "Pi Apps Development Environment"
               echo "================================"
               echo ""
-              echo "Quick start:"
+              echo "Desktop/Mobile (Swift):"
               echo "  make setup    - First-time setup"
               echo "  make xcode    - Open in Xcode"
               echo "  make build    - Build from command line"
-              echo "  make help     - Show all commands"
+              echo ""
+              echo "Server (TypeScript/Bun):"
+              echo "  cd apps/server && bun install"
+              echo "  bun run dev   - Run with hot reload"
+              echo "  bun run build - Build standalone binary"
               echo ""
             '';
           };

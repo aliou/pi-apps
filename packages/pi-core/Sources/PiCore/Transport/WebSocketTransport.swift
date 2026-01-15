@@ -88,6 +88,7 @@ public actor WebSocketTransport: RPCTransport {
         let task = session.webSocketTask(with: wsURL)
         self.webSocketTask = task
 
+        print("[WSTransport] Connecting to \(wsURL)")
         task.resume()
 
         // Start receiving messages
@@ -95,6 +96,7 @@ public actor WebSocketTransport: RPCTransport {
 
         // Send hello
         do {
+            print("[WSTransport] Sending hello...")
             let resumeInfo = await connection.getResumeInfo()
             let helloResult: HelloResult = try await send(
                 method: "hello",
@@ -102,6 +104,7 @@ public actor WebSocketTransport: RPCTransport {
                 params: HelloParams(client: config.clientInfo, resume: resumeInfo)
             )
 
+            print("[WSTransport] Hello succeeded, connectionId: \(helloResult.connectionId)")
             await connection.setConnectionInfo(
                 connectionId: helloResult.connectionId,
                 capabilities: helloResult.capabilities
@@ -111,6 +114,7 @@ public actor WebSocketTransport: RPCTransport {
             await connectionState.setState(.connected)
         } catch {
             // Clean up on hello failure
+            print("[WSTransport] Hello failed: \(error)")
             await cleanupConnection()
             throw error
         }
@@ -144,10 +148,19 @@ public actor WebSocketTransport: RPCTransport {
         sessionId: String?,
         params: (any Encodable & Sendable)?
     ) async throws -> R {
+        print("[WSTransport] send(\(method)) - waiting for response...")
         let data = try await sendInternalRaw(method: method, sessionId: sessionId, params: params)
+        print("[WSTransport] send(\(method)) - got response: \(String(data: data, encoding: .utf8)?.prefix(200) ?? "nil")")
 
         let decoder = JSONDecoder()
-        let response = try decoder.decode(WSResponse.self, from: data)
+        let response: WSResponse
+        do {
+            response = try decoder.decode(WSResponse.self, from: data)
+            print("[WSTransport] send(\(method)) - decoded WSResponse ok=\(response.ok)")
+        } catch {
+            print("[WSTransport] send(\(method)) - WSResponse decode failed: \(error)")
+            throw error
+        }
 
         guard response.ok, let result = response.result else {
             if let error = response.error {
@@ -157,8 +170,14 @@ public actor WebSocketTransport: RPCTransport {
         }
 
         // Decode the actual result type from AnyCodable
-        let resultData = try result.toJSONData()
-        return try decoder.decode(R.self, from: resultData)
+        do {
+            let resultData = try result.toJSONData()
+            print("[WSTransport] send(\(method)) - re-serialized result: \(String(data: resultData, encoding: .utf8)?.prefix(200) ?? "nil")")
+            return try decoder.decode(R.self, from: resultData)
+        } catch {
+            print("[WSTransport] send(\(method)) - result decode failed: \(error)")
+            throw error
+        }
     }
 
     public func sendVoid(
