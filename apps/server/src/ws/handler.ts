@@ -3,7 +3,7 @@
  * Routes incoming requests to appropriate handlers.
  */
 
-import { loadRepos } from "../repos.js";
+import { getGitHubToken, listAccessibleRepos } from "../github.js";
 import type { SessionManager } from "../session/manager.js";
 import type { HelloParams, WSIncomingMessage, WSResponse } from "../types.js";
 import type { Connection, ConnectionManager } from "./connection.js";
@@ -124,9 +124,24 @@ async function handleHello(
   return ctx.connectionManager.handleHello(ctx.connection, helloParams);
 }
 
-async function handleReposList(ctx: HandlerContext): Promise<unknown> {
-  const config = loadRepos(ctx.dataDir);
-  return { repos: config.repos };
+async function handleReposList(_ctx: HandlerContext): Promise<unknown> {
+  const token = getGitHubToken();
+  const repos = await listAccessibleRepos(token);
+
+  return {
+    repos: repos.map((repo) => ({
+      id: repo.fullName,
+      name: repo.name,
+      fullName: repo.fullName,
+      owner: repo.owner,
+      private: repo.private,
+      description: repo.description,
+      htmlUrl: repo.htmlUrl,
+      cloneUrl: repo.cloneUrl,
+      sshUrl: repo.sshUrl,
+      defaultBranch: repo.defaultBranch,
+    })),
+  };
 }
 
 async function handleSessionCreate(
@@ -138,7 +153,13 @@ async function handleSessionCreate(
     throw new Error("Missing repoId");
   }
 
-  const info = await ctx.sessionManager.createSession(repoId);
+  const provider = params?.provider as string | undefined;
+  const modelId = params?.modelId as string | undefined;
+
+  const info = await ctx.sessionManager.createSession(
+    repoId,
+    provider && modelId ? { provider, modelId } : undefined,
+  );
 
   // Auto-attach the creating connection
   ctx.connection.attach(info.sessionId);
@@ -275,29 +296,8 @@ async function handleGetMessages(
 }
 
 async function handleGetAvailableModels(ctx: HandlerContext): Promise<unknown> {
-  // Get from first active session's model registry, or create temporary one
-  const sessions = Array.from(ctx.sessionManager.listSessions());
-  if (sessions.length === 0) {
-    // No sessions, need to get models differently
-    const { discoverAuthStorage, discoverModels } = await import(
-      "@mariozechner/pi-coding-agent"
-    );
-    const authStorage = discoverAuthStorage();
-    const modelRegistry = discoverModels(authStorage);
-    const models = await modelRegistry.getAvailable();
-    return { models };
-  }
-
-  // Use the session manager's registry (accessed via a session)
-  const firstSession = ctx.sessionManager.getSession(sessions[0].sessionId);
-  if (firstSession) {
-    // The model is available on session.model, but we need the full list
-    // For now, just return the current model info
-    const model = firstSession.session.model;
-    return { models: model ? [model] : [] };
-  }
-
-  return { models: [] };
+  const models = ctx.sessionManager.listAvailableModels();
+  return { models };
 }
 
 async function handleSetModel(
@@ -321,15 +321,9 @@ async function handleSetModel(
   }
 
   // Find and set model
-  const { discoverAuthStorage, discoverModels } = await import(
-    "@mariozechner/pi-coding-agent"
-  );
-  const authStorage = discoverAuthStorage();
-  const modelRegistry = discoverModels(authStorage);
-  const model = modelRegistry.find(provider, modelId);
-
+  const model = ctx.sessionManager.findAvailableModel(provider, modelId);
   if (!model) {
-    throw new Error(`Model not found: ${provider}/${modelId}`);
+    throw new Error(`Model not available: ${provider}/${modelId}`);
   }
 
   await active.session.setModel(model);

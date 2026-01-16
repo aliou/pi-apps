@@ -14,7 +14,15 @@ import PiCore
 public struct RepoInfo: Decodable, Sendable {
     public let id: String
     public let name: String
-    public let path: String
+    public let fullName: String?
+    public let owner: String?
+    public let `private`: Bool?
+    public let description: String?
+    public let htmlUrl: String?
+    public let cloneUrl: String?
+    public let sshUrl: String?
+    public let defaultBranch: String?
+    public let path: String?
 }
 
 /// Result from listing repositories
@@ -308,16 +316,29 @@ public actor RPCClient {
     }
 
     /// Create a new session for a repository
-    /// - Parameter repoId: The repository ID to create a session for
+    /// - Parameters:
+    ///   - repoId: The repository ID to create a session for
+    ///   - preferredProvider: Optional provider for initial model
+    ///   - preferredModelId: Optional model id for initial model
     /// - Returns: The created session info
-    public func createSession(repoId: String) async throws -> SessionCreateResult {
+    public func createSession(
+        repoId: String,
+        preferredProvider: String? = nil,
+        preferredModelId: String? = nil
+    ) async throws -> SessionCreateResult {
         struct CreateSessionParams: Encodable, Sendable {
             let repoId: String
+            let provider: String?
+            let modelId: String?
         }
 
         return try await send(
             method: "session.create",
-            params: CreateSessionParams(repoId: repoId)
+            params: CreateSessionParams(
+                repoId: repoId,
+                provider: preferredProvider,
+                modelId: preferredModelId
+            )
         )
     }
 
@@ -393,9 +414,9 @@ public actor RPCClient {
     }
 
     /// Get current state
-    public func getState() async throws -> GetStateResponse {
+    public func getState(sessionId: String) async throws -> GetStateResponse {
         let command = GetStateCommand()
-        return try await send(command)
+        return try await send(method: command.type, sessionId: sessionId, params: command)
     }
 
     /// Get available models
@@ -408,9 +429,9 @@ public actor RPCClient {
     /// - Parameters:
     ///   - provider: The model provider
     ///   - modelId: The model ID
-    public func setModel(provider: String, modelId: String) async throws {
+    public func setModel(provider: String, modelId: String, sessionId: String) async throws {
         let command = SetModelCommand(provider: provider, modelId: modelId)
-        try await send(command) as Void
+        try await sendVoid(method: command.type, sessionId: sessionId, params: command)
     }
 
     /// Get conversation history

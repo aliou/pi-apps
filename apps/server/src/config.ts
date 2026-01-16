@@ -39,7 +39,7 @@ export function getDataDir(override?: string): string {
  * Ensure all required data directories exist.
  */
 export function ensureDataDirs(dataDir: string): void {
-  const dirs = [dataDir, join(dataDir, "sessions"), join(dataDir, "worktrees")];
+  const dirs = [dataDir, join(dataDir, "sessions")];
 
   for (const dir of dirs) {
     if (!existsSync(dir)) {
@@ -98,8 +98,7 @@ Options:
 Data Directory Structure:
   <data-dir>/
     repos.json            Repo definitions
-    sessions/             Pi session files
-    worktrees/            Git worktrees per session
+    sessions/             Pi session files + session repos
     state.json            Server state
 `);
 }

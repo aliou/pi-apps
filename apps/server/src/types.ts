@@ -82,6 +82,16 @@ export interface RepoConfig {
   id: string;
   name: string;
   path: string;
+  sessionId?: string;
+  fullName?: string;
+  owner?: string;
+  private?: boolean;
+  description?: string;
+  htmlUrl?: string;
+  cloneUrl?: string;
+  sshUrl?: string;
+  defaultBranch?: string;
+  branchName?: string;
 }
 
 export interface ReposConfig {

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Textual
 import PiCore
 
 // MARK: - Conversation Item
@@ -26,6 +27,14 @@ enum ConversationItem: Identifiable {
 
 // MARK: - ConversationView
 
+private struct ScrollBottomPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct ConversationView: View {
     let client: RPCClient
     let sessionId: String
@@ -40,6 +49,9 @@ struct ConversationView: View {
     @State private var eventTask: Task<Void, Never>?
     @State private var errorMessage: String?
     @State private var showError = false
+    @State private var autoScrollEnabled = true
+    @State private var scrollViewHeight: CGFloat = 0
+    @State private var lastGeneratedToolCallId: String?
 
     @FocusState private var isInputFocused: Bool
 
@@ -47,44 +59,97 @@ struct ConversationView: View {
         VStack(spacing: 0) {
             // Messages list
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(items) { item in
-                            itemView(item)
-                                .id(item.id)
-                        }
-
-                        // Show streaming text
-                        if !currentStreamingText.isEmpty, let streamId = currentStreamingId {
-                            assistantBubble(currentStreamingText)
-                                .id(streamId)
-                        }
-
-                        // Processing indicator
-                        if isProcessing && currentStreamingText.isEmpty {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                Text("Thinking...")
-                                    .font(.subheadline)
-                                    .foregroundColor(Theme.muted)
+                ZStack(alignment: .bottomTrailing) {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(items) { item in
+                                itemView(item)
+                                    .id(item.id)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16)
-                            .id("processing")
-                        }
 
-                        Color.clear
-                            .frame(height: 1)
-                            .id("bottom")
+                            // Show streaming text
+                            if !currentStreamingText.isEmpty, let streamId = currentStreamingId {
+                                assistantBubble(currentStreamingText)
+                                    .id(streamId)
+                            }
+
+                            // Processing indicator
+                            if isProcessing && currentStreamingText.isEmpty {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Thinking...")
+                                        .font(.subheadline)
+                                        .foregroundColor(Theme.muted)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16)
+                                .id("processing")
+                            }
+
+                            Color.clear
+                                .frame(height: 1)
+                                .id("bottom")
+                                .background(
+                                    GeometryReader { geometry in
+                                        Color.clear.preference(
+                                            key: ScrollBottomPreferenceKey.self,
+                                            value: geometry.frame(in: .named("scroll")).maxY
+                                        )
+                                    }
+                                )
+                        }
+                        .padding(.vertical, 12)
                     }
-                    .padding(.vertical, 12)
+                    .coordinateSpace(name: "scroll")
+                    .background(
+                        GeometryReader { geometry in
+                            Color.clear
+                                .onAppear {
+                                    scrollViewHeight = geometry.size.height
+                                }
+                                .onChange(of: geometry.size.height) { _, newValue in
+                                    scrollViewHeight = newValue
+                                }
+                        }
+                    )
+                    .simultaneousGesture(
+                        DragGesture().onChanged { _ in
+                            autoScrollEnabled = false
+                        }
+                    )
+
+                    if !autoScrollEnabled {
+                        Button {
+                            autoScrollEnabled = true
+                            scrollToBottom(proxy)
+                        } label: {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(Theme.accent)
+                                .shadow(radius: 2)
+                        }
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 16)
+                    }
                 }
                 .onChange(of: items.count) { _, _ in
-                    scrollToBottom(proxy)
+                    if autoScrollEnabled {
+                        scrollToBottom(proxy)
+                    }
                 }
                 .onChange(of: currentStreamingText) { _, _ in
-                    scrollToBottom(proxy)
+                    if autoScrollEnabled {
+                        scrollToBottom(proxy)
+                    }
+                }
+                .onPreferenceChange(ScrollBottomPreferenceKey.self) { bottomMaxY in
+                    guard scrollViewHeight > 0 else { return }
+                    let distanceToBottom = bottomMaxY - scrollViewHeight
+                    let isNearBottom = distanceToBottom <= 32
+                    if autoScrollEnabled != isNearBottom {
+                        autoScrollEnabled = isNearBottom
+                    }
                 }
             }
 
@@ -171,10 +236,12 @@ struct ConversationView: View {
                 .frame(width: 8, height: 8)
                 .padding(.top, 6)
 
-            Text(text)
+            StructuredText(markdown: text)
+                .textual.structuredTextStyle(PiMarkdownStyle())
+                .textual.textSelection(.enabled)
+                .textual.overflowMode(.scroll)
                 .font(.body)
-                .foregroundColor(Theme.text)
-                .textSelection(.enabled)
+                .foregroundStyle(Theme.text)
 
             Spacer(minLength: 40)
         }
@@ -390,6 +457,7 @@ struct ConversationView: View {
         items.append(.userMessage(id: userMessageId, text: text))
         inputText = ""
         isInputFocused = false
+        autoScrollEnabled = true
 
         do {
             try await client.prompt(text)
@@ -480,9 +548,14 @@ struct ConversationView: View {
                 currentStreamingId = UUID().uuidString
             }
 
+            let resolvedId = toolCallId.isEmpty ? UUID().uuidString : toolCallId
+            if toolCallId.isEmpty {
+                lastGeneratedToolCallId = resolvedId
+            }
+
             let argsString = args?.jsonString
             items.append(.toolCall(
-                id: toolCallId,
+                id: resolvedId,
                 name: toolName,
                 args: argsString,
                 output: nil,
@@ -490,14 +563,16 @@ struct ConversationView: View {
             ))
 
         case .toolExecutionUpdate(let toolCallId, let output):
-            updateToolCall(id: toolCallId, output: output, status: .running)
+            let resolvedId = toolCallId.isEmpty ? (lastGeneratedToolCallId ?? toolCallId) : toolCallId
+            updateToolCall(id: resolvedId, output: output, status: .running)
 
         case .toolExecutionEnd(let toolCallId, let output, let status):
             let toolStatus: ToolCallStatus = switch status {
             case .success: .success
             case .error, .cancelled: .error
             }
-            updateToolCall(id: toolCallId, output: output, status: toolStatus)
+            let resolvedId = toolCallId.isEmpty ? (lastGeneratedToolCallId ?? toolCallId) : toolCallId
+            updateToolCall(id: resolvedId, output: output, status: toolStatus)
 
         case .autoCompactionStart:
             break
@@ -541,8 +616,13 @@ struct ConversationView: View {
                 currentStreamingId = UUID().uuidString
             }
 
+            let resolvedId = toolCallId.isEmpty ? UUID().uuidString : toolCallId
+            if toolCallId.isEmpty {
+                lastGeneratedToolCallId = resolvedId
+            }
+
             items.append(.toolCall(
-                id: toolCallId,
+                id: resolvedId,
                 name: toolName,
                 args: nil,
                 output: nil,
@@ -551,7 +631,8 @@ struct ConversationView: View {
 
         case .toolUseInputDelta(let toolCallId, let delta):
             // Update args for the tool call
-            if let index = items.firstIndex(where: { $0.id == toolCallId }) {
+            let resolvedId = toolCallId.isEmpty ? (lastGeneratedToolCallId ?? toolCallId) : toolCallId
+            if let index = items.firstIndex(where: { $0.id == resolvedId }) {
                 if case .toolCall(let id, let name, let existingArgs, let output, let status) = items[index] {
                     let newArgs = (existingArgs ?? "") + delta
                     items[index] = .toolCall(id: id, name: name, args: newArgs, output: output, status: status)

@@ -17,7 +17,6 @@ export function loadRepos(dataDir: string): ReposConfig {
   const configPath = join(dataDir, "repos.json");
 
   if (!existsSync(configPath)) {
-    // Create default config
     writeFileSync(configPath, JSON.stringify(DEFAULT_REPOS_CONFIG, null, 2));
     return DEFAULT_REPOS_CONFIG;
   }
@@ -32,14 +31,50 @@ export function loadRepos(dataDir: string): ReposConfig {
 }
 
 /**
- * Get a repo by ID.
+ * Save repos configuration to data directory.
+ */
+export function saveRepos(dataDir: string, config: ReposConfig): void {
+  const configPath = join(dataDir, "repos.json");
+  writeFileSync(configPath, JSON.stringify(config, null, 2));
+}
+
+/**
+ * Get a repo by ID (optionally scoped to a session).
  */
 export function getRepo(
   dataDir: string,
   repoId: string,
+  sessionId?: string,
 ): RepoConfig | undefined {
   const config = loadRepos(dataDir);
-  return config.repos.find((r) => r.id === repoId);
+  return config.repos.find((repo) => {
+    if (sessionId && repo.sessionId) {
+      return repo.id === repoId && repo.sessionId === sessionId;
+    }
+    return repo.id === repoId;
+  });
+}
+
+/**
+ * Insert or update a repo entry.
+ */
+export function upsertRepo(dataDir: string, repo: RepoConfig): RepoConfig {
+  const config = loadRepos(dataDir);
+  const index = config.repos.findIndex((existing) => {
+    if (repo.sessionId && existing.sessionId) {
+      return existing.id === repo.id && existing.sessionId === repo.sessionId;
+    }
+    return existing.id === repo.id;
+  });
+
+  if (index >= 0) {
+    config.repos[index] = repo;
+  } else {
+    config.repos.push(repo);
+  }
+
+  saveRepos(dataDir, config);
+  return repo;
 }
 
 /**

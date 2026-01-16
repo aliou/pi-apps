@@ -15,9 +15,14 @@ import {
   ModelRegistry,
   SessionManager as PiSessionManager,
 } from "@mariozechner/pi-coding-agent";
-import { getRepo } from "../repos.js";
+import { getRepo, upsertRepo } from "../repos.js";
 import type { ServerState, SessionInfo } from "../types.js";
-import { createWorktree, deleteWorktree } from "./worktree.js";
+import { getGitHubToken, getRepoByFullName } from "../github.js";
+import {
+  buildAuthedCloneUrl,
+  deleteSessionRepo,
+  ensureSessionRepo,
+} from "./repo.js";
 
 export interface ActiveSession {
   session: AgentSession;
@@ -57,18 +62,35 @@ export class SessionManager {
     this.modelRegistry = new ModelRegistry(this.authStorage);
   }
 
-  private getDefaultModel() {
-    let model = this.modelRegistry.find("mistral", "devstral-2512");
-    if (!model) {
-      model = this.modelRegistry.find("anthropic", "claude-3-5-sonnet-latest");
-    }
-    if (!model) {
-      const available = this.modelRegistry.getAvailable();
-      if (available.length > 0) {
-        model = available[0];
+  private resolveModel(preferred?: { provider: string; modelId: string }) {
+    this.modelRegistry.refresh();
+    const available = this.modelRegistry.getAvailable();
+
+    if (preferred) {
+      const preferredModel = this.modelRegistry.find(
+        preferred.provider,
+        preferred.modelId,
+      );
+      if (preferredModel) {
+        const isAvailable = available.some(
+          (model) =>
+            model.provider === preferredModel.provider &&
+            model.id === preferredModel.id,
+        );
+        if (isAvailable) {
+          return preferredModel;
+        }
+        console.warn(
+          `Preferred model not available: ${preferred.provider}/${preferred.modelId}`,
+        );
+      } else {
+        console.warn(
+          `Preferred model not found: ${preferred.provider}/${preferred.modelId}`,
+        );
       }
     }
-    return model;
+
+    return available[0];
   }
 
   /**
@@ -81,64 +103,76 @@ export class SessionManager {
   /**
    * Create a new session for a repo.
    */
-  async createSession(repoId: string): Promise<SessionInfo> {
-    const repo = getRepo(this.dataDir, repoId);
-    if (!repo) {
-      throw new Error(`Repo not found: ${repoId}`);
-    }
-
+  async createSession(
+    repoId: string,
+    preferredModel?: { provider: string; modelId: string },
+  ): Promise<SessionInfo> {
     const sessionId = crypto.randomUUID();
-    const worktreesDir = join(this.dataDir, "worktrees");
     const sessionsDir = join(this.dataDir, "sessions");
+    const repoPath = join(sessionsDir, sessionId, "repo");
 
-    // Create worktree
-    const worktreePath = await createWorktree(
-      repo.path,
-      worktreesDir,
+    const token = getGitHubToken();
+    const remote = await getRepoByFullName(token, repoId);
+    const authedCloneUrl = buildAuthedCloneUrl(remote.cloneUrl, token);
+
+    const { branchName } = await ensureSessionRepo({
+      repoPath,
+      cloneUrl: authedCloneUrl,
+      defaultBranch: remote.defaultBranch,
       sessionId,
-    );
+    });
 
-    // Create session info
+    upsertRepo(this.dataDir, {
+      id: repoId,
+      name: remote.name,
+      path: repoPath,
+      sessionId,
+      fullName: remote.fullName,
+      owner: remote.owner,
+      private: remote.private,
+      description: remote.description,
+      htmlUrl: remote.htmlUrl,
+      cloneUrl: remote.cloneUrl,
+      sshUrl: remote.sshUrl,
+      defaultBranch: remote.defaultBranch,
+      branchName,
+    });
+
     const now = new Date().toISOString();
     const info: SessionInfo = {
       sessionId,
       repoId,
-      worktreePath,
+      worktreePath: repoPath,
       createdAt: now,
       lastActivityAt: now,
     };
 
-    // Find a model to use
-    const model = this.getDefaultModel();
+    const model = this.resolveModel(preferredModel);
 
     if (!model) {
       console.warn("No models found! Session created without a model.");
     }
 
-    // Create AgentSession
     const { session } = await createAgentSession({
-      cwd: worktreePath,
-      sessionManager: PiSessionManager.create(worktreePath, sessionsDir),
+      cwd: repoPath,
+      sessionManager: PiSessionManager.create(repoPath, sessionsDir),
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
-      tools: createCodingTools(worktreePath),
+      tools: createCodingTools(repoPath),
       model,
     });
 
-    // Subscribe to events
     const unsubscribe = session.subscribe((event) => {
       this.handleSessionEvent(sessionId, event);
     });
 
-    // Store active session
     this.sessions.set(sessionId, {
       session,
       info,
-      repoPath: repo.path,
+      repoPath,
       unsubscribe,
     });
 
-    // Persist state
     this.state.sessions[sessionId] = info;
     this.saveState();
 
@@ -160,6 +194,24 @@ export class SessionManager {
   }
 
   /**
+   * List models available with current auth.
+   */
+  listAvailableModels() {
+    this.modelRegistry.refresh();
+    return this.modelRegistry.getAvailable();
+  }
+
+  /**
+   * Find an available model by provider/id.
+   */
+  findAvailableModel(provider: string, modelId: string) {
+    this.modelRegistry.refresh();
+    return this.modelRegistry
+      .getAvailable()
+      .find((model) => model.provider === provider && model.id === modelId);
+  }
+
+  /**
    * Resume a persisted session.
    */
   async resumeSession(sessionId: string): Promise<ActiveSession> {
@@ -175,31 +227,27 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    const repo = getRepo(this.dataDir, info.repoId);
-    if (!repo) {
-      throw new Error(`Repo not found: ${info.repoId}`);
-    }
+    const repo =
+      getRepo(this.dataDir, info.repoId, sessionId) ??
+      getRepo(this.dataDir, info.repoId);
 
-    // Check if worktree still exists
-    if (!existsSync(info.worktreePath)) {
-      throw new Error(`Worktree not found: ${info.worktreePath}`);
+    const repoPath = repo?.path ?? info.worktreePath;
+    if (!repoPath || !existsSync(repoPath)) {
+      throw new Error(`Repo not found on disk: ${repoPath}`);
     }
 
     const sessionsDir = join(this.dataDir, "sessions");
 
     // Find a model to use if session doesn't have one restored
-    const model = this.getDefaultModel();
+    const model = this.resolveModel();
 
     // Resume AgentSession
     const { session } = await createAgentSession({
-      cwd: info.worktreePath,
-      sessionManager: PiSessionManager.continueRecent(
-        info.worktreePath,
-        sessionsDir,
-      ),
+      cwd: repoPath,
+      sessionManager: PiSessionManager.continueRecent(repoPath, sessionsDir),
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
-      tools: createCodingTools(info.worktreePath),
+      tools: createCodingTools(repoPath),
       model, // Provide default model in case restoration fails
     });
 
@@ -211,7 +259,7 @@ export class SessionManager {
     const activeSession: ActiveSession = {
       session,
       info,
-      repoPath: repo.path,
+      repoPath,
       unsubscribe,
     };
 
@@ -237,13 +285,14 @@ export class SessionManager {
       active.session.dispose();
       this.sessions.delete(sessionId);
 
-      // Delete worktree
-      await deleteWorktree(active.repoPath, active.info.worktreePath);
+      deleteSessionRepo(active.info.worktreePath);
     } else if (info) {
-      // Not active but persisted - try to delete worktree
-      const repo = getRepo(this.dataDir, info.repoId);
-      if (repo) {
-        await deleteWorktree(repo.path, info.worktreePath);
+      const repo =
+        getRepo(this.dataDir, info.repoId, sessionId) ??
+        getRepo(this.dataDir, info.repoId);
+      const repoPath = repo?.path ?? info.worktreePath;
+      if (repoPath) {
+        deleteSessionRepo(repoPath);
       }
     }
 

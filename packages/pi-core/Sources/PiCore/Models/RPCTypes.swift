@@ -388,14 +388,62 @@ public struct ToolContent: Decodable, Sendable {
 // MARK: - Model
 
 /// Represents an available AI model
+/// Model cost information (per million tokens)
+public struct ModelCost: Codable, Sendable {
+    public let input: Double
+    public let output: Double
+    public let cacheRead: Double
+    public let cacheWrite: Double
+
+    public init(input: Double, output: Double, cacheRead: Double = 0, cacheWrite: Double = 0) {
+        self.input = input
+        self.output = output
+        self.cacheRead = cacheRead
+        self.cacheWrite = cacheWrite
+    }
+}
+
+/// Model information returned from the server
 public struct Model: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let name: String
-    public let provider: String
-    public let contextWindow: Int?
-    public let maxOutputTokens: Int?
-    public let supportsImages: Bool?
-    public let supportsToolUse: Bool?
+    public let api: String  // e.g., "anthropic-messages", "openai-completions"
+    public let provider: String  // e.g., "anthropic", "openai", "google"
+    public let baseUrl: String
+    public let reasoning: Bool  // supports extended thinking
+    public let input: [String]  // ["text"] or ["text", "image"]
+    public let cost: ModelCost
+    public let contextWindow: Int
+    public let maxTokens: Int
+
+    public init(
+        id: String,
+        name: String,
+        api: String = "anthropic-messages",
+        provider: String,
+        baseUrl: String = "",
+        reasoning: Bool = false,
+        input: [String] = ["text"],
+        cost: ModelCost = ModelCost(input: 0, output: 0),
+        contextWindow: Int = 200000,
+        maxTokens: Int = 8192
+    ) {
+        self.id = id
+        self.name = name
+        self.api = api
+        self.provider = provider
+        self.baseUrl = baseUrl
+        self.reasoning = reasoning
+        self.input = input
+        self.cost = cost
+        self.contextWindow = contextWindow
+        self.maxTokens = maxTokens
+    }
+
+    /// Whether the model supports image input
+    public var supportsImages: Bool {
+        input.contains("image")
+    }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
@@ -459,16 +507,30 @@ public struct Message: Codable, Identifiable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
+        let decodedId = try? container.decode(String.self, forKey: .id)
+        let timestampString = try? container.decode(String.self, forKey: .timestamp)
+        let timestampMs = try? container.decode(Double.self, forKey: .timestamp)
+
+        if let decodedId {
+            id = decodedId
+        } else if let timestampString {
+            id = timestampString
+        } else if let timestampMs {
+            id = String(format: "%.0f", timestampMs)
+        } else {
+            id = UUID().uuidString
+        }
+
         role = try container.decode(MessageRole.self, forKey: .role)
         content = try container.decodeIfPresent(MessageContent.self, forKey: .content)
         model = try container.decodeIfPresent(String.self, forKey: .model)
 
-        // Handle timestamp as ISO8601 string or nil
-        if let timestampString = try container.decodeIfPresent(String.self, forKey: .timestamp) {
+        if let timestampString {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             timestamp = formatter.date(from: timestampString)
+        } else if let timestampMs {
+            timestamp = Date(timeIntervalSince1970: timestampMs / 1000)
         } else {
             timestamp = nil
         }

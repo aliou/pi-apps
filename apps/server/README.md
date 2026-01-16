@@ -36,12 +36,13 @@ Options:
 
 ### .env File
 
-The server loads a `.env` file from the data directory if it exists. Use this to set API keys for additional providers:
+The server loads a `.env` file from the data directory if it exists. Use this to set API keys for additional providers and GitHub access:
 
 ```bash
 # <data-dir>/.env
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
+GITHUB_TOKEN=ghp_...
 ```
 
 ### Authentication
@@ -64,22 +65,28 @@ Structure:
 ├── .env                # Environment variables (API keys)
 ├── auth.json           # Pi authentication (symlink to ~/.pi/agent/auth.json)
 ├── repos.json          # Repository definitions
-├── sessions/           # Pi session files
-├── worktrees/          # Git worktrees (one per session)
+├── sessions/           # Pi session files + session repos
 └── state.json          # Server state
 ```
 
 ## Repo Configuration
 
-Create `repos.json` in your data directory:
+Repositories are pulled from GitHub using `GITHUB_TOKEN`. The `repos.list` RPC method returns all repos accessible by the token. When a session is created, the server clones the selected repo into the session directory and writes an entry to `repos.json` for that session.
+
+Example entry (managed by the server):
 
 ```json
 {
   "repos": [
     {
-      "id": "my-project",
-      "name": "My Project",
-      "path": "/home/user/code/my-project"
+      "id": "owner/name",
+      "name": "name",
+      "fullName": "owner/name",
+      "path": "/path/to/data-dir/sessions/<sessionId>/repo",
+      "sessionId": "<sessionId>",
+      "defaultBranch": "main",
+      "branchName": "pi/session-<sessionId>",
+      "cloneUrl": "https://github.com/owner/name.git"
     }
   ]
 }
