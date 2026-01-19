@@ -154,11 +154,12 @@ struct SessionListView: View {
 
     private func createSession(repoId: String) async {
         do {
-            let result = try await connection.createSession(repoId: repoId)
+            let result = try await connection.createCodeSession(repoId: repoId)
 
             // Create a SessionInfo from the result and navigate to it
             let newSession = SessionInfo(
                 sessionId: result.sessionId,
+                mode: .code,
                 createdAt: ISO8601DateFormatter().string(from: Date()),
                 lastActivityAt: nil,
                 name: nil,

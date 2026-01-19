@@ -266,12 +266,14 @@ public final class ServerConnection {
     // MARK: - Session Operations
 
     public func createSession(
-        repoId: String,
+        mode: SessionMode,
+        repoId: String? = nil,
         preferredProvider: String? = nil,
         preferredModelId: String? = nil
     ) async throws -> SessionCreateResult {
         struct CreateSessionParams: Encodable, Sendable {
-            let repoId: String
+            let mode: String
+            let repoId: String?
             let provider: String?
             let modelId: String?
         }
@@ -279,11 +281,22 @@ public final class ServerConnection {
         return try await send(
             method: "session.create",
             params: CreateSessionParams(
+                mode: mode.rawValue,
                 repoId: repoId,
                 provider: preferredProvider,
                 modelId: preferredModelId
             )
         )
+    }
+
+    /// Create a chat session (no repo needed)
+    public func createChatSession() async throws -> SessionCreateResult {
+        try await createSession(mode: .chat)
+    }
+
+    /// Create a code session for a specific repo
+    public func createCodeSession(repoId: String) async throws -> SessionCreateResult {
+        try await createSession(mode: .code, repoId: repoId)
     }
 
     public func listSessions(repoId: String? = nil) async throws -> [SessionInfo] {

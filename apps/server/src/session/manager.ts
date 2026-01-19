@@ -2,7 +2,7 @@
  * Session manager - handles AgentSession lifecycle and state persistence.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentSession,
@@ -16,7 +16,7 @@ import {
   SessionManager as PiSessionManager,
 } from "@mariozechner/pi-coding-agent";
 import { getRepo, upsertRepo } from "../repos.js";
-import type { ServerState, SessionInfo } from "../types.js";
+import type { ServerState, SessionInfo, SessionMode } from "../types.js";
 import { getGitHubToken, getRepoByFullName } from "../github.js";
 import {
   buildAuthedCloneUrl,
@@ -101,48 +101,74 @@ export class SessionManager {
   }
 
   /**
-   * Create a new session for a repo.
+   * Create a new session.
+   * @param mode - "chat" for general conversation, "code" for repo-based coding
+   * @param repoId - Required for code mode, ignored for chat mode
+   * @param preferredModel - Optional model preference
    */
   async createSession(
-    repoId: string,
+    mode: SessionMode,
+    repoId?: string,
     preferredModel?: { provider: string; modelId: string },
   ): Promise<SessionInfo> {
     const sessionId = crypto.randomUUID();
     const sessionsDir = join(this.dataDir, "sessions");
-    const repoPath = join(sessionsDir, sessionId, "repo");
+    const sessionDir = join(sessionsDir, sessionId);
 
-    const token = getGitHubToken();
-    const remote = await getRepoByFullName(token, repoId);
-    const authedCloneUrl = buildAuthedCloneUrl(remote.cloneUrl, token);
+    let workingPath: string;
+    let tools: ReturnType<typeof createCodingTools>;
 
-    const { branchName } = await ensureSessionRepo({
-      repoPath,
-      cloneUrl: authedCloneUrl,
-      defaultBranch: remote.defaultBranch,
-      sessionId,
-    });
+    if (mode === "code") {
+      if (!repoId) {
+        throw new Error("repoId is required for code mode");
+      }
 
-    upsertRepo(this.dataDir, {
-      id: repoId,
-      name: remote.name,
-      path: repoPath,
-      sessionId,
-      fullName: remote.fullName,
-      owner: remote.owner,
-      private: remote.private,
-      description: remote.description,
-      htmlUrl: remote.htmlUrl,
-      cloneUrl: remote.cloneUrl,
-      sshUrl: remote.sshUrl,
-      defaultBranch: remote.defaultBranch,
-      branchName,
-    });
+      const repoPath = join(sessionDir, "repo");
+
+      const token = getGitHubToken();
+      const remote = await getRepoByFullName(token, repoId);
+      const authedCloneUrl = buildAuthedCloneUrl(remote.cloneUrl, token);
+
+      const { branchName } = await ensureSessionRepo({
+        repoPath,
+        cloneUrl: authedCloneUrl,
+        defaultBranch: remote.defaultBranch,
+        sessionId,
+      });
+
+      upsertRepo(this.dataDir, {
+        id: repoId,
+        name: remote.name,
+        path: repoPath,
+        sessionId,
+        fullName: remote.fullName,
+        owner: remote.owner,
+        private: remote.private,
+        description: remote.description,
+        htmlUrl: remote.htmlUrl,
+        cloneUrl: remote.cloneUrl,
+        sshUrl: remote.sshUrl,
+        defaultBranch: remote.defaultBranch,
+        branchName,
+      });
+
+      workingPath = repoPath;
+      tools = createCodingTools(repoPath);
+    } else {
+      // Chat mode: simple directory, no coding tools
+      workingPath = join(sessionDir, "workspace");
+      if (!existsSync(workingPath)) {
+        mkdirSync(workingPath, { recursive: true });
+      }
+      tools = []; // No tools for chat mode
+    }
 
     const now = new Date().toISOString();
     const info: SessionInfo = {
       sessionId,
-      repoId,
-      worktreePath: repoPath,
+      mode,
+      repoId: mode === "code" ? repoId : undefined,
+      worktreePath: workingPath,
       createdAt: now,
       lastActivityAt: now,
     };
@@ -154,11 +180,11 @@ export class SessionManager {
     }
 
     const { session } = await createAgentSession({
-      cwd: repoPath,
-      sessionManager: PiSessionManager.create(repoPath, sessionsDir),
+      cwd: workingPath,
+      sessionManager: PiSessionManager.create(workingPath, sessionsDir),
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
-      tools: createCodingTools(repoPath),
+      tools,
       model,
     });
 
@@ -169,7 +195,7 @@ export class SessionManager {
     this.sessions.set(sessionId, {
       session,
       info,
-      repoPath,
+      repoPath: workingPath,
       unsubscribe,
     });
 
@@ -227,13 +253,25 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    const repo =
-      getRepo(this.dataDir, info.repoId, sessionId) ??
-      getRepo(this.dataDir, info.repoId);
+    // Determine working path based on mode
+    let workingPath: string;
+    let tools: ReturnType<typeof createCodingTools>;
+    const mode = info.mode ?? "code"; // Default to code for old sessions
 
-    const repoPath = repo?.path ?? info.worktreePath;
-    if (!repoPath || !existsSync(repoPath)) {
-      throw new Error(`Repo not found on disk: ${repoPath}`);
+    if (mode === "code" && info.repoId) {
+      const repo =
+        getRepo(this.dataDir, info.repoId, sessionId) ??
+        getRepo(this.dataDir, info.repoId);
+
+      workingPath = repo?.path ?? info.worktreePath;
+      tools = createCodingTools(workingPath);
+    } else {
+      workingPath = info.worktreePath;
+      tools = []; // No tools for chat mode
+    }
+
+    if (!workingPath || !existsSync(workingPath)) {
+      throw new Error(`Working directory not found on disk: ${workingPath}`);
     }
 
     const sessionsDir = join(this.dataDir, "sessions");
@@ -243,11 +281,11 @@ export class SessionManager {
 
     // Resume AgentSession
     const { session } = await createAgentSession({
-      cwd: repoPath,
-      sessionManager: PiSessionManager.continueRecent(repoPath, sessionsDir),
+      cwd: workingPath,
+      sessionManager: PiSessionManager.continueRecent(workingPath, sessionsDir),
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
-      tools: createCodingTools(repoPath),
+      tools,
       model, // Provide default model in case restoration fails
     });
 
@@ -259,7 +297,7 @@ export class SessionManager {
     const activeSession: ActiveSession = {
       session,
       info,
-      repoPath,
+      repoPath: workingPath,
       unsubscribe,
     };
 
@@ -288,12 +326,18 @@ export class SessionManager {
 
       deleteSessionRepo(active.info.worktreePath);
     } else if (info) {
-      const repo =
-        getRepo(this.dataDir, info.repoId, sessionId) ??
-        getRepo(this.dataDir, info.repoId);
-      const repoPath = repo?.path ?? info.worktreePath;
-      if (repoPath) {
-        deleteSessionRepo(repoPath);
+      let pathToDelete = info.worktreePath;
+
+      // For code sessions, try to get repo path
+      if (info.repoId) {
+        const repo =
+          getRepo(this.dataDir, info.repoId, sessionId) ??
+          getRepo(this.dataDir, info.repoId);
+        pathToDelete = repo?.path ?? info.worktreePath;
+      }
+
+      if (pathToDelete) {
+        deleteSessionRepo(pathToDelete);
       }
     }
 

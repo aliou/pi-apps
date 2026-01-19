@@ -148,15 +148,18 @@ async function handleSessionCreate(
   ctx: HandlerContext,
   params: Record<string, unknown> | undefined,
 ): Promise<unknown> {
+  const mode = (params?.mode as "chat" | "code") ?? "code"; // Default to code for backwards compat
   const repoId = params?.repoId as string | undefined;
-  if (!repoId) {
-    throw new Error("Missing repoId");
+
+  if (mode === "code" && !repoId) {
+    throw new Error("Missing repoId for code mode");
   }
 
   const provider = params?.provider as string | undefined;
   const modelId = params?.modelId as string | undefined;
 
   const info = await ctx.sessionManager.createSession(
+    mode,
     repoId,
     provider && modelId ? { provider, modelId } : undefined,
   );

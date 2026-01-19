@@ -204,9 +204,16 @@ public struct SessionListResult: Decodable, Sendable {
     public let sessions: [SessionInfo]
 }
 
+/// Session mode
+public enum SessionMode: String, Codable, Sendable {
+    case chat
+    case code
+}
+
 /// Session info
 public struct SessionInfo: Decodable, Sendable, Identifiable, Hashable {
     public let sessionId: String
+    public let mode: SessionMode?
     public let createdAt: String?
     public let lastActivityAt: String?
     public let name: String?
@@ -215,16 +222,23 @@ public struct SessionInfo: Decodable, Sendable, Identifiable, Hashable {
     /// Manual initializer for testing/previews
     public init(
         sessionId: String,
+        mode: SessionMode? = nil,
         createdAt: String? = nil,
         lastActivityAt: String? = nil,
         name: String? = nil,
         repoId: String? = nil
     ) {
         self.sessionId = sessionId
+        self.mode = mode
         self.createdAt = createdAt
         self.lastActivityAt = lastActivityAt
         self.name = name
         self.repoId = repoId
+    }
+
+    /// Computed mode with default to .code for backwards compatibility
+    public var resolvedMode: SessionMode {
+        mode ?? .code
     }
 
     /// Identifiable conformance

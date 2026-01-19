@@ -99,9 +99,12 @@ export interface ReposConfig {
 }
 
 // Session types
+export type SessionMode = "chat" | "code";
+
 export interface SessionInfo {
   sessionId: string;
-  repoId: string;
+  mode: SessionMode;
+  repoId?: string; // Required for code mode, optional for chat
   worktreePath: string;
   createdAt: string;
   lastActivityAt: string;
