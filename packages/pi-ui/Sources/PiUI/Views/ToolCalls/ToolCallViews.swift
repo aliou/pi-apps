@@ -15,17 +15,20 @@ public struct ToolCallHeader: View {
     public let args: String?
     public let status: ToolCallStatus
     public let showChevron: Bool
+    public let isExpanded: Bool
 
     public init(
         toolName: String,
         args: String?,
         status: ToolCallStatus,
-        showChevron: Bool = true
+        showChevron: Bool = true,
+        isExpanded: Bool = false
     ) {
         self.toolName = toolName
         self.args = args
         self.status = status
         self.showChevron = showChevron
+        self.isExpanded = isExpanded
     }
 
     public var body: some View {
@@ -49,11 +52,12 @@ public struct ToolCallHeader: View {
 
             Spacer()
 
-            // Chevron (optional)
+            // Chevron (optional) - rotates when expanded
             if showChevron {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Theme.dim)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
             }
         }
     }
@@ -350,34 +354,16 @@ public struct ToolCallDetailView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Header card
+                // Header card with status
                 headerCard(parsed: parsed, summary: summary)
 
-                // Arguments (for all tools in detail view)
-                if let args, !args.isEmpty {
-                    detailSection(title: "Arguments") {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            Text(ToolOutputFormatter.prettyJSON(args) ?? args)
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundColor(Theme.muted)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-
-                // Output
-                if let output, !output.isEmpty {
-                    detailSection(title: "Output") {
-                        ScrollView {
-                            Text(output)
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundColor(Theme.text)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxHeight: 400)
-                    }
-                }
+                // Tool-specific expanded content
+                ToolCallExpandedContent(
+                    toolName: toolName,
+                    args: args,
+                    output: output,
+                    status: status
+                )
 
                 Spacer()
             }
@@ -433,21 +419,6 @@ public struct ToolCallDetailView: View {
         .background(Theme.cardBg)
         .cornerRadius(12)
     }
-
-    private func detailSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Theme.dim)
-                .textCase(.uppercase)
-
-            content()
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.cardBg)
-                .cornerRadius(10)
-        }
-    }
 }
 
 // MARK: - ToolCallStatus Extension
@@ -468,33 +439,56 @@ extension ToolCallStatus {
 struct ToolCallHeader_Previews: PreviewProvider {
     static var previews: some View {
         VStack(spacing: 12) {
+            // Collapsed state
             ToolCallHeader(
                 toolName: "read",
                 args: "{\"path\": \"src/main.swift\", \"offset\": 10, \"limit\": 50}",
-                status: .success
+                status: .success,
+                showChevron: true,
+                isExpanded: false
             )
 
+            // Expanded state
             ToolCallHeader(
                 toolName: "bash",
                 args: "{\"command\": \"npm run build && npm test\"}",
-                status: .running
+                status: .running,
+                showChevron: true,
+                isExpanded: true
             )
 
             ToolCallHeader(
                 toolName: "grep",
                 args: "{\"pattern\": \"TODO\", \"path\": \".\", \"glob\": \"*.swift\"}",
-                status: .error
+                status: .error,
+                showChevron: true,
+                isExpanded: false
             )
 
             ToolCallHeader(
                 toolName: "custom_tool",
                 args: "{\"foo\": \"bar\", \"count\": 42}",
-                status: .success
+                status: .success,
+                showChevron: true,
+                isExpanded: false
             )
         }
         .padding()
         .background(Theme.pageBg)
         .previewLayout(.sizeThatFits)
+    }
+}
+
+struct ToolCallDetailView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationStack {
+            ToolCallDetailView(
+                toolName: "bash",
+                args: "{\"command\": \"ls -la\", \"timeout\": 30}",
+                output: "total 64\ndrwxr-xr-x  12 user  staff   384 Jan 19 10:00 .\ndrwxr-xr-x   6 user  staff   192 Jan 18 09:00 ..\n-rw-r--r--   1 user  staff  1234 Jan 19 10:00 main.swift",
+                status: .success
+            )
+        }
     }
 }
 #endif

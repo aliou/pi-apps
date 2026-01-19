@@ -129,7 +129,7 @@ struct ConversationView: View {
         let isExpanded = expandedToolCalls.contains(id)
 
         return VStack(alignment: .leading, spacing: 0) {
-            // Header - using shared component
+            // Header - using shared component with rotating chevron
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     if isExpanded {
@@ -143,21 +143,22 @@ struct ConversationView: View {
                     toolName: name,
                     args: args,
                     status: status,
-                    showChevron: true
+                    showChevron: true,
+                    isExpanded: isExpanded
                 )
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            // Expanded content - using shared component
+            // Expanded content - using shared tool-specific content views
             if isExpanded {
-                ToolCallOutput(
+                ToolCallExpandedContent(
                     toolName: name,
                     args: args,
                     output: output,
-                    maxPreviewLines: 10
+                    status: status
                 )
-                .padding(.top, 8)
+                .padding(.top, 12)
             }
         }
         .padding(.horizontal, 12)
