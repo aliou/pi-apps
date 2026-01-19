@@ -10,7 +10,7 @@ import PiCore
 import PiUI
 
 struct RepoSelectorSheet: View {
-    let client: RPCClient
+    let connection: ServerConnection
     let onSelect: (RepoInfo) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -211,7 +211,7 @@ struct RepoSelectorSheet: View {
         errorMessage = nil
 
         do {
-            repos = try await client.listRepos()
+            repos = try await connection.listRepos()
             isLoading = false
         } catch {
             errorMessage = error.localizedDescription

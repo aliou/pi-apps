@@ -26,7 +26,7 @@ private func formatContextWindow(_ tokens: Int) -> String {
 // MARK: - ModelSelectorSheet
 
 struct ModelSelectorSheet: View {
-    let client: RPCClient
+    let connection: ServerConnection
     let currentModel: Model?
     let onSelect: (Model) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -219,7 +219,7 @@ struct ModelSelectorSheet: View {
         errorMessage = nil
 
         do {
-            let response = try await client.getAvailableModels()
+            let response = try await connection.getAvailableModels()
             models = response.models
             isLoading = false
         } catch {

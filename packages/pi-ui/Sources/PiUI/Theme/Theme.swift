@@ -2,40 +2,62 @@
 //  Theme.swift
 //  PiUI
 //
-//  Color palette based on pi-cli themes (dark/light)
-//  Programmatic colors that adapt to system appearance
+//  Simplified color palette for iOS 26 / macOS 26
+//  Uses system semantics where possible, with minimal custom colors
 //
 
 import SwiftUI
 
-/// Status of a tool call execution (duplicated here to avoid pi-core dependency)
-public enum ToolCallStatus: Sendable {
+/// Status of a tool call execution
+public enum ToolCallStatus: Sendable, Hashable {
     case running
     case success
     case error
 }
 
 public enum Theme {
-    // MARK: - Core UI Colors
+    // MARK: - Brand Accent
 
-    public static let accent = Color(light: rgb(0.372, 0.529, 0.529), dark: rgb(0.541, 0.745, 0.717))
-    public static let border = Color(light: rgb(0.372, 0.529, 0.686), dark: rgb(0.372, 0.529, 1.000))
-    public static let borderAccent = Color(light: rgb(0.372, 0.529, 0.529), dark: rgb(0, 0.843, 1.000))
-    public static let borderMuted = Color(light: rgb(0.690, 0.690, 0.690), dark: rgb(0.313, 0.313, 0.313))
-    public static let success = Color(light: rgb(0.529, 0.686, 0.529), dark: rgb(0.709, 0.741, 0.407))
-    public static let error = Color(light: rgb(0.686, 0.372, 0.372), dark: rgb(0.800, 0.400, 0.400))
-    public static let warning = Color(light: rgb(0.843, 0.686, 0.372), dark: rgb(1.000, 1.000, 0))
-    public static let muted = Color(light: rgb(0.423, 0.423, 0.423), dark: rgb(0.501, 0.501, 0.501))
-    public static let dim = Color(light: rgb(0.541, 0.541, 0.541), dark: rgb(0.400, 0.400, 0.400))
-    public static let darkGray = Color(light: rgb(0.690, 0.690, 0.690), dark: rgb(0.313, 0.313, 0.313))
+    public static let accent = Color.teal
 
-    // MARK: - Text Colors
+    // MARK: - Semantic Status Colors
 
-    public static let text = Color(light: rgb(0, 0, 0), dark: rgb(1.000, 1.000, 1.000))
-    public static let textSecondary = muted
-    public static let textMuted = dim
+    public static let success = Color.green
+    public static let error = Color.red
+    public static let warning = Color.yellow
+    public static let muted = Color.secondary
 
-    // MARK: - Backgrounds
+    // MARK: - Message Bubble Tints (for glass effects)
+
+    public static let userMessageTint = Color.blue
+    public static let assistantMessageTint = Color.clear  // Pure glass, no tint
+
+    // MARK: - Tool Status
+
+    public static func toolStatusTint(_ status: ToolCallStatus) -> Color {
+        switch status {
+        case .running: return .yellow.opacity(0.3)
+        case .success: return .green.opacity(0.3)
+        case .error: return .red.opacity(0.3)
+        }
+    }
+
+    public static func toolStatusColor(_ status: ToolCallStatus) -> Color {
+        switch status {
+        case .running: return warning
+        case .success: return success
+        case .error: return error
+        }
+    }
+
+    // MARK: - Legacy Colors (for gradual migration)
+    // These will be removed once all views migrate to system colors
+
+    public static let text = Color.primary
+    public static let textSecondary = Color.secondary
+    public static let textMuted = Color.secondary.opacity(0.7)
+    public static let dim = Color.secondary.opacity(0.6)
+    public static let darkGray = Color.secondary.opacity(0.4)
 
     public static let pageBg = Color(light: rgb(0.972, 0.972, 0.972), dark: rgb(0.094, 0.094, 0.117))
     public static let cardBg = Color(light: rgb(1.000, 1.000, 1.000), dark: rgb(0.117, 0.117, 0.141))
@@ -48,6 +70,18 @@ public enum Theme {
     public static let toolPendingBg = Color(light: rgb(0.909, 0.909, 0.941), dark: rgb(0.156, 0.156, 0.196))
     public static let toolSuccessBg = Color(light: rgb(0.909, 0.941, 0.909), dark: rgb(0.156, 0.196, 0.156))
     public static let toolErrorBg = Color(light: rgb(0.941, 0.909, 0.909), dark: rgb(0.235, 0.156, 0.156))
+
+    public static func toolStatusBg(_ status: ToolCallStatus) -> Color {
+        switch status {
+        case .running: return toolPendingBg
+        case .success: return toolSuccessBg
+        case .error: return toolErrorBg
+        }
+    }
+
+    public static let border = Color(light: rgb(0.372, 0.529, 0.686), dark: rgb(0.372, 0.529, 1.000))
+    public static let borderAccent = Color(light: rgb(0.372, 0.529, 0.529), dark: rgb(0, 0.843, 1.000))
+    public static let borderMuted = Color(light: rgb(0.690, 0.690, 0.690), dark: rgb(0.313, 0.313, 0.313))
 
     // MARK: - Markdown Colors
 
@@ -64,24 +98,6 @@ public enum Theme {
     public static let diffAdded = success
     public static let diffRemoved = error
     public static let diffContext = muted
-
-    // MARK: - Status Colors
-
-    public static func toolStatusColor(_ status: ToolCallStatus) -> Color {
-        switch status {
-        case .running: return warning
-        case .success: return success
-        case .error: return error
-        }
-    }
-
-    public static func toolStatusBg(_ status: ToolCallStatus) -> Color {
-        switch status {
-        case .running: return toolPendingBg
-        case .success: return toolSuccessBg
-        case .error: return toolErrorBg
-        }
-    }
 
     // MARK: - Helpers
 

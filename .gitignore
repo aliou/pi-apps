@@ -69,3 +69,4 @@ result-*
 
 # Agent plans (local only)
 .agents/
+.osgrep

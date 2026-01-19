@@ -2,14 +2,17 @@
 //  ConversationView.swift
 //  pi
 //
+//  Desktop conversation view with expandable tool calls
+//
 
 import SwiftUI
 import Textual
 import PiCore
 import PiUI
 
-// MARK: - Conversation Item
+// MARK: - Desktop Conversation Item
 
+/// Desktop-specific conversation item with expansion state for tool calls
 enum ConversationItem: Identifiable {
     case userMessage(id: String, text: String)
     case assistantText(id: String, text: String)
@@ -47,16 +50,8 @@ struct ConversationView: View {
                         }
 
                         if isProcessing {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .scaleEffect(0.7)
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .gray))
-                                Text("Thinking...")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.gray)
-                            }
-                            .padding(.leading, 16)
-                            .id("processing")
+                            ProcessingIndicatorView()
+                                .id("processing")
                         }
 
                         Color.clear
@@ -85,44 +80,12 @@ struct ConversationView: View {
     private func itemView(_ item: ConversationItem) -> some View {
         switch item {
         case .userMessage(_, let text):
-            userMessageView(text)
+            MessageBubbleView(role: .user, text: text)
         case .assistantText(_, let text):
-            assistantTextView(text)
+            MessageBubbleView(role: .assistant, text: text)
         case .toolCall(let id, let name, let args, let output, let status, _):
             toolCallView(id: id, name: name, args: args, output: output, status: status)
         }
-    }
-
-    private func userMessageView(_ text: String) -> some View {
-        HStack {
-            Spacer()
-            Text(text)
-                .font(.system(size: 14))
-                .foregroundColor(Theme.text)
-                .textSelection(.enabled)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Theme.userMessageBg)
-                .cornerRadius(12)
-        }
-        .padding(.leading, 60)
-    }
-
-    private func assistantTextView(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(Theme.accent)
-                .frame(width: 6, height: 6)
-                .padding(.top, 6)
-
-            StructuredText(markdown: text)
-                .textual.structuredTextStyle(PiMarkdownStyle())
-                .textual.textSelection(.enabled)
-                .textual.overflowMode(.scroll)
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.text)
-        }
-        .padding(.trailing, 40)
     }
 
     private func toolCallView(id: String, name: String, args: String?, output: String?, status: ToolCallStatus) -> some View {
@@ -164,7 +127,7 @@ struct ConversationView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Theme.toolStatusBg(status))
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var inputArea: some View {
@@ -172,7 +135,6 @@ struct ConversationView: View {
             TextField("Message...", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
-                .foregroundColor(Theme.text)
                 .focused($isInputFocused)
                 .lineLimit(1...5)
                 .onSubmit {
@@ -211,7 +173,6 @@ struct ConversationView: View {
         inputText = ""
         onSendMessage(text)
     }
-
 }
 
 // MARK: - Preview

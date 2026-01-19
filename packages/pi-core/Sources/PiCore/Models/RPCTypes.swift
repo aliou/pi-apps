@@ -205,11 +205,48 @@ public struct SessionListResult: Decodable, Sendable {
 }
 
 /// Session info
-public struct SessionInfo: Decodable, Sendable {
+public struct SessionInfo: Decodable, Sendable, Identifiable, Hashable {
     public let sessionId: String
     public let createdAt: String?
     public let lastActivityAt: String?
     public let name: String?
+    public let repoId: String?
+
+    /// Manual initializer for testing/previews
+    public init(
+        sessionId: String,
+        createdAt: String? = nil,
+        lastActivityAt: String? = nil,
+        name: String? = nil,
+        repoId: String? = nil
+    ) {
+        self.sessionId = sessionId
+        self.createdAt = createdAt
+        self.lastActivityAt = lastActivityAt
+        self.name = name
+        self.repoId = repoId
+    }
+
+    /// Identifiable conformance
+    public var id: String { sessionId }
+
+    /// Parse lastActivityAt into a Date
+    public var lastActivityDate: Date? {
+        guard let lastActivityAt else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: lastActivityAt) {
+            return date
+        }
+        // Try without fractional seconds
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: lastActivityAt)
+    }
+
+    /// Display name with fallback to truncated session ID
+    public var displayName: String {
+        name ?? String(sessionId.prefix(8)) + "..."
+    }
 }
 
 // MARK: - RPC Commands

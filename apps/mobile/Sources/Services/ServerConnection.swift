@@ -1,11 +1,12 @@
 //
-//  RPCClient.swift
-//  pi-mobile
+//  ServerConnection.swift
+//  Pi
 //
-//  RPC client using WebSocketTransport from PiCore for iOS
+//  Observable RPC client using WebSocketTransport from PiCore for iOS 26
 //
 
 import Foundation
+import Observation
 import PiCore
 
 // MARK: - Server-specific Types
@@ -37,24 +38,12 @@ public struct SessionCreateResult: Decodable, Sendable {
 
 /// Result from listing sessions
 public struct SessionListResult: Decodable, Sendable {
-    public let sessions: [SessionInfoResult]
+    public let sessions: [SessionInfo]
 }
 
-/// Information about a session
-public struct SessionInfoResult: Decodable, Sendable, Identifiable {
-    public let sessionId: String
-    public let repoId: String
-    public let createdAt: String?
-    public let lastActivityAt: String?
-    public let name: String?
+// MARK: - Connection Errors
 
-    public var id: String { sessionId }
-}
-
-// MARK: - RPC Client Errors
-
-public enum RPCClientError: Error, LocalizedError, Sendable {
-    case notRunning
+public enum ServerConnectionError: Error, LocalizedError, Sendable {
     case notConnected
     case encodingFailed
     case decodingFailed(String)
@@ -69,8 +58,6 @@ public enum RPCClientError: Error, LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .notRunning:
-            return "RPC client is not running"
         case .notConnected:
             return "Not connected to server"
         case .encodingFailed:
@@ -88,7 +75,7 @@ public enum RPCClientError: Error, LocalizedError, Sendable {
         case .connectionLost(let reason):
             return "Connection lost: \(reason)"
         case .alreadyConnected:
-            return "RPC client is already connected"
+            return "Already connected"
         case .invalidServerURL:
             return "Invalid server URL"
         case .transportError(let error):
@@ -96,8 +83,7 @@ public enum RPCClientError: Error, LocalizedError, Sendable {
         }
     }
 
-    /// Create from transport error
-    public static func from(_ error: RPCTransportError) -> Self {
+    static func from(_ error: RPCTransportError) -> Self {
         switch error {
         case .notConnected:
             return .notConnected
@@ -121,33 +107,29 @@ public enum RPCClientError: Error, LocalizedError, Sendable {
     }
 }
 
-// MARK: - RPC Client Actor
+// MARK: - Server Connection
 
-/// Actor-based RPC client that uses WebSocketTransport from PiCore
-public actor RPCClient {
-    // MARK: - Properties
+/// Observable RPC client for iOS 26
+@MainActor
+@Observable
+public final class ServerConnection {
+    // MARK: - Observable State
+
+    public private(set) var isConnected = false
+    public private(set) var currentSessionId: String?
+
+    // MARK: - Private State
 
     private var transport: WebSocketTransport?
     private var eventTask: Task<Void, Never>?
-
     private var eventsContinuation: AsyncStream<RPCEvent>.Continuation?
     private var _events: AsyncStream<RPCEvent>?
 
-    private var _isConnected = false
-
-    private let serverURL: URL
+    public let serverURL: URL
     private let clientInfo: ClientInfo
-
-    /// The currently attached session ID
-    private var _currentSessionId: String?
 
     // MARK: - Initialization
 
-    /// Initialize with a server URL
-    /// - Parameters:
-    ///   - serverURL: The WebSocket server URL
-    ///   - clientName: Name to identify this client (default: "pi-mobile")
-    ///   - clientVersion: Client version (default: "1.0")
     public init(
         serverURL: URL,
         clientName: String = "pi-mobile",
@@ -157,81 +139,60 @@ public actor RPCClient {
         self.clientInfo = ClientInfo(name: clientName, version: clientVersion)
     }
 
-    deinit {
-        eventTask?.cancel()
-    }
+    // Note: Tasks are cancelled automatically when the instance is deallocated
+    // because they reference self and won't outlive the connection
 
-    // MARK: - Public Interface
+    // MARK: - Events Stream
 
-    /// Stream of events from the RPC server
     public var events: AsyncStream<RPCEvent> {
-        get async {
-            if let existing = _events {
-                return existing
-            }
-
-            let (stream, continuation) = AsyncStream<RPCEvent>.makeStream(
-                bufferingPolicy: .bufferingNewest(100)
-            )
-            self.eventsContinuation = continuation
-            self._events = stream
-            return stream
+        if let existing = _events {
+            return existing
         }
+
+        let (stream, continuation) = AsyncStream<RPCEvent>.makeStream(
+            bufferingPolicy: .bufferingNewest(100)
+        )
+        self.eventsContinuation = continuation
+        self._events = stream
+        return stream
     }
 
-    /// Whether the client is currently connected
-    public var isConnected: Bool {
-        _isConnected
-    }
+    // MARK: - Connection
 
-    /// The currently attached session ID
-    public var currentSessionId: String? {
-        _currentSessionId
-    }
-
-    /// Connect to the WebSocket server
     public func connect() async throws {
-        guard !_isConnected else {
-            throw RPCClientError.alreadyConnected
+        guard !isConnected else {
+            throw ServerConnectionError.alreadyConnected
         }
 
-        print("[RPCClient] Connecting to \(serverURL)")
+        print("[ServerConnection] Connecting to \(serverURL)")
         let config = RPCTransportConfig.remote(url: serverURL, clientInfo: clientInfo)
         let newTransport = WebSocketTransport(config: config)
         transport = newTransport
 
         do {
-            print("[RPCClient] Calling transport.connect()...")
             try await newTransport.connect()
-            _isConnected = await newTransport.isConnected
-            print("[RPCClient] Transport connected: \(_isConnected)")
+            isConnected = await newTransport.isConnected
 
-            if !_isConnected {
+            if !isConnected {
                 transport = nil
-                throw RPCClientError.notConnected
+                throw ServerConnectionError.notConnected
             }
 
-            // Start forwarding events from transport to our event stream
             startEventForwarding()
-            print("[RPCClient] Connection established")
+            print("[ServerConnection] Connected")
 
         } catch let error as RPCTransportError {
-            print("[RPCClient] Transport error: \(error)")
             transport = nil
-            _isConnected = false
-            throw RPCClientError.from(error)
-        } catch {
-            print("[RPCClient] Other error: \(error)")
-            throw error
+            isConnected = false
+            throw ServerConnectionError.from(error)
         }
     }
 
-    /// Disconnect from the server
     public func disconnect() async {
-        guard _isConnected else { return }
+        guard isConnected else { return }
 
-        _isConnected = false
-        _currentSessionId = nil
+        isConnected = false
+        currentSessionId = nil
         eventTask?.cancel()
         eventTask = nil
 
@@ -240,88 +201,70 @@ public actor RPCClient {
         }
         transport = nil
 
-        // End event stream
         eventsContinuation?.finish()
         _events = nil
         eventsContinuation = nil
     }
 
-    // MARK: - Generic Send Methods
+    // MARK: - Generic Send
 
-    /// Send a request and wait for typed response
-    public func send<R: Decodable & Sendable>(
+    private func send<R: Decodable & Sendable>(
         method: String,
         sessionId: String? = nil,
         params: (any Encodable & Sendable)? = nil
     ) async throws -> R {
-        guard _isConnected, let transport else {
-            throw RPCClientError.notConnected
+        guard isConnected, let transport else {
+            throw ServerConnectionError.notConnected
         }
 
         do {
             return try await transport.send(
                 method: method,
-                sessionId: sessionId ?? _currentSessionId,
+                sessionId: sessionId ?? currentSessionId,
                 params: params
             )
         } catch let error as RPCTransportError {
             let stillConnected = await transport.isConnected
             if !stillConnected {
-                _isConnected = false
+                isConnected = false
             }
-            throw RPCClientError.from(error)
+            throw ServerConnectionError.from(error)
         }
     }
 
-    /// Send a request that returns no data (void response)
-    public func sendVoid(
+    private func sendVoid(
         method: String,
         sessionId: String? = nil,
         params: (any Encodable & Sendable)? = nil
     ) async throws {
-        guard _isConnected, let transport else {
-            throw RPCClientError.notConnected
+        guard isConnected, let transport else {
+            throw ServerConnectionError.notConnected
         }
 
         do {
             try await transport.sendVoid(
                 method: method,
-                sessionId: sessionId ?? _currentSessionId,
+                sessionId: sessionId ?? currentSessionId,
                 params: params
             )
         } catch let error as RPCTransportError {
             let stillConnected = await transport.isConnected
             if !stillConnected {
-                _isConnected = false
+                isConnected = false
             }
-            throw RPCClientError.from(error)
+            throw ServerConnectionError.from(error)
         }
     }
 
-    /// Send a command and wait for response (legacy command interface)
-    public func send<C: RPCCommand, R: Decodable & Sendable>(_ command: C) async throws -> R {
-        try await send(method: command.type, params: command)
-    }
+    // MARK: - Repository Operations
 
-    /// Send a command that returns no data (legacy command interface)
-    public func send<C: RPCCommand>(_ command: C) async throws {
-        try await sendVoid(method: command.type, params: command)
-    }
-
-    // MARK: - Server-specific Operations
-
-    /// List all available repositories
     public func listRepos() async throws -> [RepoInfo] {
         let result: ReposListResult = try await send(method: "repos.list")
         return result.repos
     }
 
-    /// Create a new session for a repository
-    /// - Parameters:
-    ///   - repoId: The repository ID to create a session for
-    ///   - preferredProvider: Optional provider for initial model
-    ///   - preferredModelId: Optional model id for initial model
-    /// - Returns: The created session info
+    // MARK: - Session Operations
+
     public func createSession(
         repoId: String,
         preferredProvider: String? = nil,
@@ -343,10 +286,7 @@ public actor RPCClient {
         )
     }
 
-    /// List all sessions (optionally filtered by repo)
-    /// - Parameter repoId: Optional repository ID to filter sessions
-    /// - Returns: List of sessions
-    public func listSessions(repoId: String? = nil) async throws -> [SessionInfoResult] {
+    public func listSessions(repoId: String? = nil) async throws -> [SessionInfo] {
         struct ListSessionsParams: Encodable, Sendable {
             let repoId: String?
         }
@@ -358,8 +298,6 @@ public actor RPCClient {
         return result.sessions
     }
 
-    /// Attach to an existing session
-    /// - Parameter sessionId: The session ID to attach to
     public func attachSession(sessionId: String) async throws {
         struct AttachSessionParams: Encodable, Sendable {
             let sessionId: String
@@ -370,19 +308,16 @@ public actor RPCClient {
             params: AttachSessionParams(sessionId: sessionId)
         )
 
-        _currentSessionId = sessionId
+        currentSessionId = sessionId
     }
 
-    /// Detach from the current session
     public func detachSession() async throws {
-        guard _currentSessionId != nil else { return }
+        guard currentSessionId != nil else { return }
 
         try await sendVoid(method: "session.detach")
-        _currentSessionId = nil
+        currentSessionId = nil
     }
 
-    /// Delete a session
-    /// - Parameter sessionId: The session ID to delete
     public func deleteSession(sessionId: String) async throws {
         struct DeleteSessionParams: Encodable, Sendable {
             let sessionId: String
@@ -393,67 +328,54 @@ public actor RPCClient {
             params: DeleteSessionParams(sessionId: sessionId)
         )
 
-        // If we deleted the current session, clear it
-        if _currentSessionId == sessionId {
-            _currentSessionId = nil
+        if currentSessionId == sessionId {
+            currentSessionId = nil
         }
     }
 
     // MARK: - Agent Operations
 
-    /// Send a prompt to the agent
-    /// - Parameter message: The message to send
     public func prompt(_ message: String) async throws {
         let command = PromptCommand(message: message)
-        try await send(command) as Void
+        try await sendVoid(method: command.type, params: command)
     }
 
-    /// Abort ongoing operation
     public func abort() async throws {
         let command = AbortCommand()
-        try await send(command) as Void
+        try await sendVoid(method: command.type, params: command)
     }
 
-    /// Get current state
     public func getState(sessionId: String) async throws -> GetStateResponse {
         let command = GetStateCommand()
         return try await send(method: command.type, sessionId: sessionId, params: command)
     }
 
-    /// Get available models
     public func getAvailableModels() async throws -> GetAvailableModelsResponse {
         let command = GetAvailableModelsCommand()
-        return try await send(command)
+        return try await send(method: command.type, params: command)
     }
 
-    /// Set the active model
-    /// - Parameters:
-    ///   - provider: The model provider
-    ///   - modelId: The model ID
     public func setModel(provider: String, modelId: String, sessionId: String) async throws {
         let command = SetModelCommand(provider: provider, modelId: modelId)
         try await sendVoid(method: command.type, sessionId: sessionId, params: command)
     }
 
-    /// Get conversation history
     public func getMessages() async throws -> GetMessagesResponse {
         let command = GetMessagesCommand()
-        return try await send(command)
+        return try await send(method: command.type, params: command)
     }
 
-    /// Clear conversation
     public func clearConversation() async throws {
         let command = ClearConversationCommand()
-        try await send(command) as Void
+        try await sendVoid(method: command.type, params: command)
     }
 
-    // MARK: - Private Methods
+    // MARK: - Event Forwarding
 
     private func startEventForwarding() {
         guard let transport else { return }
 
-        // Ensure event stream exists before starting to forward
-        // This creates the continuation that forwardEvent will use
+        // Ensure event stream exists
         if _events == nil {
             let (stream, continuation) = AsyncStream<RPCEvent>.makeStream(
                 bufferingPolicy: .bufferingNewest(100)
@@ -467,59 +389,44 @@ public actor RPCClient {
 
             for await transportEvent in eventStream {
                 guard let self, !Task.isCancelled else { break }
-
-                // Forward the event (TransportEvent contains RPCEvent)
-                await self.forwardEvent(transportEvent.event)
+                self.eventsContinuation?.yield(transportEvent.event)
             }
 
-            // Transport event stream ended - mark as not connected
-            if let self {
-                await self.handleTransportDisconnect()
+            // Transport disconnected
+            if let self, self.isConnected {
+                await MainActor.run {
+                    self.isConnected = false
+                    self.eventsContinuation?.yield(.agentEnd(
+                        success: false,
+                        error: RPCError(
+                            code: "transport_disconnect",
+                            message: "WebSocket connection lost",
+                            details: nil
+                        )
+                    ))
+                    self.eventsContinuation?.finish()
+                }
             }
         }
-    }
-
-    private func forwardEvent(_ event: RPCEvent) {
-        eventsContinuation?.yield(event)
-    }
-
-    private func handleTransportDisconnect() {
-        guard _isConnected else { return }
-
-        _isConnected = false
-
-        // Signal end with an error event
-        eventsContinuation?.yield(.agentEnd(
-            success: false,
-            error: RPCError(
-                code: "transport_disconnect",
-                message: "WebSocket connection lost",
-                details: nil
-            )
-        ))
-        eventsContinuation?.finish()
     }
 }
 
-// MARK: - Convenience Extensions
+// MARK: - Convenience
 
-extension RPCClient {
-    /// Create a client from ServerConfig
-    /// Note: Internal access level since ServerConfig is internal
-    /// Note: MainActor since ServerConfig is MainActor-isolated
+extension ServerConnection {
     @MainActor
-    static func fromConfig(_ config: ServerConfig) -> RPCClient? {
+    static func fromConfig(_ config: ServerConfig) -> ServerConnection? {
         guard let url = config.serverURL else {
             return nil
         }
-        return RPCClient(serverURL: url)
+        return ServerConnection(serverURL: url)
     }
 
-    /// Create a client with a URL string
-    nonisolated public static func withURL(_ urlString: String) -> RPCClient? {
+    @MainActor
+    static func withURL(_ urlString: String) -> ServerConnection? {
         guard let url = URL(string: urlString) else {
             return nil
         }
-        return RPCClient(serverURL: url)
+        return ServerConnection(serverURL: url)
     }
 }

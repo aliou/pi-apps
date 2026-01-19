@@ -2,7 +2,8 @@
 //  PiUI.swift
 //  PiUI
 //
-//  Re-exports all public types
+//  Public API exports
 //
 
 @_exported import SwiftUI
+@_exported import Textual
