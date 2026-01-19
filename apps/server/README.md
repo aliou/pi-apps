@@ -23,7 +23,7 @@ bun run build
 pi-server [options]
 
 Options:
-  --port, -p <port>       Listen port (default: 3000)
+  --port, -p <port>       Listen port (default: 3141)
   --host <host>           Bind host (default: 0.0.0.0)
   --data-dir <path>       Data directory
   --help, -h              Show help
@@ -180,7 +180,7 @@ Build a standalone binary:
 
 ```bash
 bun run build
-./dist/pi-server --port 3000 --data-dir /var/lib/pi-server
+./dist/pi-server --port 3141 --data-dir /var/lib/pi-server
 ```
 
 The binary includes all dependencies and can be deployed without Node.js/Bun installed.
