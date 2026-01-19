@@ -83,11 +83,7 @@ export class Connection {
    */
   sendResponse(response: WSResponse): void {
     if (this.ws.readyState === WebSocket.OPEN) {
-      const json = JSON.stringify(response);
-      console.log(
-        `[${this.connectionId.slice(0, 8)}] -> ${json.slice(0, 200)}`,
-      );
-      this.ws.send(json);
+      this.ws.send(JSON.stringify(response));
     }
   }
 

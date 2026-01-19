@@ -62,35 +62,30 @@ export class SessionManager {
     this.modelRegistry = new ModelRegistry(this.authStorage);
   }
 
-  private resolveModel(preferred?: { provider: string; modelId: string }) {
+  private resolveModel(preferred: { provider: string; modelId: string }) {
     this.modelRegistry.refresh();
     const available = this.modelRegistry.getAvailable();
 
-    if (preferred) {
-      const preferredModel = this.modelRegistry.find(
-        preferred.provider,
-        preferred.modelId,
-      );
-      if (preferredModel) {
-        const isAvailable = available.some(
-          (model) =>
-            model.provider === preferredModel.provider &&
-            model.id === preferredModel.id,
-        );
-        if (isAvailable) {
-          return preferredModel;
-        }
-        console.warn(
-          `Preferred model not available: ${preferred.provider}/${preferred.modelId}`,
-        );
-      } else {
-        console.warn(
-          `Preferred model not found: ${preferred.provider}/${preferred.modelId}`,
-        );
-      }
+    const preferredModel = this.modelRegistry.find(
+      preferred.provider,
+      preferred.modelId,
+    );
+    
+    if (!preferredModel) {
+      return undefined;
     }
 
-    return available[0];
+    const isAvailable = available.some(
+      (model) =>
+        model.provider === preferredModel.provider &&
+        model.id === preferredModel.id,
+    );
+    
+    if (!isAvailable) {
+      return undefined;
+    }
+
+    return preferredModel;
   }
 
   /**
@@ -173,19 +168,22 @@ export class SessionManager {
       lastActivityAt: now,
     };
 
-    const model = this.resolveModel(preferredModel);
+    // Only resolve model explicitly if a preferred model is provided
+    // Otherwise, let createAgentSession use settings.json defaults
+    const model = preferredModel ? this.resolveModel(preferredModel) : undefined;
 
-    if (!model) {
-      console.warn("No models found! Session created without a model.");
+    if (preferredModel && !model) {
+      throw new Error(`Preferred model not available: ${preferredModel.provider}/${preferredModel.modelId}`);
     }
 
     const { session } = await createAgentSession({
       cwd: workingPath,
+      agentDir: this.dataDir,
       sessionManager: PiSessionManager.create(workingPath, sessionsDir),
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
       tools,
-      model,
+      model, // undefined if no preferred model - SDK will use settings.json
     });
 
     const unsubscribe = session.subscribe((event) => {
@@ -276,17 +274,16 @@ export class SessionManager {
 
     const sessionsDir = join(this.dataDir, "sessions");
 
-    // Find a model to use if session doesn't have one restored
-    const model = this.resolveModel();
-
+    // Don't provide explicit model - let SDK restore from session or use settings.json
     // Resume AgentSession
     const { session } = await createAgentSession({
       cwd: workingPath,
+      agentDir: this.dataDir,
       sessionManager: PiSessionManager.continueRecent(workingPath, sessionsDir),
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
       tools,
-      model, // Provide default model in case restoration fails
+      // model omitted - SDK will restore from session or use settings.json default
     });
 
     // Subscribe to events

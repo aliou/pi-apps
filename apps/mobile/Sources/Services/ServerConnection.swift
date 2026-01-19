@@ -122,8 +122,9 @@ public final class ServerConnection {
 
     private var transport: WebSocketTransport?
     private var eventTask: Task<Void, Never>?
-    private var eventsContinuation: AsyncStream<RPCEvent>.Continuation?
-    private var _events: AsyncStream<RPCEvent>?
+
+    /// Active event subscribers - each gets their own continuation
+    private var eventSubscribers: [UUID: AsyncStream<RPCEvent>.Continuation] = [:]
 
     public let serverURL: URL
     private let clientInfo: ClientInfo
@@ -144,17 +145,36 @@ public final class ServerConnection {
 
     // MARK: - Events Stream
 
-    public var events: AsyncStream<RPCEvent> {
-        if let existing = _events {
-            return existing
-        }
+    /// Creates a new event stream for each subscriber (broadcast pattern)
+    public func subscribe() -> AsyncStream<RPCEvent> {
+        let subscriberId = UUID()
 
-        let (stream, continuation) = AsyncStream<RPCEvent>.makeStream(
-            bufferingPolicy: .bufferingNewest(100)
-        )
-        self.eventsContinuation = continuation
-        self._events = stream
-        return stream
+        return AsyncStream<RPCEvent> { continuation in
+            // Store continuation for broadcasting
+            self.eventSubscribers[subscriberId] = continuation
+
+            // Remove on termination
+            continuation.onTermination = { @Sendable _ in
+                Task { @MainActor in
+                    self.eventSubscribers.removeValue(forKey: subscriberId)
+                }
+            }
+        }
+    }
+
+    /// Broadcast an event to all subscribers
+    private func broadcastEvent(_ event: RPCEvent) {
+        for continuation in eventSubscribers.values {
+            continuation.yield(event)
+        }
+    }
+
+    /// Finish all subscriber streams
+    private func finishAllSubscribers() {
+        for continuation in eventSubscribers.values {
+            continuation.finish()
+        }
+        eventSubscribers.removeAll()
     }
 
     // MARK: - Connection
@@ -201,9 +221,7 @@ public final class ServerConnection {
         }
         transport = nil
 
-        eventsContinuation?.finish()
-        _events = nil
-        eventsContinuation = nil
+        finishAllSubscribers()
     }
 
     // MARK: - Generic Send
@@ -388,28 +406,21 @@ public final class ServerConnection {
     private func startEventForwarding() {
         guard let transport else { return }
 
-        // Ensure event stream exists
-        if _events == nil {
-            let (stream, continuation) = AsyncStream<RPCEvent>.makeStream(
-                bufferingPolicy: .bufferingNewest(100)
-            )
-            self.eventsContinuation = continuation
-            self._events = stream
-        }
-
         eventTask = Task { [weak self] in
             let eventStream = await transport.events
 
             for await transportEvent in eventStream {
                 guard let self, !Task.isCancelled else { break }
-                self.eventsContinuation?.yield(transportEvent.event)
+                await MainActor.run {
+                    self.broadcastEvent(transportEvent.event)
+                }
             }
 
             // Transport disconnected
             if let self, self.isConnected {
                 await MainActor.run {
                     self.isConnected = false
-                    self.eventsContinuation?.yield(.agentEnd(
+                    self.broadcastEvent(.agentEnd(
                         success: false,
                         error: RPCError(
                             code: "transport_disconnect",
@@ -417,7 +428,7 @@ public final class ServerConnection {
                             details: nil
                         )
                     ))
-                    self.eventsContinuation?.finish()
+                    self.finishAllSubscribers()
                 }
             }
         }

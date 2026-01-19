@@ -169,9 +169,9 @@ struct SessionConversationView: View {
             // Cancel any existing event task
             eventTask?.cancel()
 
-            // Subscribe to events
+            // Subscribe to events (each view gets its own subscription)
             eventTask = Task {
-                for await event in await connection.events {
+                for await event in connection.subscribe() {
                     guard !Task.isCancelled else { break }
                     await handleEvent(event)
                 }

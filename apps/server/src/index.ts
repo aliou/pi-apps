@@ -129,7 +129,6 @@ Bun.serve<WSData>({
       }
 
       const data = typeof message === "string" ? message : message.toString();
-      console.log(`[${connectionId.slice(0, 8)}] <- ${data.slice(0, 200)}`);
 
       const ctx: HandlerContext = {
         connection,

@@ -27,6 +27,7 @@ const methodHandlers: Record<string, MethodHandler> = {
   "session.create": handleSessionCreate,
   "session.list": handleSessionList,
   "session.attach": handleSessionAttach,
+  "session.detach": handleSessionDetach,
   "session.delete": handleSessionDelete,
   prompt: handlePrompt,
   abort: handleAbort,
@@ -188,8 +189,31 @@ async function handleSessionAttach(
   // Resume session if not active
   await ctx.sessionManager.resumeSession(targetSessionId);
 
+  // Detach from any previous sessions first
+  const allSessions = ctx.sessionManager.listSessions();
+  for (const session of allSessions) {
+    if (session.sessionId !== targetSessionId) {
+      ctx.connection.detach(session.sessionId);
+    }
+  }
+
   // Attach connection
   ctx.connection.attach(targetSessionId);
+
+  return { ok: true };
+}
+
+async function handleSessionDetach(
+  ctx: HandlerContext,
+  params: Record<string, unknown> | undefined,
+  sessionId: string | undefined,
+): Promise<unknown> {
+  const targetSessionId = (params?.sessionId as string) ?? sessionId;
+  if (!targetSessionId) {
+    throw new Error("Missing sessionId");
+  }
+
+  ctx.connection.detach(targetSessionId);
 
   return { ok: true };
 }
@@ -231,6 +255,7 @@ async function handlePrompt(
   // Don't await - prompt runs async, events stream back
   active.session.prompt(message).catch((error) => {
     console.error(`Prompt error for session ${sessionId}:`, error);
+    console.error(error.stack);
   });
 
   return { ok: true };
