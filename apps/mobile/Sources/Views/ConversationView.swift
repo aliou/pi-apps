@@ -46,14 +46,6 @@ struct ToolCallNavItem: Hashable {
 
 // MARK: - ConversationView
 
-private struct ScrollBottomPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 struct ConversationView: View {
     let client: RPCClient
     let sessionId: String
@@ -68,9 +60,14 @@ struct ConversationView: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var autoScrollEnabled = true
-    @State private var scrollViewHeight: CGFloat = 0
     @State private var lastGeneratedToolCallId: String?
     @State private var navigationPath = NavigationPath()
+    @State private var lastScrollTime: Date = .distantPast
+    @State private var pendingScroll = false
+    @State private var isUserScrolling = false
+
+    // Throttle interval for scroll-to-bottom during streaming (seconds)
+    private let scrollThrottleInterval: TimeInterval = 0.15
 
     @FocusState private var isInputFocused: Bool
 
@@ -109,39 +106,27 @@ struct ConversationView: View {
                             Color.clear
                                 .frame(height: 1)
                                 .id("bottom")
-                                .background(
-                                    GeometryReader { geometry in
-                                        Color.clear.preference(
-                                            key: ScrollBottomPreferenceKey.self,
-                                            value: geometry.frame(in: .named("scroll")).maxY
-                                        )
-                                    }
-                                )
                         }
                         .padding(.vertical, 12)
                     }
-                    .coordinateSpace(name: "scroll")
-                    .background(
-                        GeometryReader { geometry in
-                            Color.clear
-                                .onAppear {
-                                    scrollViewHeight = geometry.size.height
-                                }
-                                .onChange(of: geometry.size.height) { _, newValue in
-                                    scrollViewHeight = newValue
-                                }
-                        }
-                    )
                     .simultaneousGesture(
-                        DragGesture().onChanged { _ in
-                            autoScrollEnabled = false
-                        }
+                        DragGesture()
+                            .onChanged { _ in
+                                isUserScrolling = true
+                                autoScrollEnabled = false
+                            }
+                            .onEnded { _ in
+                                // Delay resetting isUserScrolling to allow momentum scrolling
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    isUserScrolling = false
+                                }
+                            }
                     )
 
                     if !autoScrollEnabled {
                         Button {
                             autoScrollEnabled = true
-                            scrollToBottom(proxy)
+                            scrollToBottomImmediate(proxy)
                         } label: {
                             Image(systemName: "arrow.down.circle.fill")
                                 .font(.system(size: 28))
@@ -153,21 +138,13 @@ struct ConversationView: View {
                     }
                 }
                 .onChange(of: items.count) { _, _ in
-                    if autoScrollEnabled {
-                        scrollToBottom(proxy)
+                    if autoScrollEnabled && !isUserScrolling {
+                        scrollToBottomImmediate(proxy)
                     }
                 }
                 .onChange(of: currentStreamingText) { _, _ in
-                    if autoScrollEnabled {
-                        scrollToBottom(proxy)
-                    }
-                }
-                .onPreferenceChange(ScrollBottomPreferenceKey.self) { bottomMaxY in
-                    guard scrollViewHeight > 0 else { return }
-                    let distanceToBottom = bottomMaxY - scrollViewHeight
-                    let isNearBottom = distanceToBottom <= 32
-                    if autoScrollEnabled != isNearBottom {
-                        autoScrollEnabled = isNearBottom
+                    if autoScrollEnabled && !isUserScrolling {
+                        throttledScrollToBottom(proxy)
                     }
                 }
             }
@@ -282,7 +259,8 @@ struct ConversationView: View {
                 toolName: name,
                 args: args,
                 status: status,
-                showChevron: true
+                showChevron: true,
+                isExpanded: false
             )
         }
         .buttonStyle(.plain)
@@ -334,15 +312,40 @@ struct ConversationView: View {
         .background(Theme.inputBg)
     }
 
-    // MARK: - Actions
+    // MARK: - Scroll Helpers
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation(.easeOut(duration: 0.2)) {
+    private func throttledScrollToBottom(_ proxy: ScrollViewProxy) {
+        let now = Date()
+        let timeSinceLastScroll = now.timeIntervalSince(lastScrollTime)
+
+        if timeSinceLastScroll >= scrollThrottleInterval {
+            // Enough time has passed, scroll immediately
+            lastScrollTime = now
+            proxy.scrollTo("bottom", anchor: .bottom)
+        } else if !pendingScroll {
+            // Schedule a scroll for later
+            pendingScroll = true
+            let delay = scrollThrottleInterval - timeSinceLastScroll
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard autoScrollEnabled && !isUserScrolling else {
+                    pendingScroll = false
+                    return
+                }
+                lastScrollTime = Date()
+                pendingScroll = false
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
     }
+
+    private func scrollToBottomImmediate(_ proxy: ScrollViewProxy) {
+        lastScrollTime = Date()
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo("bottom", anchor: .bottom)
+        }
+    }
+
+    // MARK: - Actions
 
     private func sendMessage() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
