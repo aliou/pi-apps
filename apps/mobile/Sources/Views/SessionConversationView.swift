@@ -18,6 +18,7 @@ struct SessionConversationView: View {
     @State private var isSetup = false
     @State private var autoScrollEnabled = true
     @State private var isUserScrolling = false
+    @State private var eventTask: Task<Void, Never>?
 
     @FocusState private var isInputFocused: Bool
 
@@ -32,6 +33,8 @@ struct SessionConversationView: View {
             await setupEngine()
         }
         .onDisappear {
+            eventTask?.cancel()
+            eventTask = nil
             Task {
                 try? await connection.detachSession()
             }
@@ -163,9 +166,13 @@ struct SessionConversationView: View {
                 }
             ))
 
+            // Cancel any existing event task
+            eventTask?.cancel()
+
             // Subscribe to events
-            Task {
+            eventTask = Task {
                 for await event in await connection.events {
+                    guard !Task.isCancelled else { break }
                     await handleEvent(event)
                 }
             }
