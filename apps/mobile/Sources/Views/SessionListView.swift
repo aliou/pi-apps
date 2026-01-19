@@ -1,41 +1,63 @@
 //
-//  ChatListView.swift
+//  SessionListView.swift
 //  Pi
 //
-//  List of chat sessions (no repo required)
+//  Unified session list with segmented control for Chat/Code modes
 //
 
 import SwiftUI
 import PiCore
 import PiUI
 
-struct ChatListView: View {
+struct SessionListView: View {
     @Environment(ServerConnection.self) private var connection
+    @State private var selectedMode: SessionMode = .chat
     @State private var path = NavigationPath()
     @State private var sessions: [SessionInfo] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSettings = false
+    @State private var showRepoSelector = false
+
+    private var filteredSessions: [SessionInfo] {
+        sessions.filter { $0.resolvedMode == selectedMode }
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
-            Group {
-                if isLoading && sessions.isEmpty {
-                    loadingView
-                } else if sessions.isEmpty {
-                    emptyStateView
-                } else {
-                    sessionList
+            VStack(spacing: 0) {
+                // Segmented control
+                Picker("Mode", selection: $selectedMode) {
+                    Text("Chat").tag(SessionMode.chat)
+                    Text("Code").tag(SessionMode.code)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                // Content
+                Group {
+                    if isLoading && sessions.isEmpty {
+                        loadingView
+                    } else if filteredSessions.isEmpty {
+                        emptyStateView
+                    } else {
+                        sessionList
+                    }
                 }
             }
-            .navigationTitle("Chat")
+            .navigationTitle("Sessions")
             .navigationDestination(for: SessionInfo.self) { session in
                 SessionConversationView(session: session)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        Task { await createChatSession() }
+                        if selectedMode == .chat {
+                            Task { await createChatSession() }
+                        } else {
+                            showRepoSelector = true
+                        }
                     } label: {
                         Image(systemName: "square.and.pencil")
                     }
@@ -72,17 +94,22 @@ struct ChatListView: View {
             }
             .presentationDetents([.medium])
         }
+        .sheet(isPresented: $showRepoSelector) {
+            RepoSelectorSheet(connection: connection) { repo in
+                Task { await createCodeSession(repoId: repo.id) }
+            }
+        }
     }
 
     // MARK: - Session List
 
     private var sessionList: some View {
         List {
-            ForEach(sessions) { session in
+            ForEach(filteredSessions) { session in
                 NavigationLink(value: session) {
                     SessionRowView(
                         name: session.displayName,
-                        repoName: "Chat",
+                        repoName: session.repoId ?? "Chat",
                         lastActivity: session.lastActivityDate
                     )
                 }
@@ -113,12 +140,21 @@ struct ChatListView: View {
 
     private var emptyStateView: some View {
         ContentUnavailableView {
-            Label("No Chats", systemImage: "bubble.left.and.bubble.right")
+            Label(
+                selectedMode == .chat ? "No Chats" : "No Projects",
+                systemImage: selectedMode == .chat ? "bubble.left.and.bubble.right" : "folder"
+            )
         } description: {
-            Text("Start a conversation without needing a codebase.")
+            Text(selectedMode == .chat
+                ? "Start a conversation without needing a codebase."
+                : "Work on code with AI assistance.")
         } actions: {
-            Button("New Chat") {
-                Task { await createChatSession() }
+            Button(selectedMode == .chat ? "New Chat" : "New Project") {
+                if selectedMode == .chat {
+                    Task { await createChatSession() }
+                } else {
+                    showRepoSelector = true
+                }
             }
             .buttonStyle(.borderedProminent)
         }
@@ -131,11 +167,10 @@ struct ChatListView: View {
         defer { isLoading = false }
 
         do {
-            let allSessions = try await connection.listSessions()
-            sessions = allSessions.filter { $0.resolvedMode == .chat }
+            sessions = try await connection.listSessions()
         } catch {
             errorMessage = error.localizedDescription
-            print("[ChatListView] Failed to load sessions: \(error)")
+            print("[SessionListView] Failed to load sessions: \(error)")
         }
     }
 
@@ -161,7 +196,33 @@ struct ChatListView: View {
             }
         } catch {
             errorMessage = error.localizedDescription
-            print("[ChatListView] Failed to create session: \(error)")
+            print("[SessionListView] Failed to create chat session: \(error)")
+        }
+    }
+
+    private func createCodeSession(repoId: String) async {
+        do {
+            let result = try await connection.createCodeSession(repoId: repoId)
+
+            let newSession = SessionInfo(
+                sessionId: result.sessionId,
+                mode: .code,
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                lastActivityAt: nil,
+                name: nil,
+                repoId: repoId
+            )
+
+            await loadSessions()
+
+            if let session = sessions.first(where: { $0.sessionId == result.sessionId }) {
+                path.append(session)
+            } else {
+                path.append(newSession)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            print("[SessionListView] Failed to create code session: \(error)")
         }
     }
 
@@ -171,7 +232,7 @@ struct ChatListView: View {
             sessions.removeAll { $0.id == session.id }
         } catch {
             errorMessage = error.localizedDescription
-            print("[ChatListView] Failed to delete session: \(error)")
+            print("[SessionListView] Failed to delete session: \(error)")
         }
     }
 }
@@ -179,6 +240,6 @@ struct ChatListView: View {
 // MARK: - Preview
 
 #Preview {
-    ChatListView()
+    SessionListView()
         .environment(ServerConnection(serverURL: URL(string: "ws://localhost:3141")!))
 }

@@ -70,3 +70,8 @@ result-*
 # Agent plans (local only)
 .agents/
 .osgrep
+
+# Environment files
+*.env
+!*.env.example
+!*.env.sample
