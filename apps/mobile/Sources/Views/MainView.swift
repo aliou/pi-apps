@@ -8,6 +8,7 @@
 import SwiftUI
 import Textual
 import PiCore
+import PiUI
 
 struct MainView: View {
     @StateObject private var serverConfig = ServerConfig.shared

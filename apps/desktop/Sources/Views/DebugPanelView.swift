@@ -7,6 +7,7 @@ import SwiftUI
 import Combine
 import AppKit
 import PiCore
+import PiUI
 
 // MARK: - Debug Event
 

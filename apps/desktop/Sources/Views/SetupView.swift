@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PiCore
+import PiUI
 
 struct SetupView: View {
     @State private var downloadProgress: Double = 0
@@ -134,21 +135,7 @@ struct SetupView: View {
     }
 }
 
-// MARK: - Primary Button Style
 
-struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(configuration.isPressed ? Theme.accent.opacity(0.8) : Theme.accent)
-            )
-    }
-}
 
 // MARK: - Update Available Banner
 
@@ -320,23 +307,7 @@ struct UpdateSheet: View {
     }
 }
 
-struct SecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(Theme.text)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Theme.border, lineWidth: 1)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(configuration.isPressed ? Theme.hoverBg : Color.clear)
-                    )
-            )
-    }
-}
+
 
 // MARK: - Preview
 

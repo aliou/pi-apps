@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import PiCore
+import PiUI
 
 struct MainView: View {
     @StateObject private var sessionStore = SessionStore()

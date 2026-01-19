@@ -5,6 +5,7 @@
 
 import SwiftUI
 import PiCore
+import PiUI
 
 // MARK: - Sidebar View
 

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PiCore
+import PiUI
 
 struct ServerSetupView: View {
     @ObservedObject private var serverConfig = ServerConfig.shared

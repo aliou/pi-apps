@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PiCore
+import PiUI
 
 struct ChatInputBar: View {
     @Binding var text: String

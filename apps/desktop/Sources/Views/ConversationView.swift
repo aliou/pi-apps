@@ -6,6 +6,7 @@
 import SwiftUI
 import Textual
 import PiCore
+import PiUI
 
 // MARK: - Conversation Item
 
@@ -126,10 +127,9 @@ struct ConversationView: View {
 
     private func toolCallView(id: String, name: String, args: String?, output: String?, status: ToolCallStatus) -> some View {
         let isExpanded = expandedToolCalls.contains(id)
-        let parsedArgs = parseArgs(args)
 
         return VStack(alignment: .leading, spacing: 0) {
-            // Header
+            // Header - using shared component
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     if isExpanded {
@@ -139,197 +139,31 @@ struct ConversationView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(Theme.toolStatusColor(status))
-                        .frame(width: 6, height: 6)
-
-                    toolHeaderText(name: name, args: parsedArgs)
-
-                    Spacer()
-
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Theme.dim)
-                }
+                ToolCallHeader(
+                    toolName: name,
+                    args: args,
+                    status: status,
+                    showChevron: true
+                )
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            // Expanded content
-            if isExpanded, let output, !output.isEmpty {
-                toolOutputView(name: name, output: output)
-                    .padding(.top, 8)
+            // Expanded content - using shared component
+            if isExpanded {
+                ToolCallOutput(
+                    toolName: name,
+                    args: args,
+                    output: output,
+                    maxPreviewLines: 10
+                )
+                .padding(.top, 8)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(toolBackground(status: status))
+        .background(Theme.toolStatusBg(status))
         .cornerRadius(8)
-    }
-
-    @ViewBuilder
-    private func toolHeaderText(name: String, args: [String: Any]) -> some View {
-        switch name {
-        case "read":
-            let path = shortenPath(args["path"] as? String ?? "")
-            let offset = args["offset"] as? Int
-            let limit = args["limit"] as? Int
-
-            HStack(spacing: 4) {
-                Text("read")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(path.isEmpty ? "..." : path)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-                if let offset {
-                    Text(":\(offset)")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.yellow)
-                    if let limit {
-                        Text("-\(offset + limit - 1)")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(.yellow)
-                    }
-                }
-            }
-
-        case "write":
-            let path = shortenPath(args["path"] as? String ?? "")
-            HStack(spacing: 4) {
-                Text("write")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(path.isEmpty ? "..." : path)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-            }
-
-        case "edit":
-            let path = shortenPath(args["path"] as? String ?? "")
-            HStack(spacing: 4) {
-                Text("edit")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(path.isEmpty ? "..." : path)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-            }
-
-        case "bash":
-            let command = args["command"] as? String ?? ""
-            HStack(spacing: 4) {
-                Text("$")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(command.isEmpty ? "..." : truncateText(command, maxLength: 60))
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Theme.muted)
-                    .lineLimit(1)
-            }
-
-        case "ls":
-            let path = shortenPath(args["path"] as? String ?? ".")
-            let limit = args["limit"] as? Int
-            HStack(spacing: 4) {
-                Text("ls")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(path)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-                if let limit {
-                    Text("(limit \(limit))")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(Theme.dim)
-                }
-            }
-
-        case "find":
-            let pattern = args["pattern"] as? String ?? ""
-            let path = shortenPath(args["path"] as? String ?? ".")
-            HStack(spacing: 4) {
-                Text("find")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(pattern.isEmpty ? "..." : pattern)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-                Text("in \(path)")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(Theme.dim)
-            }
-
-        case "grep":
-            let pattern = args["pattern"] as? String ?? ""
-            let path = shortenPath(args["path"] as? String ?? ".")
-            let glob = args["glob"] as? String
-            HStack(spacing: 4) {
-                Text("grep")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(pattern.isEmpty ? "..." : "/\(pattern)/")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-                Text("in \(path)")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(Theme.dim)
-                if let glob {
-                    Text("(\(glob))")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(Theme.dim)
-                }
-            }
-
-        default:
-            HStack(spacing: 4) {
-                Text(name)
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                if !args.isEmpty {
-                    Text(truncateText(argsToString(args), maxLength: 40))
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(Theme.dim)
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func toolOutputView(name: String, output: String) -> some View {
-        let lines = output.components(separatedBy: .newlines)
-        let maxPreviewLines = 10
-        let displayLines = Array(lines.prefix(maxPreviewLines))
-        let remaining = lines.count - maxPreviewLines
-
-        VStack(alignment: .leading, spacing: 4) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(displayLines.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(Theme.muted)
-                    }
-
-                    if remaining > 0 {
-                        Text("... (\(remaining) more lines)")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(Theme.dim)
-                    }
-                }
-            }
-            .frame(maxHeight: 200)
-            .textSelection(.enabled)
-        }
-        .padding(8)
-        .background(Theme.pageBg)
-        .cornerRadius(4)
-    }
-
-    private func toolBackground(status: ToolCallStatus) -> Color {
-        Theme.toolStatusBg(status)
     }
 
     private var inputArea: some View {
@@ -377,40 +211,6 @@ struct ConversationView: View {
         onSendMessage(text)
     }
 
-    // MARK: - Helpers
-
-    private func parseArgs(_ args: String?) -> [String: Any] {
-        guard let args,
-              let data = args.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return [:]
-        }
-        return json
-    }
-
-    private func argsToString(_ args: [String: Any]) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: args, options: [.sortedKeys]),
-              let string = String(data: data, encoding: .utf8) else {
-            return ""
-        }
-        return string
-    }
-
-    private func shortenPath(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
-    }
-
-    private func truncateText(_ text: String, maxLength: Int) -> String {
-        let cleaned = text.replacingOccurrences(of: "\n", with: " ")
-        if cleaned.count > maxLength {
-            return String(cleaned.prefix(maxLength)) + "..."
-        }
-        return cleaned
-    }
 }
 
 // MARK: - Preview

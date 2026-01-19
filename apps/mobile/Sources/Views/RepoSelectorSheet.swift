@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PiCore
+import PiUI
 
 struct RepoSelectorSheet: View {
     let client: RPCClient

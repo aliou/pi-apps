@@ -11,9 +11,10 @@ pi-apps/
 │   │   ├── project.yml       # XcodeGen spec
 │   │   ├── Sources/          # Swift source files
 │   │   └── Resources/        # Assets, Info.plist, entitlements
-│   └── mobile/               # iOS app (placeholder)
+│   └── mobile/               # iOS app
 ├── packages/
-│   └── pi-core/              # Shared Swift package
+│   ├── pi-core/              # RPC types, transport (Foundation-only)
+│   └── pi-ui/                # Shared UI components (SwiftUI)
 ├── Config/                   # Build configuration (xcconfig files)
 ├── Makefile                  # Build automation
 └── flake.nix                 # Nix dev environment
@@ -100,7 +101,7 @@ Worktrees keep the user's working directory clean while the agent makes changes.
 
 ## Theme System
 
-All colors are defined in `packages/pi-core/Sources/PiCore/Theme/Theme.swift` using asset catalog colors that adapt to light/dark mode.
+All colors are defined in `packages/pi-ui/Sources/PiUI/Theme/Theme.swift` using programmatic colors that adapt to light/dark mode.
 
 ### Using Theme Colors
 
@@ -127,9 +128,11 @@ Theme.toolStatusBg(status)     // pending/success/error backgrounds
 
 ### Adding New Colors
 
-1. Create color set in `apps/desktop/Resources/Assets.xcassets/{name}.colorset/Contents.json`
-2. Add light and dark variants
-3. Reference in `Theme.swift`: `static let newColor = Color("newColor")`
+Add to `packages/pi-ui/Sources/PiUI/Theme/Theme.swift`:
+
+```swift
+public static let newColor = Color(light: rgb(r, g, b), dark: rgb(r, g, b))
+```
 
 Color values are based on pi-cli's theme files:
 - Dark: `packages/coding-agent/src/modes/interactive/theme/dark.json`

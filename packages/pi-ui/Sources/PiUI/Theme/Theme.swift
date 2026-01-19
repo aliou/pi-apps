@@ -1,12 +1,19 @@
 //
 //  Theme.swift
-//  PiCore
+//  PiUI
 //
 //  Color palette based on pi-cli themes (dark/light)
 //  Programmatic colors that adapt to system appearance
 //
 
 import SwiftUI
+
+/// Status of a tool call execution (duplicated here to avoid pi-core dependency)
+public enum ToolCallStatus: Sendable {
+    case running
+    case success
+    case error
+}
 
 public enum Theme {
     // MARK: - Core UI Colors
@@ -87,7 +94,7 @@ public enum Theme {
 
 extension Color {
     /// Creates a color that adapts to light and dark appearance
-    init(light: Color, dark: Color) {
+    public init(light: Color, dark: Color) {
         #if os(macOS)
         self.init(nsColor: NSColor(name: nil) { appearance in
             switch appearance.bestMatch(from: [.aqua, .darkAqua]) {

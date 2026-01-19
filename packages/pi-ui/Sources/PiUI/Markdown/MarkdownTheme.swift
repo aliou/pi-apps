@@ -1,35 +1,38 @@
 //
 //  MarkdownTheme.swift
-//  pi
+//  PiUI
 //
 
 import SwiftUI
 import Textual
-import PiCore
 
-struct PiMarkdownStyle: StructuredText.Style {
-    let inlineStyle = InlineStyle()
+public struct PiMarkdownStyle: StructuredText.Style {
+    public init() {}
+
+    public let inlineStyle = InlineStyle()
         .code(.monospaced, .fontScale(0.9))
         .strong(.fontWeight(.semibold))
         .emphasis(.italic)
         .link(.foregroundColor(Theme.mdLink))
 
-    let headingStyle = PiHeadingStyle()
-    let paragraphStyle = StructuredText.DefaultParagraphStyle.default
-    let blockQuoteStyle = PiBlockQuoteStyle()
-    let codeBlockStyle = PiCodeBlockStyle()
-    let listItemStyle = StructuredText.DefaultListItemStyle.default
-    let unorderedListMarker = StructuredText.SymbolListMarker.disc
-    let orderedListMarker = StructuredText.DecimalListMarker.decimal
-    let tableStyle = StructuredText.DefaultTableStyle.default
-    let tableCellStyle = StructuredText.DefaultTableCellStyle.default
-    let thematicBreakStyle = StructuredText.DividerThematicBreakStyle.divider
+    public let headingStyle = PiHeadingStyle()
+    public let paragraphStyle = StructuredText.DefaultParagraphStyle.default
+    public let blockQuoteStyle = PiBlockQuoteStyle()
+    public let codeBlockStyle = PiCodeBlockStyle()
+    public let listItemStyle = StructuredText.DefaultListItemStyle.default
+    public let unorderedListMarker = StructuredText.SymbolListMarker.disc
+    public let orderedListMarker = StructuredText.DecimalListMarker.decimal
+    public let tableStyle = StructuredText.DefaultTableStyle.default
+    public let tableCellStyle = StructuredText.DefaultTableCellStyle.default
+    public let thematicBreakStyle = StructuredText.DividerThematicBreakStyle.divider
 }
 
-struct PiHeadingStyle: StructuredText.HeadingStyle {
+public struct PiHeadingStyle: StructuredText.HeadingStyle {
+    public init() {}
+
     private static let fontScales: [CGFloat] = [1.5, 1.3, 1.15, 1, 0.9, 0.85]
 
-    func makeBody(configuration: Configuration) -> some View {
+    public func makeBody(configuration: Configuration) -> some View {
         let level = min(configuration.headingLevel, 6)
         configuration.label
             .textual.fontScale(Self.fontScales[level - 1])
@@ -39,8 +42,10 @@ struct PiHeadingStyle: StructuredText.HeadingStyle {
     }
 }
 
-struct PiCodeBlockStyle: StructuredText.CodeBlockStyle {
-    func makeBody(configuration: Configuration) -> some View {
+public struct PiCodeBlockStyle: StructuredText.CodeBlockStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, design: .monospaced))
             .foregroundStyle(Theme.mdCodeBlock)
@@ -52,8 +57,10 @@ struct PiCodeBlockStyle: StructuredText.CodeBlockStyle {
     }
 }
 
-struct PiBlockQuoteStyle: StructuredText.BlockQuoteStyle {
-    func makeBody(configuration: Configuration) -> some View {
+public struct PiBlockQuoteStyle: StructuredText.BlockQuoteStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 0) {
             Rectangle()
                 .fill(Theme.mdQuoteBorder)

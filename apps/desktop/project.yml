@@ -21,6 +21,8 @@ settings:
 packages:
   PiCore:
     path: ../../packages/pi-core
+  PiUI:
+    path: ../../packages/pi-ui
   Textual:
     url: https://github.com/gonzalezreal/textual
     from: 0.2.0
@@ -49,6 +51,8 @@ targets:
     dependencies:
       - package: PiCore
         product: PiCore
+      - package: PiUI
+        product: PiUI
       - package: Textual
         product: Textual
 

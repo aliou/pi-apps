@@ -1,5 +1,6 @@
 import SwiftUI
 import PiCore
+import PiUI
 
 struct SidebarView: View {
     let sessions: [SessionDisplayInfo]

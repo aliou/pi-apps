@@ -1,5 +1,6 @@
 import SwiftUI
 import PiCore
+import PiUI
 
 /// Empty state view shown when no session is active.
 /// Displays a centered logo and greeting message.

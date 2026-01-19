@@ -1,5 +1,6 @@
 import SwiftUI
 import PiCore
+import PiUI
 
 struct SessionRowView: View {
     let title: String

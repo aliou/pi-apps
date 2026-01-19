@@ -8,6 +8,7 @@
 import SwiftUI
 import Textual
 import PiCore
+import PiUI
 
 // MARK: - Conversation Item
 
@@ -22,6 +23,24 @@ enum ConversationItem: Identifiable {
         case .assistantText(let id, _): return id
         case .toolCall(let id, _, _, _, _): return id
         }
+    }
+}
+
+// MARK: - Tool Call Navigation Item
+
+struct ToolCallNavItem: Hashable {
+    let id: String
+    let name: String
+    let args: String?
+    let output: String?
+    let status: ToolCallStatus
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
@@ -43,7 +62,6 @@ struct ConversationView: View {
     @State private var items: [ConversationItem] = []
     @State private var inputText = ""
     @State private var isProcessing = false
-    @State private var expandedToolCalls: Set<String> = []
     @State private var currentStreamingText = ""
     @State private var currentStreamingId: String?
     @State private var eventTask: Task<Void, Never>?
@@ -52,6 +70,7 @@ struct ConversationView: View {
     @State private var autoScrollEnabled = true
     @State private var scrollViewHeight: CGFloat = 0
     @State private var lastGeneratedToolCallId: String?
+    @State private var navigationPath = NavigationPath()
 
     @FocusState private var isInputFocused: Bool
 
@@ -186,6 +205,14 @@ struct ConversationView: View {
         } message: {
             Text(errorMessage ?? "An error occurred")
         }
+        .navigationDestination(for: ToolCallNavItem.self) { item in
+            ToolCallDetailView(
+                toolName: item.name,
+                args: item.args,
+                output: item.output,
+                status: item.status
+            )
+        }
         .task {
             // Attach to session first (sets _currentSessionId and subscribes to events)
             do {
@@ -249,152 +276,21 @@ struct ConversationView: View {
     }
 
     private func toolCallCard(id: String, name: String, args: String?, output: String?, status: ToolCallStatus) -> some View {
-        let isExpanded = expandedToolCalls.contains(id)
-        let parsedArgs = parseArgs(args)
-
-        return VStack(alignment: .leading, spacing: 0) {
-            // Header - tappable
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if isExpanded {
-                        expandedToolCalls.remove(id)
-                    } else {
-                        expandedToolCalls.insert(id)
-                    }
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(Theme.toolStatusColor(status))
-                        .frame(width: 8, height: 8)
-
-                    toolHeaderText(name: name, args: parsedArgs)
-
-                    Spacer()
-
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Theme.dim)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            // Expanded content
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    // Show args if present
-                    if let args, !args.isEmpty {
-                        Text("Arguments:")
-                            .font(.caption)
-                            .foregroundColor(Theme.dim)
-
-                        Text(formatJSON(args))
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(Theme.muted)
-                            .textSelection(.enabled)
-                    }
-
-                    // Show output if present
-                    if let output, !output.isEmpty {
-                        Divider()
-                            .background(Theme.borderMuted)
-
-                        Text("Output:")
-                            .font(.caption)
-                            .foregroundColor(Theme.dim)
-
-                        ScrollView {
-                            Text(truncateOutput(output))
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(Theme.muted)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxHeight: 150)
-                    }
-                }
-                .padding(.top, 10)
-                .padding(.leading, 18)
-            }
+        // Use NavigationLink to navigate to detail view on tap
+        NavigationLink(value: ToolCallNavItem(id: id, name: name, args: args, output: output, status: status)) {
+            ToolCallHeader(
+                toolName: name,
+                args: args,
+                status: status,
+                showChevron: true
+            )
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Theme.toolStatusBg(status))
         .cornerRadius(10)
         .padding(.horizontal, 16)
-    }
-
-    @ViewBuilder
-    private func toolHeaderText(name: String, args: [String: Any]) -> some View {
-        switch name {
-        case "read":
-            let path = shortenPath(args["path"] as? String ?? "")
-            HStack(spacing: 4) {
-                Text("read")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(path.isEmpty ? "..." : path)
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-                    .lineLimit(1)
-            }
-
-        case "write":
-            let path = shortenPath(args["path"] as? String ?? "")
-            HStack(spacing: 4) {
-                Text("write")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(path.isEmpty ? "..." : path)
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-                    .lineLimit(1)
-            }
-
-        case "edit":
-            let path = shortenPath(args["path"] as? String ?? "")
-            HStack(spacing: 4) {
-                Text("edit")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(path.isEmpty ? "..." : path)
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-                    .lineLimit(1)
-            }
-
-        case "bash":
-            let command = args["command"] as? String ?? ""
-            HStack(spacing: 4) {
-                Text("$")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(command.isEmpty ? "..." : truncateText(command, maxLength: 30))
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundColor(Theme.muted)
-                    .lineLimit(1)
-            }
-
-        case "grep":
-            let pattern = args["pattern"] as? String ?? ""
-            HStack(spacing: 4) {
-                Text("grep")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-                Text(pattern.isEmpty ? "..." : "/\(pattern)/")
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-                    .lineLimit(1)
-            }
-
-        default:
-            HStack(spacing: 4) {
-                Text(name)
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.text)
-            }
-        }
     }
 
     private var inputArea: some View {
@@ -673,51 +569,6 @@ struct ConversationView: View {
     private func showError(_ message: String) {
         errorMessage = message
         showError = true
-    }
-
-    private func parseArgs(_ args: String?) -> [String: Any] {
-        guard let args,
-              let data = args.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return [:]
-        }
-        return json
-    }
-
-    private func formatJSON(_ jsonString: String) -> String {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data),
-              let prettyData = try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted),
-              let prettyString = String(data: prettyData, encoding: .utf8) else {
-            return jsonString
-        }
-        return prettyString
-    }
-
-    private func shortenPath(_ path: String) -> String {
-        // Try to shorten long paths
-        let components = path.components(separatedBy: "/")
-        if components.count > 3 {
-            return ".../" + components.suffix(2).joined(separator: "/")
-        }
-        return path
-    }
-
-    private func truncateText(_ text: String, maxLength: Int) -> String {
-        let cleaned = text.replacingOccurrences(of: "\n", with: " ")
-        if cleaned.count > maxLength {
-            return String(cleaned.prefix(maxLength)) + "..."
-        }
-        return cleaned
-    }
-
-    private func truncateOutput(_ output: String) -> String {
-        let lines = output.components(separatedBy: .newlines)
-        let maxLines = 30
-        if lines.count > maxLines {
-            return lines.prefix(maxLines).joined(separator: "\n") + "\n... (\(lines.count - maxLines) more lines)"
-        }
-        return output
     }
 }
 

@@ -1,6 +1,6 @@
 //
 //  Color+Hex.swift
-//  PiCore
+//  PiUI
 //
 
 import SwiftUI

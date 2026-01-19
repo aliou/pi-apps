@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PiCore
+import PiUI
 
 struct AuthSetupView: View {
     let onRetry: () -> Void
