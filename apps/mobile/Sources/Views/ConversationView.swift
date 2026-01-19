@@ -449,14 +449,28 @@ struct ConversationView: View {
                 lastGeneratedToolCallId = resolvedId
             }
 
-            let argsString = args?.jsonString
-            items.append(.toolCall(
-                id: resolvedId,
-                name: toolName,
-                args: argsString,
-                output: nil,
-                status: .running
-            ))
+            // Check if entry already exists (from toolUseStart) - update args if so
+            if let existingIndex = items.firstIndex(where: { $0.id == resolvedId }) {
+                if case .toolCall(let id, let name, _, let output, let status) = items[existingIndex] {
+                    let argsString = args?.jsonString
+                    items[existingIndex] = .toolCall(
+                        id: id,
+                        name: name,
+                        args: argsString,
+                        output: output,
+                        status: status
+                    )
+                }
+            } else {
+                let argsString = args?.jsonString
+                items.append(.toolCall(
+                    id: resolvedId,
+                    name: toolName,
+                    args: argsString,
+                    output: nil,
+                    status: .running
+                ))
+            }
 
         case .toolExecutionUpdate(let toolCallId, let output):
             let resolvedId = toolCallId.isEmpty ? (lastGeneratedToolCallId ?? toolCallId) : toolCallId

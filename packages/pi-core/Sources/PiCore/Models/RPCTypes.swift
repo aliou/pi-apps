@@ -624,6 +624,20 @@ public enum ToolStatus: String, Codable, Sendable {
     case cancelled
 }
 
+// MARK: - Helper Types for Decoding
+
+/// Helper for decoding partial message in toolcall_start events
+private struct PartialMessage: Codable {
+    let content: [PartialContentBlock]
+}
+
+/// Helper for decoding content blocks in partial messages
+private struct PartialContentBlock: Codable {
+    let type: String
+    let id: String?
+    let name: String?
+}
+
 // MARK: - Assistant Message Events
 
 /// Events for streaming assistant message updates
@@ -672,9 +686,24 @@ public enum AssistantMessageEvent: Codable, Sendable {
             self = .thinkingDelta(delta: "")
 
         case "tool_use_start", "toolcall_start":
-            let toolCallId = try container.decodeIfPresent(String.self, forKey: .toolCallId) ?? ""
-            let toolName = try container.decodeIfPresent(String.self, forKey: .toolName) ?? ""
-            self = .toolUseStart(toolCallId: toolCallId, toolName: toolName)
+            // Try top-level fields first (tool_use_start format)
+            var toolCallId = try container.decodeIfPresent(String.self, forKey: .toolCallId)
+            var toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
+
+            // If not found, extract from partial.content[contentIndex] (toolcall_start format)
+            if toolCallId == nil || toolName == nil {
+                let contentIndex = try container.decodeIfPresent(Int.self, forKey: .contentIndex) ?? 0
+                if let partial = try container.decodeIfPresent(PartialMessage.self, forKey: .partial),
+                   contentIndex < partial.content.count {
+                    let block = partial.content[contentIndex]
+                    if block.type == "toolCall" {
+                        toolCallId = toolCallId ?? block.id
+                        toolName = toolName ?? block.name
+                    }
+                }
+            }
+
+            self = .toolUseStart(toolCallId: toolCallId ?? "", toolName: toolName ?? "")
 
         case "tool_use_input_delta", "toolcall_delta":
             let toolCallId = try container.decodeIfPresent(String.self, forKey: .toolCallId) ?? ""

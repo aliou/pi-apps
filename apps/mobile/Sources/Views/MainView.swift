@@ -397,14 +397,28 @@ struct MainView: View {
                 lastGeneratedToolCallId = resolvedId
             }
 
-            let argsString = args?.jsonString
-            conversationItems.append(.toolCall(
-                id: resolvedId,
-                name: toolName,
-                args: argsString,
-                output: nil,
-                status: .running
-            ))
+            // Check if entry already exists (from toolUseStart) - update args if so
+            if let existingIndex = conversationItems.firstIndex(where: { $0.id == resolvedId }) {
+                if case .toolCall(let id, let name, _, let output, let status) = conversationItems[existingIndex] {
+                    let argsString = args?.jsonString
+                    conversationItems[existingIndex] = .toolCall(
+                        id: id,
+                        name: name,
+                        args: argsString,
+                        output: output,
+                        status: status
+                    )
+                }
+            } else {
+                let argsString = args?.jsonString
+                conversationItems.append(.toolCall(
+                    id: resolvedId,
+                    name: toolName,
+                    args: argsString,
+                    output: nil,
+                    status: .running
+                ))
+            }
 
         case .toolExecutionUpdate(let toolCallId, let output):
             let resolvedId = toolCallId.isEmpty ? (lastGeneratedToolCallId ?? toolCallId) : toolCallId
@@ -821,9 +835,18 @@ struct ConversationItemView: View {
             userBubble(text)
         case .assistantText(_, let text):
             assistantBubble(text)
-        case .toolCall(let id, let name, let args, let output, let status):
-            Text("Tool: \(name)")  // TODO: Proper tool call view
-                .padding(.horizontal, 16)
+        case .toolCall(_, let name, let args, _, let status):
+            ToolCallHeader(
+                toolName: name,
+                args: args,
+                status: status,
+                showChevron: false
+            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Theme.toolStatusBg(status))
+            .cornerRadius(10)
+            .padding(.horizontal, 16)
         }
     }
 

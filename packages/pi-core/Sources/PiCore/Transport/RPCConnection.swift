@@ -283,46 +283,19 @@ public actor RPCConnection {
         }
     }
 
-    /// Parse AssistantMessageEvent from a dictionary
+    /// Parse AssistantMessageEvent from a dictionary using Codable
     private func parseAssistantMessageEvent(from dict: [String: Any]) -> AssistantMessageEvent {
         // Server sends "assistantMessageEvent", legacy sends "event"
         let eventDict = dict["assistantMessageEvent"] as? [String: Any]
             ?? dict["event"] as? [String: Any]
             ?? dict
-        let eventType = eventDict["type"] as? String ?? ""
 
-        switch eventType {
-        case "text_delta":
-            let delta = eventDict["delta"] as? String ?? ""
-            return .textDelta(delta: delta)
-
-        case "thinking_delta":
-            let delta = eventDict["delta"] as? String ?? ""
-            return .thinkingDelta(delta: delta)
-
-        case "tool_use_start", "toolcall_start":
-            let toolCallId = eventDict["toolCallId"] as? String ?? ""
-            let toolName = eventDict["toolName"] as? String ?? ""
-            return .toolUseStart(toolCallId: toolCallId, toolName: toolName)
-
-        case "tool_use_input_delta", "toolcall_delta":
-            let toolCallId = eventDict["toolCallId"] as? String ?? ""
-            let delta = eventDict["delta"] as? String ?? ""
-            return .toolUseInputDelta(toolCallId: toolCallId, delta: delta)
-
-        case "tool_use_end", "toolcall_end":
-            let toolCallId = eventDict["toolCallId"] as? String ?? ""
-            return .toolUseEnd(toolCallId: toolCallId)
-
-        case "message_start", "start":
-            let messageId = eventDict["messageId"] as? String ?? ""
-            return .messageStart(messageId: messageId)
-
-        case "message_end", "done":
-            let stopReason = eventDict["stopReason"] as? String
-            return .messageEnd(stopReason: stopReason)
-
-        default:
+        // Convert to JSON data and decode using Codable
+        do {
+            let data = try JSONSerialization.data(withJSONObject: eventDict)
+            return try JSONDecoder().decode(AssistantMessageEvent.self, from: data)
+        } catch {
+            let eventType = eventDict["type"] as? String ?? "unknown"
             return .unknown(type: eventType)
         }
     }
