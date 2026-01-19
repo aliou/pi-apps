@@ -317,8 +317,8 @@ struct MainView: View {
             sessions = sessionList.map { session in
                 SessionDisplayInfo(
                     id: session.sessionId,
-                    title: session.sessionId.prefix(8) + "...",  // TODO: Get real title
-                    repoName: session.repoId  // TODO: Get repo name
+                    title: session.name ?? String(session.sessionId.prefix(8)) + "...",
+                    repoName: session.repoId
                 )
             }
         } catch {

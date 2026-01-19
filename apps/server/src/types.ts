@@ -105,6 +105,7 @@ export interface SessionInfo {
   worktreePath: string;
   createdAt: string;
   lastActivityAt: string;
+  name?: string;
 }
 
 export interface ServerState {

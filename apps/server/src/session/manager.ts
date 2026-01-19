@@ -265,8 +265,9 @@ export class SessionManager {
 
     this.sessions.set(sessionId, activeSession);
 
-    // Update last activity
+    // Update last activity and session name
     info.lastActivityAt = new Date().toISOString();
+    info.name = session.sessionManager.getSessionName();
     this.saveState();
 
     return activeSession;

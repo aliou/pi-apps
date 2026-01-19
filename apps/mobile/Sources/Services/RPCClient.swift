@@ -46,6 +46,7 @@ public struct SessionInfoResult: Decodable, Sendable, Identifiable {
     public let repoId: String
     public let createdAt: String?
     public let lastActivityAt: String?
+    public let name: String?
 
     public var id: String { sessionId }
 }

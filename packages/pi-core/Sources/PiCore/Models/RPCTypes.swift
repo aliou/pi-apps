@@ -209,6 +209,7 @@ public struct SessionInfo: Decodable, Sendable {
     public let sessionId: String
     public let createdAt: String?
     public let lastActivityAt: String?
+    public let name: String?
 }
 
 // MARK: - RPC Commands
