@@ -536,6 +536,119 @@ struct MainView: View {
         }
     }
 
+    /// Convert RPC messages to conversation items for display
+    private func convertMessagesToItems(_ messages: [Message]) -> [ConversationItem] {
+        var items: [ConversationItem] = []
+        // Track tool results to match with tool calls
+        var toolResults: [String: String] = [:]
+
+        // First pass: collect tool results
+        for message in messages where message.role == .tool || message.role == .toolResult {
+            // toolResult messages have toolCallId at message level
+            if let toolCallId = message.toolCallId, let content = message.content {
+                let output = extractText(from: content)
+                if !output.isEmpty {
+                    toolResults[toolCallId] = output
+                }
+            }
+            // Also check for structured blocks with tool results (legacy format)
+            if case .structured(let blocks) = message.content {
+                for block in blocks where block.type == .toolResult {
+                    if let toolCallId = block.toolCallId, let output = block.output {
+                        toolResults[toolCallId] = output
+                    }
+                }
+            }
+        }
+
+        // Second pass: convert messages to items
+        for message in messages {
+            switch message.role {
+            case .user:
+                if let content = message.content {
+                    let text = extractText(from: content)
+                    if !text.isEmpty {
+                        items.append(.userMessage(id: message.id, text: text))
+                    }
+                }
+
+            case .assistant:
+                if let content = message.content {
+                    switch content {
+                    case .text(let text):
+                        if !text.isEmpty {
+                            items.append(.assistantText(id: message.id, text: text))
+                        }
+
+                    case .structured(let blocks):
+                        var textParts: [String] = []
+                        var blockIndex = 0
+
+                        for block in blocks {
+                            switch block.type {
+                            case .text:
+                                if let text = block.text, !text.isEmpty {
+                                    textParts.append(text)
+                                }
+
+                            case .toolUse, .toolCall:
+                                // Flush accumulated text before tool call
+                                if !textParts.isEmpty {
+                                    let combinedText = textParts.joined(separator: "\n")
+                                    let textId = "\(message.id)-text-\(blockIndex)"
+                                    items.append(.assistantText(id: textId, text: combinedText))
+                                    textParts = []
+                                }
+
+                                if let toolCallId = block.toolCallId, let toolName = block.toolName {
+                                    let argsString = block.input?.jsonString
+                                    let output = toolResults[toolCallId]
+                                    items.append(.toolCall(
+                                        id: toolCallId,
+                                        name: toolName,
+                                        args: argsString,
+                                        output: output,
+                                        status: .success
+                                    ))
+                                }
+
+                            case .thinking, .toolResult:
+                                break
+                            }
+                            blockIndex += 1
+                        }
+
+                        // Flush remaining text
+                        if !textParts.isEmpty {
+                            let combinedText = textParts.joined(separator: "\n")
+                            let textId = "\(message.id)-text-final"
+                            items.append(.assistantText(id: textId, text: combinedText))
+                        }
+                    }
+                }
+
+            case .system, .tool, .toolResult:
+                // System messages and tool results handled elsewhere
+                break
+            }
+        }
+
+        return items
+    }
+
+    /// Extract text from message content
+    private func extractText(from content: MessageContent) -> String {
+        switch content {
+        case .text(let text):
+            return text
+        case .structured(let blocks):
+            return blocks
+                .filter { $0.type == .text }
+                .compactMap(\.text)
+                .joined(separator: "\n")
+        }
+    }
+
     /// Sync model state for the active session
     private func syncModelForSession(_ sessionId: String) async {
         guard let client else { return }
@@ -561,6 +674,7 @@ struct MainView: View {
         }
     }
 
+    @MainActor
     private func switchToSession(_ sessionId: String) async {
         guard let client else { return }
 
@@ -575,12 +689,12 @@ struct MainView: View {
             activeSessionId = sessionId
             currentStreamingText = ""
             currentStreamingId = nil
+            conversationItems = []  // Clear immediately to show loading state
             await syncModelForSession(sessionId)
 
             // Load conversation history
             let messagesResponse = try await client.getMessages()
-            // TODO: Convert messages to ConversationItems
-            conversationItems = []
+            conversationItems = convertMessagesToItems(messagesResponse.messages)
 
         } catch {
             print("[MainView] Failed to switch session: \(error)")

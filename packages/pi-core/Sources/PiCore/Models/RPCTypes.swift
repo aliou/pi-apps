@@ -500,9 +500,12 @@ public struct Message: Codable, Identifiable, Sendable {
     public let content: MessageContent?
     public let timestamp: Date?
     public let model: String?
+    // For toolResult messages
+    public let toolCallId: String?
+    public let toolName: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, role, content, timestamp, model
+        case id, role, content, timestamp, model, toolCallId, toolName
     }
 
     public init(from decoder: Decoder) throws {
@@ -524,6 +527,8 @@ public struct Message: Codable, Identifiable, Sendable {
         role = try container.decode(MessageRole.self, forKey: .role)
         content = try container.decodeIfPresent(MessageContent.self, forKey: .content)
         model = try container.decodeIfPresent(String.self, forKey: .model)
+        toolCallId = try container.decodeIfPresent(String.self, forKey: .toolCallId)
+        toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
 
         if let timestampString {
             let formatter = ISO8601DateFormatter()
@@ -542,6 +547,7 @@ public enum MessageRole: String, Codable, Sendable {
     case assistant
     case system
     case tool
+    case toolResult
 }
 
 /// Message content - can be text or structured
@@ -586,12 +592,51 @@ public struct ContentBlock: Codable, Sendable {
     public let toolName: String?
     public let input: AnyCodable?
     public let output: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type, text, thinking, output
+        case toolCallId, id
+        case toolName, name
+        case input, arguments
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(ContentBlockType.self, forKey: .type)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
+        output = try container.decodeIfPresent(String.self, forKey: .output)
+
+        // Handle both toolCallId and id
+        toolCallId = try container.decodeIfPresent(String.self, forKey: .toolCallId)
+            ?? container.decodeIfPresent(String.self, forKey: .id)
+
+        // Handle both toolName and name
+        toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
+            ?? container.decodeIfPresent(String.self, forKey: .name)
+
+        // Handle both input and arguments
+        input = try container.decodeIfPresent(AnyCodable.self, forKey: .input)
+            ?? container.decodeIfPresent(AnyCodable.self, forKey: .arguments)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(text, forKey: .text)
+        try container.encodeIfPresent(thinking, forKey: .thinking)
+        try container.encodeIfPresent(toolCallId, forKey: .toolCallId)
+        try container.encodeIfPresent(toolName, forKey: .toolName)
+        try container.encodeIfPresent(input, forKey: .input)
+        try container.encodeIfPresent(output, forKey: .output)
+    }
 }
 
 public enum ContentBlockType: String, Codable, Sendable {
     case text
     case thinking
     case toolUse = "tool_use"
+    case toolCall  // Pi SDK format
     case toolResult = "tool_result"
 }
 
