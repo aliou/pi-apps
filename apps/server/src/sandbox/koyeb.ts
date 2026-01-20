@@ -28,11 +28,11 @@ import type {
 class KoyebSandboxImpl implements Sandbox {
   readonly id: string;
   private _status: SandboxStatus = "running";
-  private koyebSandbox: any;
+  private koyebSandbox: KoyebSandbox;
   private exposedPorts: Map<number, string> = new Map();
   private createdAt: Date;
 
-  constructor(id: string, koyebSandbox: any) {
+  constructor(id: string, koyebSandbox: KoyebSandbox) {
     this.id = id;
     this.koyebSandbox = koyebSandbox;
     this.createdAt = new Date();
@@ -122,21 +122,27 @@ class KoyebSandboxImpl implements Sandbox {
       }
     };
 
-    stream.addEventListener("stdout", ({ data }: { data: { data: string } }) => {
-      const output: ExecOutput = { stream: "stdout", data: data.data };
-      enqueue(output);
-      if (options?.onStdout) {
-        options.onStdout(data.data);
-      }
-    });
+    stream.addEventListener(
+      "stdout",
+      ({ data }: { data: { data: string } }) => {
+        const output: ExecOutput = { stream: "stdout", data: data.data };
+        enqueue(output);
+        if (options?.onStdout) {
+          options.onStdout(data.data);
+        }
+      },
+    );
 
-    stream.addEventListener("stderr", ({ data }: { data: { data: string } }) => {
-      const output: ExecOutput = { stream: "stderr", data: data.data };
-      enqueue(output);
-      if (options?.onStderr) {
-        options.onStderr(data.data);
-      }
-    });
+    stream.addEventListener(
+      "stderr",
+      ({ data }: { data: { data: string } }) => {
+        const output: ExecOutput = { stream: "stderr", data: data.data };
+        enqueue(output);
+        if (options?.onStderr) {
+          options.onStderr(data.data);
+        }
+      },
+    );
 
     stream.addEventListener("end", () => {
       finish();
@@ -144,7 +150,8 @@ class KoyebSandboxImpl implements Sandbox {
 
     while (!done || outputs.length > 0) {
       if (outputs.length > 0) {
-        yield outputs.shift()!;
+        const output = outputs.shift();
+        if (output) yield output;
       } else if (!done) {
         yield await new Promise<ExecOutput>((resolve) => {
           resolveNext = (result) => {
@@ -226,19 +233,20 @@ class KoyebSandboxConnection implements SandboxConnection {
 
     return new Promise((resolve, reject) => {
       const wsUrl = `wss://${this.host}:${this.port}`;
-      this.ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl);
+      this.ws = ws;
 
-      this.ws.onopen = () => {
+      ws.onopen = () => {
         this._isOpen = true;
-        resolve(this.ws!);
+        resolve(ws);
       };
 
-      this.ws.onerror = (error) => {
+      ws.onerror = (error) => {
         this._isOpen = false;
         reject(new Error(`WebSocket connection failed: ${error}`));
       };
 
-      this.ws.onclose = () => {
+      ws.onclose = () => {
         this._isOpen = false;
         for (const resolver of this.resolvers) {
           resolver({ done: true, value: undefined });
@@ -246,13 +254,15 @@ class KoyebSandboxConnection implements SandboxConnection {
         this.resolvers = [];
       };
 
-      this.ws.onmessage = (event) => {
+      ws.onmessage = (event) => {
         const data =
           typeof event.data === "string" ? event.data : event.data.toString();
 
         if (this.resolvers.length > 0) {
-          const resolver = this.resolvers.shift()!;
-          resolver({ done: false, value: data });
+          const resolver = this.resolvers.shift();
+          if (resolver) {
+            resolver({ done: false, value: data });
+          }
         } else {
           this.messageQueue.push(data);
         }
@@ -270,7 +280,8 @@ class KoyebSandboxConnection implements SandboxConnection {
 
     while (this._isOpen) {
       if (this.messageQueue.length > 0) {
-        yield this.messageQueue.shift()!;
+        const message = this.messageQueue.shift();
+        if (message) yield message;
         continue;
       }
 
@@ -308,9 +319,7 @@ export class KoyebSandboxProvider implements SandboxProvider {
 
   constructor(config: SandboxProviderConfig) {
     if (config.provider !== "koyeb") {
-      throw new Error(
-        `Invalid provider: ${config.provider}, expected "koyeb"`,
-      );
+      throw new Error(`Invalid provider: ${config.provider}, expected "koyeb"`);
     }
     this.config = config;
 

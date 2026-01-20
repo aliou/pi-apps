@@ -14,8 +14,9 @@ import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
 import { ensureDataDirs, parseArgs } from "./config.js";
-import { UnifiedSessionManager } from "./session/unified.js";
 import { createSandboxProvider } from "./sandbox/index.js";
+import type { SandboxProvider } from "./sandbox/types.js";
+import { UnifiedSessionManager } from "./session/unified.js";
 import { ConnectionManager } from "./ws/connection.js";
 import { type HandlerContext, handleMessage } from "./ws/handler.js";
 
@@ -61,7 +62,7 @@ console.log(`  Data directory: ${config.dataDir}`);
 console.log(`  Listening on: ${config.host}:${config.port}`);
 
 // Initialize sandbox provider if configured
-let sandboxProvider;
+let sandboxProvider: SandboxProvider | undefined;
 if (config.sandbox) {
   console.log(`  Sandbox mode: ${config.sandbox.provider}`);
   sandboxProvider = createSandboxProvider({

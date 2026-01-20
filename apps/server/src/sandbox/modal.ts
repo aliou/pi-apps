@@ -8,7 +8,12 @@
  * Install: npm install modal
  */
 
-import { ModalClient } from "modal";
+import {
+  type App,
+  type Image,
+  ModalClient,
+  type Sandbox as ModalSandboxType,
+} from "modal";
 import type {
   ExecOptions,
   ExecOutput,
@@ -28,14 +33,12 @@ import type {
 class ModalSandboxImpl implements Sandbox {
   readonly id: string;
   private _status: SandboxStatus = "running";
-  private modalSandbox: any;
-  private client: ModalClient;
+  private modalSandbox: ModalSandboxType;
   private exposedPorts: Map<number, string> = new Map();
 
-  constructor(id: string, modalSandbox: any, client: ModalClient) {
+  constructor(id: string, modalSandbox: ModalSandboxType) {
     this.id = id;
     this.modalSandbox = modalSandbox;
-    this.client = client;
   }
 
   get status(): SandboxStatus {
@@ -60,8 +63,8 @@ class ModalSandboxImpl implements Sandbox {
   ): Promise<ExecResult> {
     const fullArgs = [command, ...args];
     const process = await this.modalSandbox.exec(fullArgs, {
-      timeout: options?.timeout ? options.timeout / 1000 : undefined,
-      cwd: options?.cwd,
+      timeoutMs: options?.timeout,
+      workdir: options?.cwd,
     });
 
     const [stdout, stderr, exitCode] = await Promise.all([
@@ -91,8 +94,8 @@ class ModalSandboxImpl implements Sandbox {
   ): AsyncGenerator<ExecOutput> {
     const fullArgs = [command, ...args];
     const process = await this.modalSandbox.exec(fullArgs, {
-      timeout: options?.timeout ? options.timeout / 1000 : undefined,
-      cwd: options?.cwd,
+      timeoutMs: options?.timeout,
+      workdir: options?.cwd,
     });
 
     const stdoutIterator = process.stdout[Symbol.asyncIterator]();
@@ -121,7 +124,9 @@ class ModalSandboxImpl implements Sandbox {
       if (!result.done) {
         yield { stream, data: result.value };
 
-        const idx = pending.findIndex((p) => p.then((r) => r.stream === stream));
+        const idx = pending.findIndex((p) =>
+          p.then((r) => r.stream === stream),
+        );
         if (idx >= 0) {
           pending.splice(idx, 1);
           if (stream === "stdout") {
@@ -131,7 +136,9 @@ class ModalSandboxImpl implements Sandbox {
           }
         }
       } else {
-        const idx = pending.findIndex((p) => p.then((r) => r.stream === stream));
+        const idx = pending.findIndex((p) =>
+          p.then((r) => r.stream === stream),
+        );
         if (idx >= 0) {
           pending.splice(idx, 1);
         }
@@ -198,7 +205,7 @@ export class ModalSandboxProvider implements SandboxProvider {
   readonly name = "modal";
   private client: ModalClient;
   private config: SandboxProviderConfig;
-  private app: any | null = null;
+  private app: App | null = null;
   private appName: string;
 
   constructor(config: SandboxProviderConfig) {
@@ -225,7 +232,7 @@ export class ModalSandboxProvider implements SandboxProvider {
     this.client = new ModalClient();
   }
 
-  private async ensureApp(): Promise<any> {
+  private async ensureApp(): Promise<App> {
     if (!this.app) {
       this.app = await this.client.apps.fromName(this.appName, {
         createIfMissing: true,
@@ -237,55 +244,60 @@ export class ModalSandboxProvider implements SandboxProvider {
   async createSandbox(options: SandboxCreateOptions): Promise<Sandbox> {
     const app = await this.ensureApp();
 
-    let image = this.client.images.fromRegistry(
+    let image: Image = this.client.images.fromRegistry(
       options.image ?? this.config.defaultImage ?? "python:3.12-slim",
     );
 
+    // Use dockerfileCommands to install pip packages if needed
     const pipPackages = this.config.providerConfig?.pipPackages as
       | string[]
       | undefined;
     if (pipPackages && pipPackages.length > 0) {
-      image = image.pipInstall(pipPackages);
+      image = image.dockerfileCommands([
+        `RUN pip install ${pipPackages.join(" ")}`,
+      ]);
     }
 
     const secrets = options.env
-      ? [this.client.secrets.fromDict(options.env)]
+      ? [await this.client.secrets.fromObject(options.env)]
       : undefined;
 
     const instanceType =
       options.instanceType ?? this.config.defaultInstanceType ?? "small";
     const specs = {
-      nano: { vcpu: 0.5, memoryMB: 512 },
-      small: { vcpu: 1, memoryMB: 1024 },
-      medium: { vcpu: 2, memoryMB: 2048 },
-      large: { vcpu: 4, memoryMB: 4096 },
+      nano: { cpu: 0.5, memoryMiB: 512 },
+      small: { cpu: 1, memoryMiB: 1024 },
+      medium: { cpu: 2, memoryMiB: 2048 },
+      large: { cpu: 4, memoryMiB: 4096 },
     }[instanceType];
 
     const modalSandbox = await this.client.sandboxes.create(app, image, {
       secrets,
-      timeout:
-        (options.timeout ?? this.config.defaultTimeout ?? 5 * 60 * 1000) / 1000,
-      idleTimeout:
-        (options.idleTimeout ?? this.config.defaultIdleTimeout ?? 60 * 1000) /
-        1000,
-      cpu: specs.vcpu,
-      memory: specs.memoryMB * 1024 * 1024,
+      timeoutMs: options.timeout ?? this.config.defaultTimeout ?? 5 * 60 * 1000,
+      idleTimeoutMs:
+        options.idleTimeout ?? this.config.defaultIdleTimeout ?? 60 * 1000,
+      cpu: specs.cpu,
+      memoryMiB: specs.memoryMiB,
       name: options.name,
-      tags: options.tags,
     });
 
-    return new ModalSandboxImpl(modalSandbox.objectId, modalSandbox, this.client);
+    // Set tags if provided
+    if (options.tags) {
+      await modalSandbox.setTags(options.tags);
+    }
+
+    return new ModalSandboxImpl(modalSandbox.sandboxId, modalSandbox);
   }
 
   async listSandboxes(tags?: Record<string, string>): Promise<SandboxInfo[]> {
     const sandboxes: SandboxInfo[] = [];
-    for await (const info of this.client.sandboxes.list({ tags })) {
+    for await (const sb of this.client.sandboxes.list({ tags })) {
+      const sbTags = await sb.getTags();
       sandboxes.push({
-        id: info.objectId,
+        id: sb.sandboxId,
         status: "running",
-        createdAt: info.createdAt,
-        name: info.name,
-        tags: info.tags,
+        createdAt: new Date(),
+        tags: sbTags,
         metadata: { provider: "modal" },
       });
     }
@@ -296,7 +308,7 @@ export class ModalSandboxProvider implements SandboxProvider {
   async getSandbox(sandboxId: string): Promise<Sandbox | null> {
     try {
       const modalSandbox = await this.client.sandboxes.fromId(sandboxId);
-      return new ModalSandboxImpl(sandboxId, modalSandbox, this.client);
+      return new ModalSandboxImpl(sandboxId, modalSandbox);
     } catch {
       return null;
     }
@@ -304,16 +316,11 @@ export class ModalSandboxProvider implements SandboxProvider {
 
   async getSandboxByName(name: string): Promise<Sandbox | null> {
     try {
-      const app = await this.ensureApp();
-      const modalSandbox = await this.client.sandboxes.fromName(name, app);
-      if (!modalSandbox) {
-        return null;
-      }
-      return new ModalSandboxImpl(
-        modalSandbox.objectId,
-        modalSandbox,
-        this.client,
+      const modalSandbox = await this.client.sandboxes.fromName(
+        this.appName,
+        name,
       );
+      return new ModalSandboxImpl(modalSandbox.sandboxId, modalSandbox);
     } catch {
       return null;
     }

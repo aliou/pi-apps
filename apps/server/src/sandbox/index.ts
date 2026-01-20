@@ -40,6 +40,17 @@
  * ```
  */
 
+export { KoyebSandboxProvider } from "./koyeb.js";
+// Session manager
+export {
+  type SandboxSession,
+  type SandboxSessionConfig,
+  type SandboxSessionEventCallback,
+  SandboxSessionManager,
+} from "./manager.js";
+
+// Providers
+export { ModalSandboxProvider } from "./modal.js";
 // Types
 export type {
   ExecOptions,
@@ -54,25 +65,12 @@ export type {
   SandboxProviderConfig,
   SandboxStatus,
 } from "./types.js";
-
 export { INSTANCE_SPECS } from "./types.js";
 
-// Providers
-export { ModalSandboxProvider } from "./modal.js";
-export { KoyebSandboxProvider } from "./koyeb.js";
-
-// Session manager
-export {
-  SandboxSessionManager,
-  type SandboxSession,
-  type SandboxSessionConfig,
-  type SandboxSessionEventCallback,
-} from "./manager.js";
-
+import { KoyebSandboxProvider } from "./koyeb.js";
+import { ModalSandboxProvider } from "./modal.js";
 // Provider factory
 import type { SandboxProvider, SandboxProviderConfig } from "./types.js";
-import { ModalSandboxProvider } from "./modal.js";
-import { KoyebSandboxProvider } from "./koyeb.js";
 
 /**
  * Create a sandbox provider from configuration.
@@ -137,8 +135,7 @@ export function getSandboxProviderFromEnv(): SandboxProvider | null {
   return createSandboxProvider({
     provider: providerType,
     apiToken,
-    defaultImage:
-      process.env.SANDBOX_IMAGE ?? "node:20-slim",
+    defaultImage: process.env.SANDBOX_IMAGE ?? "node:20-slim",
     defaultInstanceType:
       (process.env.SANDBOX_INSTANCE_TYPE as
         | "nano"

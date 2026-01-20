@@ -26,7 +26,9 @@ export function getGitHubToken(): string {
   return token;
 }
 
-export async function listAccessibleRepos(token: string): Promise<GitHubRepo[]> {
+export async function listAccessibleRepos(
+  token: string,
+): Promise<GitHubRepo[]> {
   const repos: GitHubRepo[] = [];
   let url = `${API_BASE}/user/repos?per_page=${PER_PAGE}&affiliation=owner,collaborator,organization_member&sort=full_name`;
 
@@ -81,7 +83,9 @@ function mapRepo(repo: Record<string, unknown>): GitHubRepo {
     id: Number(repo.id),
     name: String(repo.name ?? ""),
     fullName: String(repo.full_name ?? ""),
-    owner: String((repo.owner as Record<string, unknown> | undefined)?.login ?? ""),
+    owner: String(
+      (repo.owner as Record<string, unknown> | undefined)?.login ?? "",
+    ),
     private: Boolean(repo.private),
     description: repo.description ? String(repo.description) : undefined,
     htmlUrl: String(repo.html_url ?? ""),

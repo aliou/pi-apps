@@ -7,8 +7,8 @@
  */
 
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
-import type { Sandbox, SandboxConnection, SandboxProvider } from "./types.js";
 import type { SessionInfo, SessionMode } from "../types.js";
+import type { Sandbox, SandboxConnection, SandboxProvider } from "./types.js";
 
 const PI_SERVER_PORT = 3141;
 const SANDBOX_STARTUP_TIMEOUT = 120_000; // 2 minutes
@@ -142,7 +142,10 @@ export class SandboxSessionManager {
 
     // Create sandbox asynchronously
     this.createSandboxAsync(sandboxSession, env).catch((error) => {
-      console.error(`Failed to create sandbox for session ${sessionId}:`, error);
+      console.error(
+        `Failed to create sandbox for session ${sessionId}:`,
+        error,
+      );
       sandboxSession.status = "error";
       sandboxSession.error = error.message;
     });
@@ -211,7 +214,9 @@ export class SandboxSessionManager {
       this.startEventForwarding(session, connection);
 
       session.status = "running";
-      console.log(`Session ${session.sessionId} is now running in sandbox ${sandbox.id}`);
+      console.log(
+        `Session ${session.sessionId} is now running in sandbox ${sandbox.id}`,
+      );
     } catch (error) {
       session.status = "error";
       session.error = error instanceof Error ? error.message : String(error);
@@ -259,7 +264,8 @@ export class SandboxSessionManager {
     env: Record<string, string>,
   ): Promise<string> {
     // Determine working directory
-    const cwd = env.PI_SESSION_MODE === "code" ? "/workspace/repo" : "/workspace";
+    const cwd =
+      env.PI_SESSION_MODE === "code" ? "/workspace/repo" : "/workspace";
 
     // Write a startup script
     const startupScript = `#!/bin/sh
@@ -336,8 +342,7 @@ exec ${piServerPath} --host 0.0.0.0
           error,
         );
         session.status = "error";
-        session.error =
-          error instanceof Error ? error.message : String(error);
+        session.error = error instanceof Error ? error.message : String(error);
       }
     })();
   }
@@ -414,9 +419,7 @@ exec ${piServerPath} --host 0.0.0.0
           if (response.ok) {
             resolve(response.result as T);
           } else {
-            reject(
-              new Error(response.error?.message ?? "Request failed"),
-            );
+            reject(new Error(response.error?.message ?? "Request failed"));
           }
         } catch (error) {
           reject(error);
@@ -424,7 +427,7 @@ exec ${piServerPath} --host 0.0.0.0
       });
 
       // Send request
-      session.connection!.send(JSON.stringify(request)).catch((error) => {
+      session.connection?.send(JSON.stringify(request)).catch((error) => {
         clearTimeout(timeoutId);
         this.messageHandlers.delete(requestId);
         reject(error);

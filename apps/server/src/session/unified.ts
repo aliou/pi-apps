@@ -7,14 +7,15 @@
  */
 
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
-import type { SessionMode, SessionInfo } from "../types.js";
-import { SessionManager, type ActiveSession } from "./manager.js";
 import {
-  SandboxSessionManager,
   type SandboxSession,
   type SandboxSessionConfig,
+  SandboxSessionManager,
 } from "../sandbox/manager.js";
 import type { SandboxProvider } from "../sandbox/types.js";
+import type { SessionInfo, SessionMode } from "../types.js";
+import type { ModelInfo } from "./interface.js";
+import { type ActiveSession, SessionManager } from "./manager.js";
 
 /**
  * Configuration for unified session manager.
@@ -106,7 +107,10 @@ export class UnifiedSessionManager {
       );
     }
 
-    return this.localManager!.createSession(
+    if (!this.localManager) {
+      throw new Error("Local manager not available");
+    }
+    return this.localManager.createSession(
       mode,
       repoId,
       preferredModel,
@@ -162,7 +166,10 @@ export class UnifiedSessionManager {
     if (this.sandboxManager) {
       return this.sandboxManager.listSessions();
     }
-    return this.localManager!.listSessions();
+    if (!this.localManager) {
+      return [];
+    }
+    return this.localManager.listSessions();
   }
 
   /**
@@ -182,7 +189,7 @@ export class UnifiedSessionManager {
     if (this.sandboxManager) {
       return this.sandboxManager.deleteSession(sessionId);
     }
-    return this.localManager!.deleteSession(sessionId);
+    return this.localManager?.deleteSession(sessionId);
   }
 
   /**
@@ -197,7 +204,7 @@ export class UnifiedSessionManager {
   /**
    * List available models.
    */
-  listAvailableModels(): unknown[] {
+  listAvailableModels(): ModelInfo[] {
     if (this.localManager) {
       return this.localManager.listAvailableModels();
     }
@@ -209,7 +216,7 @@ export class UnifiedSessionManager {
   /**
    * Find an available model.
    */
-  findAvailableModel(provider: string, modelId: string): unknown | undefined {
+  findAvailableModel(provider: string, modelId: string): ModelInfo | undefined {
     if (this.localManager) {
       return this.localManager.findAvailableModel(provider, modelId);
     }
@@ -227,7 +234,7 @@ export class UnifiedSessionManager {
       return;
     }
 
-    const session = this.localManager!.getSession(sessionId);
+    const session = this.localManager?.getSession(sessionId);
     if (!session) {
       throw new Error(`Session not active: ${sessionId}`);
     }
@@ -247,7 +254,7 @@ export class UnifiedSessionManager {
       return;
     }
 
-    const session = this.localManager!.getSession(sessionId);
+    const session = this.localManager?.getSession(sessionId);
     if (!session) {
       throw new Error(`Session not active: ${sessionId}`);
     }
@@ -263,7 +270,7 @@ export class UnifiedSessionManager {
       return this.sandboxManager.sendRequest(sessionId, "get_state", {});
     }
 
-    const session = this.localManager!.getSession(sessionId);
+    const session = this.localManager?.getSession(sessionId);
     if (!session) {
       throw new Error(`Session not active: ${sessionId}`);
     }
@@ -286,7 +293,7 @@ export class UnifiedSessionManager {
       return this.sandboxManager.sendRequest(sessionId, "get_messages", {});
     }
 
-    const session = this.localManager!.getSession(sessionId);
+    const session = this.localManager?.getSession(sessionId);
     if (!session) {
       throw new Error(`Session not active: ${sessionId}`);
     }
@@ -301,7 +308,7 @@ export class UnifiedSessionManager {
     sessionId: string,
     provider: string,
     modelId: string,
-  ): Promise<unknown> {
+  ): Promise<{ model: ModelInfo }> {
     if (this.sandboxManager) {
       return this.sandboxManager.sendRequest(sessionId, "set_model", {
         provider,
@@ -309,17 +316,14 @@ export class UnifiedSessionManager {
       });
     }
 
-    const session = this.localManager!.getSession(sessionId);
-    if (!session) {
-      throw new Error(`Session not active: ${sessionId}`);
+    if (!this.localManager) {
+      throw new Error("Local manager not available");
     }
-
-    const model = this.localManager!.findAvailableModel(provider, modelId);
-    if (!model) {
-      throw new Error(`Model not available: ${provider}/${modelId}`);
-    }
-
-    await session.session.setModel(model);
+    const model = await this.localManager.setSessionModel(
+      sessionId,
+      provider,
+      modelId,
+    );
     return { model };
   }
 

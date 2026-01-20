@@ -2,7 +2,7 @@
  * Session manager - handles AgentSession lifecycle and state persistence.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentSession,
@@ -15,9 +15,10 @@ import {
   ModelRegistry,
   SessionManager as PiSessionManager,
 } from "@mariozechner/pi-coding-agent";
+import { getGitHubToken, getRepoByFullName } from "../github.js";
 import { getRepo, upsertRepo } from "../repos.js";
 import type { ServerState, SessionInfo, SessionMode } from "../types.js";
-import { getGitHubToken, getRepoByFullName } from "../github.js";
+import type { ModelInfo } from "./interface.js";
 import {
   buildAuthedCloneUrl,
   deleteSessionRepo,
@@ -70,7 +71,7 @@ export class SessionManager {
       preferred.provider,
       preferred.modelId,
     );
-    
+
     if (!preferredModel) {
       return undefined;
     }
@@ -80,7 +81,7 @@ export class SessionManager {
         model.provider === preferredModel.provider &&
         model.id === preferredModel.id,
     );
-    
+
     if (!isAvailable) {
       return undefined;
     }
@@ -172,10 +173,14 @@ export class SessionManager {
 
     // Only resolve model explicitly if a preferred model is provided
     // Otherwise, let createAgentSession use settings.json defaults
-    const model = preferredModel ? this.resolveModel(preferredModel) : undefined;
+    const model = preferredModel
+      ? this.resolveModel(preferredModel)
+      : undefined;
 
     if (preferredModel && !model) {
-      throw new Error(`Preferred model not available: ${preferredModel.provider}/${preferredModel.modelId}`);
+      throw new Error(
+        `Preferred model not available: ${preferredModel.provider}/${preferredModel.modelId}`,
+      );
     }
 
     const { session } = await createAgentSession({
@@ -223,19 +228,58 @@ export class SessionManager {
   /**
    * List models available with current auth.
    */
-  listAvailableModels() {
+  listAvailableModels(): ModelInfo[] {
     this.modelRegistry.refresh();
-    return this.modelRegistry.getAvailable();
+    return this.modelRegistry.getAvailable().map((m) => ({
+      provider: m.provider,
+      id: m.id,
+      name: m.name,
+    }));
   }
 
   /**
    * Find an available model by provider/id.
    */
-  findAvailableModel(provider: string, modelId: string) {
+  findAvailableModel(provider: string, modelId: string): ModelInfo | undefined {
     this.modelRegistry.refresh();
-    return this.modelRegistry
+    const model = this.modelRegistry
       .getAvailable()
       .find((model) => model.provider === provider && model.id === modelId);
+    if (!model) return undefined;
+    return {
+      provider: model.provider,
+      id: model.id,
+      name: model.name,
+    };
+  }
+
+  /**
+   * Set model for a session by provider/id.
+   */
+  async setSessionModel(
+    sessionId: string,
+    provider: string,
+    modelId: string,
+  ): Promise<ModelInfo> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session not active: ${sessionId}`);
+    }
+
+    this.modelRegistry.refresh();
+    const model = this.modelRegistry
+      .getAvailable()
+      .find((m) => m.provider === provider && m.id === modelId);
+    if (!model) {
+      throw new Error(`Model not available: ${provider}/${modelId}`);
+    }
+
+    await session.session.setModel(model);
+    return {
+      provider: model.provider,
+      id: model.id,
+      name: model.name,
+    };
   }
 
   /**

@@ -114,7 +114,10 @@ export function parseArgs(args: string[]): ServerConfig {
  * - SANDBOX_IDLE_TIMEOUT: Idle timeout in seconds (optional)
  */
 function getSandboxConfigFromEnv(): SandboxConfig | undefined {
-  const provider = process.env.SANDBOX_PROVIDER as "modal" | "koyeb" | undefined;
+  const provider = process.env.SANDBOX_PROVIDER as
+    | "modal"
+    | "koyeb"
+    | undefined;
 
   if (!provider) {
     return undefined;
