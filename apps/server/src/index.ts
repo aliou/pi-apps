@@ -3,6 +3,10 @@
  *
  * Provides remote access to pi's AgentSession via WebSocket,
  * enabling iOS and other remote clients to use the coding agent.
+ *
+ * Supports two modes:
+ * - Local mode: Sessions run directly on this server
+ * - Sandbox mode: Sessions run in isolated containers (Modal or Koyeb)
  */
 
 import { existsSync } from "node:fs";
@@ -10,7 +14,8 @@ import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
 import { ensureDataDirs, parseArgs } from "./config.js";
-import { SessionManager } from "./session/manager.js";
+import { UnifiedSessionManager } from "./session/unified.js";
+import { createSandboxProvider } from "./sandbox/index.js";
 import { ConnectionManager } from "./ws/connection.js";
 import { type HandlerContext, handleMessage } from "./ws/handler.js";
 
@@ -55,9 +60,36 @@ console.log("Pi Server starting...");
 console.log(`  Data directory: ${config.dataDir}`);
 console.log(`  Listening on: ${config.host}:${config.port}`);
 
+// Initialize sandbox provider if configured
+let sandboxProvider;
+if (config.sandbox) {
+  console.log(`  Sandbox mode: ${config.sandbox.provider}`);
+  sandboxProvider = createSandboxProvider({
+    provider: config.sandbox.provider,
+    apiToken: config.sandbox.apiToken,
+    defaultImage: config.sandbox.image,
+    defaultInstanceType: config.sandbox.instanceType,
+    defaultTimeout: config.sandbox.timeout,
+    defaultIdleTimeout: config.sandbox.idleTimeout,
+  });
+} else {
+  console.log("  Mode: local");
+}
+
 // Initialize managers
 const connectionManager = new ConnectionManager();
-const sessionManager = new SessionManager(config.dataDir);
+const sessionManager = new UnifiedSessionManager({
+  dataDir: config.dataDir,
+  sandboxProvider,
+  sandboxConfig: config.sandbox
+    ? {
+        image: config.sandbox.image,
+        instanceType: config.sandbox.instanceType,
+        timeout: config.sandbox.timeout,
+        idleTimeout: config.sandbox.idleTimeout,
+      }
+    : undefined,
+});
 
 // Set up session event forwarding
 sessionManager.onEvent((sessionId, event) => {
@@ -77,6 +109,8 @@ app.get("/", (c) => {
   return c.json({
     name: "pi-server",
     version: "0.1.0",
+    mode: sessionManager.getMode(),
+    sandboxProvider: config.sandbox?.provider ?? null,
     endpoints: {
       websocket: "/rpc",
       health: "/health",

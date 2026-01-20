@@ -4,14 +4,14 @@
  */
 
 import { getGitHubToken, listAccessibleRepos } from "../github.js";
-import type { SessionManager } from "../session/manager.js";
+import type { UnifiedSessionManager } from "../session/unified.js";
 import type { HelloParams, WSIncomingMessage, WSResponse } from "../types.js";
 import type { Connection, ConnectionManager } from "./connection.js";
 
 export interface HandlerContext {
   connection: Connection;
   connectionManager: ConnectionManager;
-  sessionManager: SessionManager;
+  sessionManager: UnifiedSessionManager;
   dataDir: string;
 }
 
@@ -249,16 +249,8 @@ async function handlePrompt(
     throw new Error("Missing message");
   }
 
-  const active = ctx.sessionManager.getSession(sessionId);
-  if (!active) {
-    throw new Error(`Session not active: ${sessionId}`);
-  }
-
-  // Don't await - prompt runs async, events stream back
-  active.session.prompt(message).catch((error) => {
-    console.error(`Prompt error for session ${sessionId}:`, error);
-    console.error(error.stack);
-  });
+  // Use unified manager's prompt method (works for both local and sandbox)
+  await ctx.sessionManager.prompt(sessionId, message);
 
   return { ok: true };
 }
@@ -272,12 +264,8 @@ async function handleAbort(
     throw new Error("Missing sessionId");
   }
 
-  const active = ctx.sessionManager.getSession(sessionId);
-  if (!active) {
-    throw new Error(`Session not active: ${sessionId}`);
-  }
-
-  await active.session.abort();
+  // Use unified manager's abort method (works for both local and sandbox)
+  await ctx.sessionManager.abort(sessionId);
 
   return { ok: true };
 }
@@ -291,21 +279,8 @@ async function handleGetState(
     throw new Error("Missing sessionId");
   }
 
-  const active = ctx.sessionManager.getSession(sessionId);
-  if (!active) {
-    throw new Error(`Session not active: ${sessionId}`);
-  }
-
-  const session = active.session;
-
-  return {
-    model: session.model,
-    thinkingLevel: session.thinkingLevel,
-    isStreaming: session.isStreaming,
-    sessionId: session.sessionId,
-    sessionFile: session.sessionFile,
-    messageCount: session.messages.length,
-  };
+  // Use unified manager's getState method (works for both local and sandbox)
+  return ctx.sessionManager.getState(sessionId);
 }
 
 async function handleGetMessages(
@@ -317,12 +292,8 @@ async function handleGetMessages(
     throw new Error("Missing sessionId");
   }
 
-  const active = ctx.sessionManager.getSession(sessionId);
-  if (!active) {
-    throw new Error(`Session not active: ${sessionId}`);
-  }
-
-  return { messages: active.session.messages };
+  // Use unified manager's getMessages method (works for both local and sandbox)
+  return ctx.sessionManager.getMessages(sessionId);
 }
 
 async function handleGetAvailableModels(ctx: HandlerContext): Promise<unknown> {
@@ -345,18 +316,6 @@ async function handleSetModel(
     throw new Error("Missing provider or modelId");
   }
 
-  const active = ctx.sessionManager.getSession(sessionId);
-  if (!active) {
-    throw new Error(`Session not active: ${sessionId}`);
-  }
-
-  // Find and set model
-  const model = ctx.sessionManager.findAvailableModel(provider, modelId);
-  if (!model) {
-    throw new Error(`Model not available: ${provider}/${modelId}`);
-  }
-
-  await active.session.setModel(model);
-
-  return { model };
+  // Use unified manager's setModel method (works for both local and sandbox)
+  return ctx.sessionManager.setModel(sessionId, provider, modelId);
 }

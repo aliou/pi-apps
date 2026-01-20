@@ -9,6 +9,22 @@ export interface ServerConfig {
   port: number;
   host: string; // Use "::" for dual-stack (IPv4 + IPv6)
   dataDir: string;
+  sandbox?: SandboxConfig;
+}
+
+export interface SandboxConfig {
+  /** Sandbox provider: "modal" or "koyeb" */
+  provider: "modal" | "koyeb";
+  /** API token for the provider */
+  apiToken: string;
+  /** Docker image (default: "node:20-slim") */
+  image?: string;
+  /** Instance type (default: "small") */
+  instanceType?: "nano" | "small" | "medium" | "large";
+  /** Sandbox timeout in ms (default: 30 minutes) */
+  timeout?: number;
+  /** Idle timeout in ms (default: 5 minutes) */
+  idleTimeout?: number;
 }
 
 /**
@@ -74,10 +90,78 @@ export function parseArgs(args: string[]): ServerConfig {
     }
   }
 
+  // Check for sandbox configuration from environment
+  const sandbox = getSandboxConfigFromEnv();
+
   return {
     port,
     host,
     dataDir: getDataDir(dataDir),
+    sandbox,
+  };
+}
+
+/**
+ * Get sandbox configuration from environment variables.
+ *
+ * Environment variables:
+ * - SANDBOX_PROVIDER: "modal" or "koyeb"
+ * - MODAL_TOKEN_ID + MODAL_TOKEN_SECRET: Modal credentials
+ * - KOYEB_API_TOKEN: Koyeb credentials
+ * - SANDBOX_IMAGE: Docker image (optional)
+ * - SANDBOX_INSTANCE_TYPE: Instance size (optional)
+ * - SANDBOX_TIMEOUT: Timeout in seconds (optional)
+ * - SANDBOX_IDLE_TIMEOUT: Idle timeout in seconds (optional)
+ */
+function getSandboxConfigFromEnv(): SandboxConfig | undefined {
+  const provider = process.env.SANDBOX_PROVIDER as "modal" | "koyeb" | undefined;
+
+  if (!provider) {
+    return undefined;
+  }
+
+  let apiToken: string;
+
+  if (provider === "modal") {
+    const tokenId = process.env.MODAL_TOKEN_ID;
+    const tokenSecret = process.env.MODAL_TOKEN_SECRET;
+
+    if (!tokenId || !tokenSecret) {
+      console.warn(
+        "SANDBOX_PROVIDER=modal but MODAL_TOKEN_ID/MODAL_TOKEN_SECRET not set",
+      );
+      return undefined;
+    }
+
+    apiToken = `${tokenId}:${tokenSecret}`;
+  } else if (provider === "koyeb") {
+    apiToken = process.env.KOYEB_API_TOKEN ?? "";
+
+    if (!apiToken) {
+      console.warn("SANDBOX_PROVIDER=koyeb but KOYEB_API_TOKEN not set");
+      return undefined;
+    }
+  } else {
+    console.warn(`Unknown SANDBOX_PROVIDER: ${provider}`);
+    return undefined;
+  }
+
+  return {
+    provider,
+    apiToken,
+    image: process.env.SANDBOX_IMAGE,
+    instanceType: process.env.SANDBOX_INSTANCE_TYPE as
+      | "nano"
+      | "small"
+      | "medium"
+      | "large"
+      | undefined,
+    timeout: process.env.SANDBOX_TIMEOUT
+      ? parseInt(process.env.SANDBOX_TIMEOUT, 10) * 1000
+      : undefined,
+    idleTimeout: process.env.SANDBOX_IDLE_TIMEOUT
+      ? parseInt(process.env.SANDBOX_IDLE_TIMEOUT, 10) * 1000
+      : undefined,
   };
 }
 
@@ -94,6 +178,19 @@ Options:
   --data-dir <path>       Data directory (env: PI_SERVER_DATA_DIR)
                           Default: $XDG_DATA_HOME/pi-server or ~/.local/share/pi-server
   --help, -h              Show this help
+
+Sandbox Mode (for running sessions in isolated containers):
+  Set SANDBOX_PROVIDER to enable sandbox mode.
+
+  Environment Variables:
+    SANDBOX_PROVIDER        Provider: "modal" or "koyeb"
+    MODAL_TOKEN_ID          Modal token ID (for modal provider)
+    MODAL_TOKEN_SECRET      Modal token secret (for modal provider)
+    KOYEB_API_TOKEN         Koyeb API token (for koyeb provider)
+    SANDBOX_IMAGE           Docker image (default: node:20-slim)
+    SANDBOX_INSTANCE_TYPE   Instance size: nano, small, medium, large
+    SANDBOX_TIMEOUT         Sandbox timeout in seconds (default: 1800)
+    SANDBOX_IDLE_TIMEOUT    Idle timeout in seconds (default: 300)
 
 Data Directory Structure:
   <data-dir>/
