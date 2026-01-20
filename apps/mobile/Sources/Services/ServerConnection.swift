@@ -126,6 +126,9 @@ public final class ServerConnection {
     /// Active event subscribers - each gets their own continuation
     private var eventSubscribers: [UUID: AsyncStream<RPCEvent>.Continuation] = [:]
 
+    /// Native tool executor for handling tool requests from server
+    private let nativeToolExecutor = NativeToolExecutor()
+
     public let serverURL: URL
     private let clientInfo: ClientInfo
 
@@ -190,7 +193,8 @@ public final class ServerConnection {
         transport = newTransport
 
         do {
-            try await newTransport.connect()
+            // Connect with native tools
+            try await newTransport.connect(nativeTools: NativeTool.allDefinitions)
             isConnected = await newTransport.isConnected
 
             if !isConnected {
@@ -199,7 +203,7 @@ public final class ServerConnection {
             }
 
             startEventForwarding()
-            print("[ServerConnection] Connected")
+            print("[ServerConnection] Connected with \(NativeTool.allDefinitions.count) native tools")
 
         } catch let error as RPCTransportError {
             transport = nil
@@ -414,8 +418,25 @@ public final class ServerConnection {
 
             for await transportEvent in eventStream {
                 guard let self, !Task.isCancelled else { break }
-                await MainActor.run {
-                    self.broadcastEvent(transportEvent.event)
+
+                switch transportEvent.event {
+                case .nativeToolRequest(let request):
+                    // Handle in background, don't block event stream
+                    Task {
+                        await self.handleNativeToolRequest(
+                            sessionId: transportEvent.sessionId,
+                            request: request
+                        )
+                    }
+
+                case .nativeToolCancel(let callId):
+                    await self.nativeToolExecutor.cancel(callId: callId)
+
+                default:
+                    // Broadcast other events to subscribers
+                    await MainActor.run {
+                        self.broadcastEvent(transportEvent.event)
+                    }
                 }
             }
 
@@ -435,6 +456,56 @@ public final class ServerConnection {
                 }
             }
         }
+    }
+
+    // MARK: - Native Tool Handling
+
+    private func handleNativeToolRequest(sessionId: String, request: NativeToolRequest) async {
+        print("[ServerConnection] Handling native tool request: \(request.toolName)")
+
+        do {
+            let resultData = try await nativeToolExecutor.execute(request: request)
+            // Convert JSON Data back to dictionary
+            let result = try JSONSerialization.jsonObject(with: resultData) as? [String: Any]
+            print("[ServerConnection] Native tool \(request.toolName) succeeded")
+
+            try await sendNativeToolResponse(
+                sessionId: sessionId,
+                callId: request.callId,
+                result: result
+            )
+        } catch {
+            print("[ServerConnection] Native tool \(request.toolName) failed: \(error)")
+
+            try? await sendNativeToolResponse(
+                sessionId: sessionId,
+                callId: request.callId,
+                error: error.localizedDescription
+            )
+        }
+    }
+
+    private func sendNativeToolResponse(
+        sessionId: String,
+        callId: String,
+        result: [String: Any]? = nil,
+        error: String? = nil
+    ) async throws {
+        guard isConnected, let transport else {
+            throw ServerConnectionError.notConnected
+        }
+
+        let params = NativeToolResponseParams(
+            callId: callId,
+            result: result,
+            error: error.map { NativeToolErrorInfo(message: $0) }
+        )
+
+        try await transport.sendVoid(
+            method: "native_tool_response",
+            sessionId: sessionId,
+            params: params
+        )
     }
 }
 

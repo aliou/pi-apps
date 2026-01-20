@@ -63,7 +63,13 @@ public actor WebSocketTransport: RPCTransport {
 
     // MARK: - Connection
 
+    /// Connect without native tools (protocol conformance)
     public func connect() async throws {
+        try await connect(nativeTools: [])
+    }
+
+    /// Connect with native tools
+    public func connect(nativeTools: [NativeToolDefinition]) async throws {
         guard let serverURL = config.serverURL else {
             throw RPCTransportError.connectionFailed("No server URL configured")
         }
@@ -94,14 +100,18 @@ public actor WebSocketTransport: RPCTransport {
         // Start receiving messages
         startReceiving()
 
-        // Send hello
+        // Send hello with native tools
         do {
-            print("[WSTransport] Sending hello...")
+            print("[WSTransport] Sending hello with \(nativeTools.count) native tools...")
             let resumeInfo = await connection.getResumeInfo()
             let helloResult: HelloResult = try await send(
                 method: "hello",
                 sessionId: nil,
-                params: HelloParams(client: config.clientInfo, resume: resumeInfo)
+                params: HelloParams(
+                    client: config.clientInfo,
+                    resume: resumeInfo,
+                    nativeTools: nativeTools.isEmpty ? nil : nativeTools
+                )
             )
 
             print("[WSTransport] Hello succeeded, connectionId: \(helloResult.connectionId)")

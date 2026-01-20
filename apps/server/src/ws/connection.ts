@@ -6,6 +6,7 @@
 import type {
   HelloParams,
   HelloResult,
+  NativeToolDefinition,
   ResumeInfo,
   WSEvent,
   WSResponse,
@@ -19,6 +20,13 @@ interface BufferedEvent {
   timestamp: number;
 }
 
+interface PendingNativeCall {
+  resolve: (result: unknown) => void;
+  reject: (error: Error) => void;
+  sessionId: string;
+  toolName: string;
+}
+
 /**
  * Represents a single WebSocket connection.
  */
@@ -27,10 +35,143 @@ export class Connection {
   private ws: WebSocket;
   private attachedSessions: Set<string> = new Set();
   private seqBySession: Map<string, number> = new Map();
+  private nativeTools: Map<string, NativeToolDefinition> = new Map();
+  private pendingCalls: Map<string, PendingNativeCall> = new Map();
 
   constructor(connectionId: string, ws: WebSocket) {
     this.connectionId = connectionId;
     this.ws = ws;
+  }
+
+  /**
+   * Store native tools from hello handshake.
+   */
+  setNativeTools(tools: NativeToolDefinition[]): void {
+    this.nativeTools.clear();
+    for (const tool of tools) {
+      this.nativeTools.set(tool.name, tool);
+    }
+  }
+
+  /**
+   * Get all native tools for this connection.
+   */
+  getNativeTools(): NativeToolDefinition[] {
+    return Array.from(this.nativeTools.values());
+  }
+
+  /**
+   * Check if connection supports a native tool.
+   */
+  hasNativeTool(name: string): boolean {
+    return this.nativeTools.has(name);
+  }
+
+  /**
+   * Call a native tool - sends event to client, waits for response.
+   * No timeout - tools may require user interaction (permission prompts, etc.)
+   * Use signal for cancellation.
+   */
+  async callNativeTool(
+    sessionId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    if (!this.nativeTools.has(toolName)) {
+      throw new Error(`Unknown native tool: ${toolName}`);
+    }
+
+    if (!this.isOpen) {
+      throw new Error("Connection closed");
+    }
+
+    const callId = crypto.randomUUID();
+
+    return new Promise((resolve, reject) => {
+      // Handle abort signal
+      if (signal) {
+        if (signal.aborted) {
+          reject(new Error("Tool call aborted"));
+          return;
+        }
+
+        signal.addEventListener(
+          "abort",
+          () => {
+            const pending = this.pendingCalls.get(callId);
+            if (pending) {
+              this.pendingCalls.delete(callId);
+              // Send cancel event to client
+              this.sendCancelEvent(sessionId, callId);
+              reject(new Error("Tool call aborted"));
+            }
+          },
+          { once: true },
+        );
+      }
+
+      this.pendingCalls.set(callId, { resolve, reject, sessionId, toolName });
+
+      // Send request event to client
+      const seq = this.nextSeq(sessionId);
+      this.sendEvent({
+        v: 1,
+        kind: "event",
+        sessionId,
+        seq,
+        type: "native_tool_request",
+        payload: { callId, toolName, args },
+      });
+    });
+  }
+
+  /**
+   * Send cancel event to client.
+   */
+  private sendCancelEvent(sessionId: string, callId: string): void {
+    const seq = this.nextSeq(sessionId);
+    this.sendEvent({
+      v: 1,
+      kind: "event",
+      sessionId,
+      seq,
+      type: "native_tool_cancel",
+      payload: { callId },
+    });
+  }
+
+  /**
+   * Handle response from native client.
+   * @returns true if callId was found and handled
+   */
+  handleNativeToolResponse(
+    callId: string,
+    result?: unknown,
+    error?: { message: string },
+  ): boolean {
+    const pending = this.pendingCalls.get(callId);
+    if (!pending) return false;
+
+    this.pendingCalls.delete(callId);
+
+    if (error) {
+      pending.reject(new Error(error.message));
+    } else {
+      pending.resolve(result);
+    }
+    return true;
+  }
+
+  /**
+   * Fail all pending native tool calls.
+   * Call when connection closes or session detaches.
+   */
+  failAllPendingCalls(reason: string): void {
+    for (const [_callId, pending] of this.pendingCalls) {
+      pending.reject(new Error(reason));
+    }
+    this.pendingCalls.clear();
   }
 
   /**

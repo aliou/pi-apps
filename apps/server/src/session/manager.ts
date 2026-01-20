@@ -2,7 +2,7 @@
  * Session manager - handles AgentSession lifecycle and state persistence.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentSession,
@@ -15,9 +15,11 @@ import {
   ModelRegistry,
   SessionManager as PiSessionManager,
 } from "@mariozechner/pi-coding-agent";
+import { getGitHubToken, getRepoByFullName } from "../github.js";
+import { createNativeTools } from "../native/index.js";
 import { getRepo, upsertRepo } from "../repos.js";
 import type { ServerState, SessionInfo, SessionMode } from "../types.js";
-import { getGitHubToken, getRepoByFullName } from "../github.js";
+import type { Connection } from "../ws/connection.js";
 import {
   buildAuthedCloneUrl,
   deleteSessionRepo,
@@ -70,7 +72,7 @@ export class SessionManager {
       preferred.provider,
       preferred.modelId,
     );
-    
+
     if (!preferredModel) {
       return undefined;
     }
@@ -80,7 +82,7 @@ export class SessionManager {
         model.provider === preferredModel.provider &&
         model.id === preferredModel.id,
     );
-    
+
     if (!isAvailable) {
       return undefined;
     }
@@ -101,12 +103,16 @@ export class SessionManager {
    * @param repoId - Required for code mode, ignored for chat mode
    * @param preferredModel - Optional model preference
    * @param systemPrompt - Optional custom system prompt (replaces default)
+   * @param connection - Optional connection for native tools
+   * @param includeNativeToolsInCodeMode - Whether to include native tools in code mode
    */
   async createSession(
     mode: SessionMode,
     repoId?: string,
     preferredModel?: { provider: string; modelId: string },
     systemPrompt?: string,
+    connection?: Connection,
+    includeNativeToolsInCodeMode = false,
   ): Promise<SessionInfo> {
     const sessionId = crypto.randomUUID();
     const sessionsDir = join(this.dataDir, "sessions");
@@ -160,6 +166,20 @@ export class SessionManager {
       tools = []; // No tools for chat mode
     }
 
+    // Add native tools based on mode and settings
+    const shouldIncludeNativeTools =
+      connection &&
+      connection.getNativeTools().length > 0 &&
+      (mode === "chat" || includeNativeToolsInCodeMode);
+
+    let customTools: ReturnType<typeof createNativeTools> | undefined;
+    if (shouldIncludeNativeTools) {
+      customTools = createNativeTools(connection, sessionId);
+      console.log(
+        `[SessionManager] Added ${customTools.length} native tools to session ${sessionId}`,
+      );
+    }
+
     const now = new Date().toISOString();
     const info: SessionInfo = {
       sessionId,
@@ -172,10 +192,14 @@ export class SessionManager {
 
     // Only resolve model explicitly if a preferred model is provided
     // Otherwise, let createAgentSession use settings.json defaults
-    const model = preferredModel ? this.resolveModel(preferredModel) : undefined;
+    const model = preferredModel
+      ? this.resolveModel(preferredModel)
+      : undefined;
 
     if (preferredModel && !model) {
-      throw new Error(`Preferred model not available: ${preferredModel.provider}/${preferredModel.modelId}`);
+      throw new Error(
+        `Preferred model not available: ${preferredModel.provider}/${preferredModel.modelId}`,
+      );
     }
 
     const { session } = await createAgentSession({
@@ -185,6 +209,7 @@ export class SessionManager {
       authStorage: this.authStorage,
       modelRegistry: this.modelRegistry,
       tools,
+      customTools, // Native tools from mobile client
       model, // undefined if no preferred model - SDK will use settings.json
       systemPrompt, // undefined uses default, string replaces it
     });

@@ -35,6 +35,7 @@ const methodHandlers: Record<string, MethodHandler> = {
   get_messages: handleGetMessages,
   get_available_models: handleGetAvailableModels,
   set_model: handleSetModel,
+  native_tool_response: handleNativeToolResponse,
 };
 
 /**
@@ -122,6 +123,15 @@ async function handleHello(
     throw new Error("Missing client info");
   }
 
+  // Register native tools if provided
+  if (helloParams.nativeTools && helloParams.nativeTools.length > 0) {
+    ctx.connection.setNativeTools(helloParams.nativeTools);
+    console.log(
+      `[Handler] Registered ${helloParams.nativeTools.length} native tools: ` +
+        helloParams.nativeTools.map((t) => t.name).join(", "),
+    );
+  }
+
   return ctx.connectionManager.handleHello(ctx.connection, helloParams);
 }
 
@@ -159,12 +169,16 @@ async function handleSessionCreate(
 
   const provider = params?.provider as string | undefined;
   const modelId = params?.modelId as string | undefined;
+  const includeNativeToolsInCodeMode =
+    (params?.includeNativeTools as boolean) ?? false;
 
   const info = await ctx.sessionManager.createSession(
     mode,
     repoId,
     provider && modelId ? { provider, modelId } : undefined,
     systemPrompt,
+    ctx.connection,
+    includeNativeToolsInCodeMode,
   );
 
   // Auto-attach the creating connection
@@ -359,4 +373,29 @@ async function handleSetModel(
   await active.session.setModel(model);
 
   return { model };
+}
+
+async function handleNativeToolResponse(
+  ctx: HandlerContext,
+  params: Record<string, unknown> | undefined,
+): Promise<unknown> {
+  const callId = params?.callId as string | undefined;
+  const result = params?.result;
+  const error = params?.error as { message: string } | undefined;
+
+  if (!callId) {
+    throw new Error("Missing callId in native_tool_response");
+  }
+
+  const handled = ctx.connection.handleNativeToolResponse(
+    callId,
+    result,
+    error,
+  );
+  if (!handled) {
+    // Call ID not found - might have been cancelled
+    console.warn(`[Handler] Unknown native tool call ID: ${callId}`);
+  }
+
+  return { ok: true };
 }

@@ -144,10 +144,16 @@ public struct WSIncomingMessage: Decodable, Sendable {
 public struct HelloParams: Encodable, Sendable {
     public let client: ClientInfo
     public let resume: ResumeInfo?
+    public let nativeTools: [NativeToolDefinition]?
 
-    public init(client: ClientInfo, resume: ResumeInfo? = nil) {
+    public init(
+        client: ClientInfo,
+        resume: ResumeInfo? = nil,
+        nativeTools: [NativeToolDefinition]? = nil
+    ) {
         self.client = client
         self.resume = resume
+        self.nativeTools = nativeTools
     }
 }
 
@@ -712,6 +718,8 @@ public enum RPCEvent: Sendable {
     case autoRetryEnd(success: Bool, attempt: Int, finalError: String?)
     case hookError(extensionPath: String?, event: String?, error: String?)
     case stateUpdate(context: StateContext)
+    case nativeToolRequest(NativeToolRequest)
+    case nativeToolCancel(callId: String)
     case unknown(type: String, raw: Data)
 }
 

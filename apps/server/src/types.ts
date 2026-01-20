@@ -49,6 +49,43 @@ export interface RPCError {
 export interface HelloParams {
   client: ClientInfo;
   resume?: ResumeInfo;
+  nativeTools?: NativeToolDefinition[];
+}
+
+/**
+ * Native tool definition sent by client in hello.
+ * Follows JSON Schema format for parameters.
+ * Same structure as regular pi tools.
+ */
+export interface NativeToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>; // JSON Schema object
+}
+
+/**
+ * Event payload: server -> client requesting native tool execution.
+ */
+export interface NativeToolRequestPayload {
+  callId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+}
+
+/**
+ * Event payload: server -> client to cancel a pending tool call.
+ */
+export interface NativeToolCancelPayload {
+  callId: string;
+}
+
+/**
+ * RPC params: client -> server with tool execution result.
+ */
+export interface NativeToolResponseParams {
+  callId: string;
+  result?: unknown;
+  error?: { message: string };
 }
 
 export interface ClientInfo {

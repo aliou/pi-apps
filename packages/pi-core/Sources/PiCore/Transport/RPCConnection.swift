@@ -278,6 +278,25 @@ public actor RPCConnection {
                 isProcessing: nil
             ))
 
+        case "native_tool_request":
+            guard let callId = dict["callId"] as? String,
+                  let toolName = dict["toolName"] as? String else {
+                return .unknown(type: type, raw: Data())
+            }
+            let argsDict = dict["args"] as? [String: Any] ?? [:]
+            let args = argsDict.mapValues { AnyCodable($0) }
+            return .nativeToolRequest(NativeToolRequest(
+                callId: callId,
+                toolName: toolName,
+                args: args
+            ))
+
+        case "native_tool_cancel":
+            guard let callId = dict["callId"] as? String else {
+                return .unknown(type: type, raw: Data())
+            }
+            return .nativeToolCancel(callId: callId)
+
         default:
             return .unknown(type: type, raw: Data())
         }
