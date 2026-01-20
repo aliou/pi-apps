@@ -4,8 +4,11 @@
  * Uses the Modal JavaScript SDK to create and manage sandboxes.
  * @see https://modal.com/docs/guide/sdk-javascript-go
  * @see https://github.com/modal-labs/libmodal
+ *
+ * Install: npm install modal
  */
 
+import { ModalClient } from "modal";
 import type {
   ExecOptions,
   ExecOutput,
@@ -17,99 +20,7 @@ import type {
   SandboxProvider,
   SandboxProviderConfig,
   SandboxStatus,
-  INSTANCE_SPECS,
 } from "./types.js";
-
-// Modal SDK types (these would come from the "modal" npm package)
-// We define interfaces here to avoid hard dependency during development
-interface ModalClient {
-  apps: {
-    fromName(
-      name: string,
-      options?: { createIfMissing?: boolean },
-    ): Promise<ModalApp>;
-  };
-  sandboxes: {
-    create(
-      app: ModalApp,
-      image: ModalImage,
-      options?: ModalSandboxOptions,
-    ): Promise<ModalSandbox>;
-    fromId(sandboxId: string): Promise<ModalSandbox>;
-    fromName(name: string, app: ModalApp): Promise<ModalSandbox | null>;
-    list(options?: { tags?: Record<string, string> }): AsyncIterable<ModalSandboxInfo>;
-  };
-  images: {
-    fromRegistry(image: string): ModalImage;
-  };
-  secrets: {
-    fromDict(dict: Record<string, string>): ModalSecret;
-  };
-}
-
-interface ModalApp {
-  name: string;
-}
-
-interface ModalImage {
-  pipInstall(packages: string[]): ModalImage;
-  runCommands(commands: string[]): ModalImage;
-}
-
-interface ModalSecret {}
-
-interface ModalSandboxOptions {
-  secrets?: ModalSecret[];
-  timeout?: number;
-  idleTimeout?: number;
-  cpu?: number;
-  memory?: number;
-  name?: string;
-  tags?: Record<string, string>;
-}
-
-interface ModalSandbox {
-  objectId: string;
-  exec(
-    args: string[],
-    options?: { timeout?: number; cwd?: string },
-  ): Promise<ModalSandboxProcess>;
-  terminate(): Promise<void>;
-}
-
-interface ModalSandboxProcess {
-  stdout: ModalStream;
-  stderr: ModalStream;
-  wait(): Promise<number>;
-}
-
-interface ModalStream {
-  readText(): Promise<string>;
-  [Symbol.asyncIterator](): AsyncIterator<string>;
-}
-
-interface ModalSandboxInfo {
-  objectId: string;
-  name?: string;
-  tags?: Record<string, string>;
-  createdAt: Date;
-}
-
-/**
- * Get the Modal client (lazy loaded).
- */
-async function getModalClient(): Promise<ModalClient> {
-  try {
-    // Dynamic import to avoid bundling issues
-    // @ts-expect-error - modal package is optional, types defined above
-    const modal = await import("modal");
-    return new modal.ModalClient() as unknown as ModalClient;
-  } catch (error) {
-    throw new Error(
-      `Failed to load Modal SDK. Ensure "modal" is installed: npm install modal. Error: ${error}`,
-    );
-  }
-}
 
 /**
  * Modal sandbox implementation.
@@ -117,11 +28,11 @@ async function getModalClient(): Promise<ModalClient> {
 class ModalSandboxImpl implements Sandbox {
   readonly id: string;
   private _status: SandboxStatus = "running";
-  private modalSandbox: ModalSandbox;
+  private modalSandbox: any;
   private client: ModalClient;
   private exposedPorts: Map<number, string> = new Map();
 
-  constructor(id: string, modalSandbox: ModalSandbox, client: ModalClient) {
+  constructor(id: string, modalSandbox: any, client: ModalClient) {
     this.id = id;
     this.modalSandbox = modalSandbox;
     this.client = client;
@@ -135,7 +46,7 @@ class ModalSandboxImpl implements Sandbox {
     return {
       id: this.id,
       status: this._status,
-      createdAt: new Date(), // Modal doesn't expose this easily
+      createdAt: new Date(),
       metadata: {
         provider: "modal",
       },
@@ -153,14 +64,12 @@ class ModalSandboxImpl implements Sandbox {
       cwd: options?.cwd,
     });
 
-    // Read stdout and stderr
     const [stdout, stderr, exitCode] = await Promise.all([
       process.stdout.readText(),
       process.stderr.readText(),
       process.wait(),
     ]);
 
-    // Call callbacks if provided
     if (options?.onStdout && stdout) {
       options.onStdout(stdout);
     }
@@ -186,12 +95,13 @@ class ModalSandboxImpl implements Sandbox {
       cwd: options?.cwd,
     });
 
-    // Stream stdout and stderr concurrently
     const stdoutIterator = process.stdout[Symbol.asyncIterator]();
     const stderrIterator = process.stderr[Symbol.asyncIterator]();
 
-    // Create a merged async generator
-    const pending: Promise<{ stream: "stdout" | "stderr"; result: IteratorResult<string> }>[] = [];
+    const pending: Promise<{
+      stream: "stdout" | "stderr";
+      result: IteratorResult<string>;
+    }>[] = [];
 
     const nextStdout = async () => ({
       stream: "stdout" as const,
@@ -211,10 +121,7 @@ class ModalSandboxImpl implements Sandbox {
       if (!result.done) {
         yield { stream, data: result.value };
 
-        // Refresh the iterator
-        const idx = pending.findIndex(
-          (p) => p.then((r) => r.stream === stream),
-        );
+        const idx = pending.findIndex((p) => p.then((r) => r.stream === stream));
         if (idx >= 0) {
           pending.splice(idx, 1);
           if (stream === "stdout") {
@@ -224,10 +131,7 @@ class ModalSandboxImpl implements Sandbox {
           }
         }
       } else {
-        // Remove completed iterator
-        const idx = pending.findIndex(
-          (p) => p.then((r) => r.stream === stream),
-        );
+        const idx = pending.findIndex((p) => p.then((r) => r.stream === stream));
         if (idx >= 0) {
           pending.splice(idx, 1);
         }
@@ -239,7 +143,6 @@ class ModalSandboxImpl implements Sandbox {
     const contentStr =
       typeof content === "string" ? content : new TextDecoder().decode(content);
 
-    // Use shell to write file (base64 encode for safety)
     const base64Content = Buffer.from(contentStr).toString("base64");
     await this.exec("sh", [
       "-c",
@@ -264,17 +167,12 @@ class ModalSandboxImpl implements Sandbox {
   }
 
   async exposePort(port: number): Promise<string> {
-    // Modal sandboxes can expose ports via tunnel
-    // For now, we'll use the sandbox's built-in TCP tunneling
-    // The actual implementation depends on Modal's tunnel API
     const tunnelUrl = `sandbox-${this.id}-${port}.modal.run`;
     this.exposedPorts.set(port, tunnelUrl);
     return tunnelUrl;
   }
 
-  async connect(port: number): Promise<SandboxConnection> {
-    // Modal sandbox TCP connections
-    // This is a placeholder - actual implementation depends on Modal's API
+  async connect(_port: number): Promise<SandboxConnection> {
     throw new Error(
       "Direct TCP connections not yet implemented for Modal sandboxes. " +
         "Use execStream for command-based communication.",
@@ -298,9 +196,9 @@ class ModalSandboxImpl implements Sandbox {
  */
 export class ModalSandboxProvider implements SandboxProvider {
   readonly name = "modal";
-  private client: ModalClient | null = null;
+  private client: ModalClient;
   private config: SandboxProviderConfig;
-  private app: ModalApp | null = null;
+  private app: any | null = null;
   private appName: string;
 
   constructor(config: SandboxProviderConfig) {
@@ -311,10 +209,7 @@ export class ModalSandboxProvider implements SandboxProvider {
     this.appName =
       (config.providerConfig?.appName as string) ?? "pi-server-sandboxes";
 
-    // Set environment variables for Modal authentication
     if (config.apiToken) {
-      // Modal expects MODAL_TOKEN_ID and MODAL_TOKEN_SECRET
-      // or a combined token that can be parsed
       const [tokenId, tokenSecret] = config.apiToken.includes(":")
         ? config.apiToken.split(":")
         : [config.apiToken, ""];
@@ -326,19 +221,13 @@ export class ModalSandboxProvider implements SandboxProvider {
         process.env.MODAL_TOKEN_SECRET = tokenSecret;
       }
     }
+
+    this.client = new ModalClient();
   }
 
-  private async ensureClient(): Promise<ModalClient> {
-    if (!this.client) {
-      this.client = await getModalClient();
-    }
-    return this.client;
-  }
-
-  private async ensureApp(): Promise<ModalApp> {
+  private async ensureApp(): Promise<any> {
     if (!this.app) {
-      const client = await this.ensureClient();
-      this.app = await client.apps.fromName(this.appName, {
+      this.app = await this.client.apps.fromName(this.appName, {
         createIfMissing: true,
       });
     }
@@ -346,15 +235,12 @@ export class ModalSandboxProvider implements SandboxProvider {
   }
 
   async createSandbox(options: SandboxCreateOptions): Promise<Sandbox> {
-    const client = await this.ensureClient();
     const app = await this.ensureApp();
 
-    // Create image
-    let image = client.images.fromRegistry(
+    let image = this.client.images.fromRegistry(
       options.image ?? this.config.defaultImage ?? "python:3.12-slim",
     );
 
-    // Add pip packages if specified in provider config
     const pipPackages = this.config.providerConfig?.pipPackages as
       | string[]
       | undefined;
@@ -362,12 +248,10 @@ export class ModalSandboxProvider implements SandboxProvider {
       image = image.pipInstall(pipPackages);
     }
 
-    // Create secrets from environment variables
     const secrets = options.env
-      ? [client.secrets.fromDict(options.env)]
+      ? [this.client.secrets.fromDict(options.env)]
       : undefined;
 
-    // Map instance type to resources
     const instanceType =
       options.instanceType ?? this.config.defaultInstanceType ?? "small";
     const specs = {
@@ -377,31 +261,28 @@ export class ModalSandboxProvider implements SandboxProvider {
       large: { vcpu: 4, memoryMB: 4096 },
     }[instanceType];
 
-    // Create sandbox
-    const modalSandbox = await client.sandboxes.create(app, image, {
+    const modalSandbox = await this.client.sandboxes.create(app, image, {
       secrets,
       timeout:
-        (options.timeout ?? this.config.defaultTimeout ?? 5 * 60 * 1000) / 1000, // Modal uses seconds
+        (options.timeout ?? this.config.defaultTimeout ?? 5 * 60 * 1000) / 1000,
       idleTimeout:
         (options.idleTimeout ?? this.config.defaultIdleTimeout ?? 60 * 1000) /
         1000,
       cpu: specs.vcpu,
-      memory: specs.memoryMB * 1024 * 1024, // Modal uses bytes
+      memory: specs.memoryMB * 1024 * 1024,
       name: options.name,
       tags: options.tags,
     });
 
-    return new ModalSandboxImpl(modalSandbox.objectId, modalSandbox, client);
+    return new ModalSandboxImpl(modalSandbox.objectId, modalSandbox, this.client);
   }
 
   async listSandboxes(tags?: Record<string, string>): Promise<SandboxInfo[]> {
-    const client = await this.ensureClient();
-
     const sandboxes: SandboxInfo[] = [];
-    for await (const info of client.sandboxes.list({ tags })) {
+    for await (const info of this.client.sandboxes.list({ tags })) {
       sandboxes.push({
         id: info.objectId,
-        status: "running", // Modal doesn't expose status in list
+        status: "running",
         createdAt: info.createdAt,
         name: info.name,
         tags: info.tags,
@@ -414,9 +295,8 @@ export class ModalSandboxProvider implements SandboxProvider {
 
   async getSandbox(sandboxId: string): Promise<Sandbox | null> {
     try {
-      const client = await this.ensureClient();
-      const modalSandbox = await client.sandboxes.fromId(sandboxId);
-      return new ModalSandboxImpl(sandboxId, modalSandbox, client);
+      const modalSandbox = await this.client.sandboxes.fromId(sandboxId);
+      return new ModalSandboxImpl(sandboxId, modalSandbox, this.client);
     } catch {
       return null;
     }
@@ -424,13 +304,16 @@ export class ModalSandboxProvider implements SandboxProvider {
 
   async getSandboxByName(name: string): Promise<Sandbox | null> {
     try {
-      const client = await this.ensureClient();
       const app = await this.ensureApp();
-      const modalSandbox = await client.sandboxes.fromName(name, app);
+      const modalSandbox = await this.client.sandboxes.fromName(name, app);
       if (!modalSandbox) {
         return null;
       }
-      return new ModalSandboxImpl(modalSandbox.objectId, modalSandbox, client);
+      return new ModalSandboxImpl(
+        modalSandbox.objectId,
+        modalSandbox,
+        this.client,
+      );
     } catch {
       return null;
     }
