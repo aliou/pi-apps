@@ -287,13 +287,15 @@ public final class ServerConnection {
         mode: SessionMode,
         repoId: String? = nil,
         preferredProvider: String? = nil,
-        preferredModelId: String? = nil
+        preferredModelId: String? = nil,
+        systemPrompt: String? = nil
     ) async throws -> SessionCreateResult {
         struct CreateSessionParams: Encodable, Sendable {
             let mode: String
             let repoId: String?
             let provider: String?
             let modelId: String?
+            let systemPrompt: String?
         }
 
         return try await send(
@@ -302,14 +304,15 @@ public final class ServerConnection {
                 mode: mode.rawValue,
                 repoId: repoId,
                 provider: preferredProvider,
-                modelId: preferredModelId
+                modelId: preferredModelId,
+                systemPrompt: systemPrompt
             )
         )
     }
 
     /// Create a chat session (no repo needed)
-    public func createChatSession() async throws -> SessionCreateResult {
-        try await createSession(mode: .chat)
+    public func createChatSession(systemPrompt: String? = nil) async throws -> SessionCreateResult {
+        try await createSession(mode: .chat, systemPrompt: systemPrompt)
     }
 
     /// Create a code session for a specific repo

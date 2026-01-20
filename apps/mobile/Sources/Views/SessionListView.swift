@@ -11,6 +11,7 @@ import PiUI
 
 struct SessionListView: View {
     @Environment(ServerConnection.self) private var connection
+    @State private var settings = AppSettings.shared
     @State private var selectedMode: SessionMode = .chat
     @State private var path = NavigationPath()
     @State private var sessions: [SessionInfo] = []
@@ -46,7 +47,7 @@ struct SessionListView: View {
                     }
                 }
             }
-            .navigationTitle("Sessions")
+            .navigationTitle("Pi")
             .navigationDestination(for: SessionInfo.self) { session in
                 SessionConversationView(session: session)
             }
@@ -92,7 +93,7 @@ struct SessionListView: View {
                     }
                 }
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.large])
         }
         .sheet(isPresented: $showRepoSelector) {
             RepoSelectorSheet(connection: connection) { repo in
@@ -176,7 +177,9 @@ struct SessionListView: View {
 
     private func createChatSession() async {
         do {
-            let result = try await connection.createChatSession()
+            let result = try await connection.createChatSession(
+                systemPrompt: settings.effectiveChatSystemPrompt
+            )
 
             let newSession = SessionInfo(
                 sessionId: result.sessionId,

@@ -99,10 +99,11 @@ public struct StreamingBubbleView: View {
                 .frame(width: 8, height: 8)
                 .padding(.top, 6)
 
-            StructuredText(markdown: text)
-                .textual.structuredTextStyle(PiMarkdownStyle())
-                .textual.textSelection(.enabled)
+            // Use plain Text during streaming to avoid constant markdown parsing
+            Text(text)
                 .font(.body)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer(minLength: 40)
         }

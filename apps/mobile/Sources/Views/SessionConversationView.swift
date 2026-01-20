@@ -19,6 +19,7 @@ struct SessionConversationView: View {
     @State private var autoScrollEnabled = true
     @State private var isUserScrolling = false
     @State private var eventTask: Task<Void, Never>?
+    @State private var lastScrollTime: Date = .distantPast
 
     @FocusState private var isInputFocused: Bool
 
@@ -84,7 +85,10 @@ struct SessionConversationView: View {
                 }
             }
             .onChange(of: engine.streamingText) { _, _ in
-                if autoScrollEnabled && !isUserScrolling {
+                // Throttle scroll during streaming to avoid performance issues
+                let now = Date()
+                if autoScrollEnabled && !isUserScrolling && now.timeIntervalSince(lastScrollTime) > 0.1 {
+                    lastScrollTime = now
                     scrollToBottom(proxy)
                 }
             }

@@ -6,6 +6,8 @@ struct SettingsView: View {
     let serverURL: URL?
     let onDisconnect: () -> Void
 
+    @State private var settings = AppSettings.shared
+
     var body: some View {
         List {
             Section {
@@ -20,6 +22,35 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("Connection")
+            }
+
+            Section {
+                TextEditor(text: $settings.chatSystemPrompt)
+                    .frame(minHeight: 200)
+                    .font(.body.monospaced())
+                    .foregroundColor(Theme.text)
+                    .scrollContentBackground(.hidden)
+
+                Button("Reset to Default") {
+                    settings.resetToDefault()
+                }
+                .foregroundColor(Theme.accent)
+            } header: {
+                Text("Chat System Prompt")
+            } footer: {
+                Text("Instructions for chat sessions.")
+                    .foregroundColor(Theme.textSecondary)
+            }
+
+            Section {
+                Text(AppSettings.buildDeviceContext())
+                    .font(.body.monospaced())
+                    .foregroundColor(Theme.textSecondary)
+            } header: {
+                Text("Auto-Appended Context")
+            } footer: {
+                Text("This device information is automatically added to every chat session.")
+                    .foregroundColor(Theme.textSecondary)
             }
 
             Section {

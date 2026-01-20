@@ -100,11 +100,13 @@ export class SessionManager {
    * @param mode - "chat" for general conversation, "code" for repo-based coding
    * @param repoId - Required for code mode, ignored for chat mode
    * @param preferredModel - Optional model preference
+   * @param systemPrompt - Optional custom system prompt (replaces default)
    */
   async createSession(
     mode: SessionMode,
     repoId?: string,
     preferredModel?: { provider: string; modelId: string },
+    systemPrompt?: string,
   ): Promise<SessionInfo> {
     const sessionId = crypto.randomUUID();
     const sessionsDir = join(this.dataDir, "sessions");
@@ -184,6 +186,7 @@ export class SessionManager {
       modelRegistry: this.modelRegistry,
       tools,
       model, // undefined if no preferred model - SDK will use settings.json
+      systemPrompt, // undefined uses default, string replaces it
     });
 
     const unsubscribe = session.subscribe((event) => {

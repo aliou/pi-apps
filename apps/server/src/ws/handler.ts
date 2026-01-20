@@ -151,6 +151,7 @@ async function handleSessionCreate(
 ): Promise<unknown> {
   const mode = (params?.mode as "chat" | "code") ?? "code"; // Default to code for backwards compat
   const repoId = params?.repoId as string | undefined;
+  const systemPrompt = params?.systemPrompt as string | undefined;
 
   if (mode === "code" && !repoId) {
     throw new Error("Missing repoId for code mode");
@@ -163,6 +164,7 @@ async function handleSessionCreate(
     mode,
     repoId,
     provider && modelId ? { provider, modelId } : undefined,
+    systemPrompt,
   );
 
   // Auto-attach the creating connection
