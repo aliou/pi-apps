@@ -72,6 +72,10 @@ if (config.sandbox) {
     defaultInstanceType: config.sandbox.instanceType,
     defaultTimeout: config.sandbox.timeout,
     defaultIdleTimeout: config.sandbox.idleTimeout,
+    providerConfig:
+      config.sandbox.provider === "cloudflare" && config.sandbox.workerUrl
+        ? { workerUrl: config.sandbox.workerUrl }
+        : undefined,
   });
 } else {
   console.log("  Mode: local");

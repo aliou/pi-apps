@@ -6,6 +6,7 @@
  *
  * - Modal (https://modal.com) - via "modal" npm package
  * - Koyeb (https://koyeb.com) - via "@koyeb/sandbox-sdk" npm package
+ * - Cloudflare (https://developers.cloudflare.com/sandbox/) - via Worker proxy
  *
  * @example
  * ```typescript
@@ -40,6 +41,8 @@
  * ```
  */
 
+// Providers
+export { CloudflareSandboxProvider } from "./cloudflare.js";
 export { KoyebSandboxProvider } from "./koyeb.js";
 // Session manager
 export {
@@ -48,8 +51,6 @@ export {
   type SandboxSessionEventCallback,
   SandboxSessionManager,
 } from "./manager.js";
-
-// Providers
 export { ModalSandboxProvider } from "./modal.js";
 // Types
 export type {
@@ -67,9 +68,10 @@ export type {
 } from "./types.js";
 export { INSTANCE_SPECS } from "./types.js";
 
+// Provider factory
+import { CloudflareSandboxProvider } from "./cloudflare.js";
 import { KoyebSandboxProvider } from "./koyeb.js";
 import { ModalSandboxProvider } from "./modal.js";
-// Provider factory
 import type { SandboxProvider, SandboxProviderConfig } from "./types.js";
 
 /**
@@ -83,6 +85,8 @@ export function createSandboxProvider(
       return new ModalSandboxProvider(config);
     case "koyeb":
       return new KoyebSandboxProvider(config);
+    case "cloudflare":
+      return new CloudflareSandboxProvider(config);
     default:
       throw new Error(`Unknown sandbox provider: ${config.provider}`);
   }
@@ -92,14 +96,16 @@ export function createSandboxProvider(
  * Get sandbox provider from environment variables.
  *
  * Reads configuration from:
- * - SANDBOX_PROVIDER: "modal" or "koyeb"
+ * - SANDBOX_PROVIDER: "modal", "koyeb", or "cloudflare"
  * - MODAL_TOKEN_ID + MODAL_TOKEN_SECRET: Modal credentials
  * - KOYEB_API_TOKEN: Koyeb credentials
+ * - CLOUDFLARE_SANDBOX_WORKER_URL + CLOUDFLARE_API_TOKEN: Cloudflare credentials
  */
 export function getSandboxProviderFromEnv(): SandboxProvider | null {
   const providerType = process.env.SANDBOX_PROVIDER as
     | "modal"
     | "koyeb"
+    | "cloudflare"
     | undefined;
 
   if (!providerType) {
@@ -107,6 +113,7 @@ export function getSandboxProviderFromEnv(): SandboxProvider | null {
   }
 
   let apiToken: string;
+  let providerConfig: Record<string, unknown> | undefined;
 
   if (providerType === "modal") {
     const tokenId = process.env.MODAL_TOKEN_ID;
@@ -127,6 +134,24 @@ export function getSandboxProviderFromEnv(): SandboxProvider | null {
       console.warn("SANDBOX_PROVIDER=koyeb but KOYEB_API_TOKEN not set");
       return null;
     }
+  } else if (providerType === "cloudflare") {
+    const workerUrl = process.env.CLOUDFLARE_SANDBOX_WORKER_URL;
+    apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
+
+    if (!workerUrl) {
+      console.warn(
+        "SANDBOX_PROVIDER=cloudflare but CLOUDFLARE_SANDBOX_WORKER_URL not set",
+      );
+      return null;
+    }
+    if (!apiToken) {
+      console.warn(
+        "SANDBOX_PROVIDER=cloudflare but CLOUDFLARE_API_TOKEN not set",
+      );
+      return null;
+    }
+
+    providerConfig = { workerUrl };
   } else {
     console.warn(`Unknown SANDBOX_PROVIDER: ${providerType}`);
     return null;
@@ -148,5 +173,6 @@ export function getSandboxProviderFromEnv(): SandboxProvider | null {
     defaultIdleTimeout: process.env.SANDBOX_IDLE_TIMEOUT
       ? parseInt(process.env.SANDBOX_IDLE_TIMEOUT, 10) * 1000
       : 5 * 60 * 1000,
+    providerConfig,
   });
 }

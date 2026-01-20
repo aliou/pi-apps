@@ -13,8 +13,8 @@ export interface ServerConfig {
 }
 
 export interface SandboxConfig {
-  /** Sandbox provider: "modal" or "koyeb" */
-  provider: "modal" | "koyeb";
+  /** Sandbox provider: "modal", "koyeb", or "cloudflare" */
+  provider: "modal" | "koyeb" | "cloudflare";
   /** API token for the provider */
   apiToken: string;
   /** Docker image (default: "node:20-slim") */
@@ -25,6 +25,8 @@ export interface SandboxConfig {
   timeout?: number;
   /** Idle timeout in ms (default: 5 minutes) */
   idleTimeout?: number;
+  /** Cloudflare Worker URL (required for cloudflare provider) */
+  workerUrl?: string;
 }
 
 /**
@@ -105,9 +107,10 @@ export function parseArgs(args: string[]): ServerConfig {
  * Get sandbox configuration from environment variables.
  *
  * Environment variables:
- * - SANDBOX_PROVIDER: "modal" or "koyeb"
+ * - SANDBOX_PROVIDER: "modal", "koyeb", or "cloudflare"
  * - MODAL_TOKEN_ID + MODAL_TOKEN_SECRET: Modal credentials
  * - KOYEB_API_TOKEN: Koyeb credentials
+ * - CLOUDFLARE_SANDBOX_WORKER_URL + CLOUDFLARE_API_TOKEN: Cloudflare credentials
  * - SANDBOX_IMAGE: Docker image (optional)
  * - SANDBOX_INSTANCE_TYPE: Instance size (optional)
  * - SANDBOX_TIMEOUT: Timeout in seconds (optional)
@@ -117,6 +120,7 @@ function getSandboxConfigFromEnv(): SandboxConfig | undefined {
   const provider = process.env.SANDBOX_PROVIDER as
     | "modal"
     | "koyeb"
+    | "cloudflare"
     | undefined;
 
   if (!provider) {
@@ -124,6 +128,7 @@ function getSandboxConfigFromEnv(): SandboxConfig | undefined {
   }
 
   let apiToken: string;
+  let workerUrl: string | undefined;
 
   if (provider === "modal") {
     const tokenId = process.env.MODAL_TOKEN_ID;
@@ -144,6 +149,22 @@ function getSandboxConfigFromEnv(): SandboxConfig | undefined {
       console.warn("SANDBOX_PROVIDER=koyeb but KOYEB_API_TOKEN not set");
       return undefined;
     }
+  } else if (provider === "cloudflare") {
+    workerUrl = process.env.CLOUDFLARE_SANDBOX_WORKER_URL;
+    apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
+
+    if (!workerUrl) {
+      console.warn(
+        "SANDBOX_PROVIDER=cloudflare but CLOUDFLARE_SANDBOX_WORKER_URL not set",
+      );
+      return undefined;
+    }
+    if (!apiToken) {
+      console.warn(
+        "SANDBOX_PROVIDER=cloudflare but CLOUDFLARE_API_TOKEN not set",
+      );
+      return undefined;
+    }
   } else {
     console.warn(`Unknown SANDBOX_PROVIDER: ${provider}`);
     return undefined;
@@ -152,6 +173,7 @@ function getSandboxConfigFromEnv(): SandboxConfig | undefined {
   return {
     provider,
     apiToken,
+    workerUrl,
     image: process.env.SANDBOX_IMAGE,
     instanceType: process.env.SANDBOX_INSTANCE_TYPE as
       | "nano"
@@ -186,14 +208,16 @@ Sandbox Mode (for running sessions in isolated containers):
   Set SANDBOX_PROVIDER to enable sandbox mode.
 
   Environment Variables:
-    SANDBOX_PROVIDER        Provider: "modal" or "koyeb"
-    MODAL_TOKEN_ID          Modal token ID (for modal provider)
-    MODAL_TOKEN_SECRET      Modal token secret (for modal provider)
-    KOYEB_API_TOKEN         Koyeb API token (for koyeb provider)
-    SANDBOX_IMAGE           Docker image (default: node:20-slim)
-    SANDBOX_INSTANCE_TYPE   Instance size: nano, small, medium, large
-    SANDBOX_TIMEOUT         Sandbox timeout in seconds (default: 1800)
-    SANDBOX_IDLE_TIMEOUT    Idle timeout in seconds (default: 300)
+    SANDBOX_PROVIDER              Provider: "modal", "koyeb", or "cloudflare"
+    MODAL_TOKEN_ID                Modal token ID (for modal provider)
+    MODAL_TOKEN_SECRET            Modal token secret (for modal provider)
+    KOYEB_API_TOKEN               Koyeb API token (for koyeb provider)
+    CLOUDFLARE_SANDBOX_WORKER_URL Cloudflare Worker URL (for cloudflare provider)
+    CLOUDFLARE_API_TOKEN          Cloudflare API token (for cloudflare provider)
+    SANDBOX_IMAGE                 Docker image (default: node:20-slim)
+    SANDBOX_INSTANCE_TYPE         Instance size: nano, small, medium, large
+    SANDBOX_TIMEOUT               Sandbox timeout in seconds (default: 1800)
+    SANDBOX_IDLE_TIMEOUT          Idle timeout in seconds (default: 300)
 
 Data Directory Structure:
   <data-dir>/
