@@ -26,7 +26,7 @@ Default: `~/.local/share/pi-server/` (or `$XDG_DATA_HOME/pi-server/`)
 
 ```
 <data-dir>/
-├── .env           # API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, GITHUB_TOKEN)
+├── .env           # API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, PI_SERVER_GITHUB_TOKEN)
 ├── auth.json      # pi auth (symlink to ~/.pi/agent/auth.json)
 ├── repos.json     # cloned repos
 ├── sessions/      # session data + repo worktrees

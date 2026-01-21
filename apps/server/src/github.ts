@@ -19,9 +19,9 @@ const API_BASE = "https://api.github.com";
 const PER_PAGE = 100;
 
 export function getGitHubToken(): string {
-  const token = process.env.GITHUB_TOKEN;
+  const token = process.env.PI_SERVER_GITHUB_TOKEN;
   if (!token) {
-    throw new Error("GITHUB_TOKEN not set");
+    throw new Error("PI_SERVER_GITHUB_TOKEN not set");
   }
   return token;
 }
