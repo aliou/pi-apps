@@ -278,6 +278,15 @@ public actor RPCConnection {
                 isProcessing: nil
             ))
 
+        case "model_changed":
+            if let modelDict = dict["model"] as? [String: Any],
+               let id = modelDict["id"] as? String,
+               let name = modelDict["name"] as? String,
+               let provider = modelDict["provider"] as? String {
+                return .modelChanged(model: ModelInfo(id: id, name: name, provider: provider))
+            }
+            return .unknown(type: type, raw: Data())
+
         case "native_tool_request":
             guard let callId = dict["callId"] as? String,
                   let toolName = dict["toolName"] as? String else {

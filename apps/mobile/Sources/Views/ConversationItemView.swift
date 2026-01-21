@@ -21,6 +21,9 @@ struct ConversationItemView: View {
 
         case .toolCall(_, let name, let args, _, let status):
             toolCallView(name: name, args: args, status: status)
+
+        case .systemEvent(_, let event):
+            systemEventView(event: event)
         }
     }
 
@@ -58,6 +61,30 @@ struct ConversationItemView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 16)
     }
+
+    @ViewBuilder
+    private func systemEventView(event: SystemEventType) -> some View {
+        switch event {
+        case .modelSwitch(let fromModel, let toModel):
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textMuted)
+
+                if let from = fromModel {
+                    Text("Switched from \(from) to \(toModel)")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                } else {
+                    Text("Model set to \(toModel)")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+        }
+    }
 }
 
 // MARK: - Previews
@@ -83,6 +110,15 @@ struct ConversationItemView: View {
         ConversationItemView(item: .toolCall(id: "1", name: "Read", args: "{\"path\": \"file.txt\"}", output: nil, status: .running))
         ConversationItemView(item: .toolCall(id: "2", name: "Bash", args: "{\"command\": \"ls -la\"}", output: "success", status: .success))
         ConversationItemView(item: .toolCall(id: "3", name: "Write", args: nil, output: "error", status: .error))
+    }
+    .padding()
+    .background(Theme.pageBg)
+}
+
+#Preview("System Events") {
+    VStack(spacing: 16) {
+        ConversationItemView(item: .modelSwitch(from: nil, to: "Claude Sonnet 4.5"))
+        ConversationItemView(item: .modelSwitch(from: "Claude Sonnet 4.5", to: "GPT-5.2"))
     }
     .padding()
     .background(Theme.pageBg)

@@ -22,6 +22,8 @@ struct SessionConversationView: View {
     @State private var eventTask: Task<Void, Never>?
     @State private var lastScrollTime: Date = .distantPast
     @State private var errorMessage: String?
+    @State private var currentModel: ModelInfo?
+    @State private var showModelSelector = false
 
     private var trimmedInputText: String {
         inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -46,6 +48,31 @@ struct SessionConversationView: View {
         .animation(.default, value: errorMessage)
         .navigationTitle(session.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showModelSelector = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "cpu")
+                        if let model = currentModel {
+                            Text(model.name)
+                                .font(.caption)
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showModelSelector) {
+            ModelSelectorSheet(
+                connection: connection,
+                currentModel: currentModel.map { info in
+                    Model(id: info.id, name: info.name, provider: info.provider)
+                }
+            ) { model in
+                Task { await switchModel(to: model) }
+            }
+        }
         .task {
             await setupEngine()
         }
@@ -198,8 +225,9 @@ extension SessionConversationView {
         guard !isSetup else { return }
 
         do {
-            // Attach to session
-            try await connection.attachSession(sessionId: session.sessionId)
+            // Attach to session and get current model
+            let attachedModel = try await connection.attachSession(sessionId: session.sessionId)
+            currentModel = attachedModel
 
             // Configure engine with callbacks
             engine.configure(callbacks: SessionEngineCallbacks(
@@ -264,6 +292,13 @@ extension SessionConversationView {
         case .toolExecutionEnd(let toolCallId, let output, let status):
             engine.handleToolExecutionEnd(toolCallId: toolCallId, output: output, success: status == .success)
 
+        case .modelChanged(let model):
+            let previousModel = currentModel?.name
+            currentModel = model
+            // Add inline event to conversation
+            let item = ConversationItem.modelSwitch(from: previousModel, to: model.name)
+            engine.appendMessage(item)
+
         default:
             break
         }
@@ -299,6 +334,21 @@ extension SessionConversationView {
 
         let behavior = overrideBehavior ?? settings.streamingBehavior
         await engine.send(text, defaultStreamingBehavior: behavior)
+    }
+
+    func switchModel(to model: Model) async {
+        do {
+            let newModel = try await connection.setModel(
+                provider: model.provider,
+                modelId: model.id,
+                sessionId: session.sessionId
+            )
+            // The model_changed event will update currentModel and add inline event
+            print("[SessionConversationView] Switched to model: \(newModel.name)")
+        } catch {
+            errorMessage = "Failed to switch model: \(error.localizedDescription)"
+            print("[SessionConversationView] Failed to switch model: \(error)")
+        }
     }
 
     func scheduleScrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {

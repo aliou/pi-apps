@@ -14,6 +14,7 @@ import {
   createCodingTools,
   ModelRegistry,
   SessionManager as PiSessionManager,
+  SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { getGitHubToken, getRepoByFullName } from "../github.js";
 import { createNativeTools } from "../native/index.js";
@@ -47,9 +48,10 @@ export class SessionManager {
   private state: ServerState;
   private eventCallback?: SessionEventCallback;
 
-  // Shared auth and model registry
+  // Shared auth, model registry, and settings
   private authStorage;
   private modelRegistry;
+  private settingsManager;
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -62,6 +64,9 @@ export class SessionManager {
 
     // No custom models.json for now (built-in models only)
     this.modelRegistry = new ModelRegistry(this.authStorage);
+
+    // Settings manager for default model, etc.
+    this.settingsManager = SettingsManager.create(undefined, dataDir);
   }
 
   private resolveModel(preferred: { provider: string; modelId: string }) {
@@ -261,6 +266,25 @@ export class SessionManager {
     return this.modelRegistry
       .getAvailable()
       .find((model) => model.provider === provider && model.id === modelId);
+  }
+
+  /**
+   * Get the default model from settings.
+   */
+  getDefaultModel(): { provider: string; modelId: string } | undefined {
+    const provider = this.settingsManager.getDefaultProvider();
+    const modelId = this.settingsManager.getDefaultModel();
+    if (provider && modelId) {
+      return { provider, modelId };
+    }
+    return undefined;
+  }
+
+  /**
+   * Set the default model in settings.
+   */
+  setDefaultModel(provider: string, modelId: string): void {
+    this.settingsManager.setDefaultModelAndProvider(provider, modelId);
   }
 
   /**

@@ -552,6 +552,65 @@ public struct GetAvailableModelsResponse: Decodable, Sendable {
     public let models: [Model]
 }
 
+/// Lightweight model info (used in events and session info)
+public struct ModelInfo: Codable, Sendable, Equatable {
+    public let id: String
+    public let name: String
+    public let provider: String
+
+    public init(id: String, name: String, provider: String) {
+        self.id = id
+        self.name = name
+        self.provider = provider
+    }
+
+    /// Create from full Model
+    public init(from model: Model) {
+        self.id = model.id
+        self.name = model.name
+        self.provider = model.provider
+    }
+}
+
+/// Response for session.attach command
+public struct AttachSessionResponse: Decodable, Sendable {
+    public let ok: Bool
+    public let currentModel: ModelInfo?
+}
+
+/// Response for set_model command
+public struct SetModelResponse: Decodable, Sendable {
+    public let model: ModelInfo
+}
+
+/// Get default model command
+public struct GetDefaultModelCommand: RPCCommand, Sendable {
+    public let type = "get_default_model"
+    public init() {}
+}
+
+/// Response for get_default_model command
+public struct GetDefaultModelResponse: Decodable, Sendable {
+    public let defaultModel: ModelInfo?
+}
+
+/// Set default model command
+public struct SetDefaultModelCommand: RPCCommand, Sendable {
+    public let type = "set_default_model"
+    public let provider: String
+    public let modelId: String
+
+    public init(provider: String, modelId: String) {
+        self.provider = provider
+        self.modelId = modelId
+    }
+}
+
+/// Response for set_default_model command
+public struct SetDefaultModelResponse: Decodable, Sendable {
+    public let defaultModel: ModelInfo
+}
+
 /// Response for prompt command
 public struct PromptResponse: Decodable, Sendable {
     public let messageId: String?
@@ -726,6 +785,7 @@ public enum RPCEvent: Sendable {
     case autoRetryEnd(success: Bool, attempt: Int, finalError: String?)
     case hookError(extensionPath: String?, event: String?, error: String?)
     case stateUpdate(context: StateContext)
+    case modelChanged(model: ModelInfo)
     case nativeToolRequest(NativeToolRequest)
     case nativeToolCancel(callId: String)
     case unknown(type: String, raw: Data)

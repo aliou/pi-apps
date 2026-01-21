@@ -336,17 +336,19 @@ public final class ServerConnection {
         return result.sessions
     }
 
-    public func attachSession(sessionId: String) async throws {
+    @discardableResult
+    public func attachSession(sessionId: String) async throws -> ModelInfo? {
         struct AttachSessionParams: Encodable, Sendable {
             let sessionId: String
         }
 
-        try await sendVoid(
+        let response: AttachSessionResponse = try await send(
             method: "session.attach",
             params: AttachSessionParams(sessionId: sessionId)
         )
 
         currentSessionId = sessionId
+        return response.currentModel
     }
 
     public func detachSession() async throws {
@@ -393,9 +395,24 @@ public final class ServerConnection {
         return try await send(method: command.type, params: command)
     }
 
-    public func setModel(provider: String, modelId: String, sessionId: String) async throws {
+    @discardableResult
+    public func setModel(provider: String, modelId: String, sessionId: String) async throws -> ModelInfo {
         let command = SetModelCommand(provider: provider, modelId: modelId)
-        try await sendVoid(method: command.type, sessionId: sessionId, params: command)
+        let response: SetModelResponse = try await send(method: command.type, sessionId: sessionId, params: command)
+        return response.model
+    }
+
+    public func getDefaultModel() async throws -> ModelInfo? {
+        let command = GetDefaultModelCommand()
+        let response: GetDefaultModelResponse = try await send(method: command.type, params: command)
+        return response.defaultModel
+    }
+
+    @discardableResult
+    public func setDefaultModel(provider: String, modelId: String) async throws -> ModelInfo {
+        let command = SetDefaultModelCommand(provider: provider, modelId: modelId)
+        let response: SetDefaultModelResponse = try await send(method: command.type, params: command)
+        return response.defaultModel
     }
 
     public func getMessages() async throws -> GetMessagesResponse {

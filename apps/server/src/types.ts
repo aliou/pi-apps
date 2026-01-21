@@ -138,6 +138,12 @@ export interface ReposConfig {
 // Session types
 export type SessionMode = "chat" | "code";
 
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+}
+
 export interface SessionInfo {
   sessionId: string;
   mode: SessionMode;
@@ -146,6 +152,7 @@ export interface SessionInfo {
   createdAt: string;
   lastActivityAt: string;
   name?: string;
+  currentModel?: ModelInfo;
 }
 
 export interface ServerState {

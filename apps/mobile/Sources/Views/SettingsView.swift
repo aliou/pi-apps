@@ -6,22 +6,41 @@
 //
 
 import SwiftUI
+import PiCore
 import PiUI
 
 struct SettingsView: View {
-    let serverURL: URL?
+    let connection: ServerConnection
     let onDisconnect: () -> Void
 
     @State private var settings = AppSettings.shared
+    @State private var serverConfig = ServerConfig.shared
     @State private var showSystemPromptEditor = false
+    @State private var showModelSelector = false
+    @State private var defaultModel: Model?
+    @State private var availableModels: [Model] = []
+    @State private var isLoadingModels = false
+    @State private var isSyncingModel = false
 
     var body: some View {
         Form {
             connectionSection
+            modelSection
             chatSettingsSection
             messageBehaviorSection
             aboutSection
             actionsSection
+        }
+        .task {
+            await loadModelsAndResolveDefault()
+        }
+        .sheet(isPresented: $showModelSelector) {
+            ModelSelectorSheet(
+                connection: connection,
+                currentModel: defaultModel
+            ) { model in
+                Task { await setDefaultModel(model) }
+            }
         }
     }
 
@@ -30,21 +49,58 @@ struct SettingsView: View {
     private var connectionSection: some View {
         Section {
             LabeledContent("Server") {
-                Text(serverURL?.host ?? "Not connected")
+                Text(connection.serverURL.host ?? "Unknown")
                     .foregroundStyle(.secondary)
             }
 
             LabeledContent("Status") {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(serverURL != nil ? Color.green : Color.red)
+                        .fill(connection.isConnected ? Color.green : Color.red)
                         .frame(width: 8, height: 8)
-                    Text(serverURL != nil ? "Connected" : "Disconnected")
+                    Text(connection.isConnected ? "Connected" : "Disconnected")
                         .foregroundStyle(.secondary)
                 }
             }
         } header: {
             Text("Connection")
+        }
+    }
+
+    // MARK: - Model Section
+
+    private var modelSection: some View {
+        Section {
+            Button {
+                showModelSelector = true
+            } label: {
+                HStack {
+                    Text("Default Model")
+                        .foregroundStyle(Theme.text)
+
+                    Spacer()
+
+                    if isLoadingModels {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else if let model = defaultModel {
+                        Text(model.name)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Not Set")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .disabled(isLoadingModels)
+        } header: {
+            Text("Model")
+        } footer: {
+            Text("The default model used for new sessions.")
         }
     }
 
@@ -59,7 +115,7 @@ struct SettingsView: View {
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("System Prompt")
-                    Text(settings.chatSystemPrompt.prefix(100) + (settings.chatSystemPrompt.count > 100 ? "…" : ""))
+                    Text(settings.chatSystemPrompt.prefix(100) + (settings.chatSystemPrompt.count > 100 ? "..." : ""))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -130,6 +186,44 @@ struct SettingsView: View {
             }
         }
     }
+
+    // MARK: - Data Loading
+
+    private func loadModelsAndResolveDefault() async {
+        isLoadingModels = true
+        defer { isLoadingModels = false }
+
+        do {
+            let response = try await connection.getAvailableModels()
+            availableModels = response.models
+
+            // Resolve locally stored model (already synced on connect)
+            if let storedId = serverConfig.selectedModelId,
+               let storedProvider = serverConfig.selectedModelProvider {
+                defaultModel = availableModels.first {
+                    $0.id == storedId && $0.provider == storedProvider
+                }
+            }
+        } catch {
+            print("[SettingsView] Failed to load models: \(error)")
+        }
+    }
+
+    private func setDefaultModel(_ model: Model) async {
+        isSyncingModel = true
+        defer { isSyncingModel = false }
+
+        do {
+            // Update server
+            _ = try await connection.setDefaultModel(provider: model.provider, modelId: model.id)
+            // Update local
+            defaultModel = model
+            serverConfig.setSelectedModel(provider: model.provider, modelId: model.id)
+            print("[SettingsView] Default model set to: \(model.provider)/\(model.id)")
+        } catch {
+            print("[SettingsView] Failed to set default model: \(error)")
+        }
+    }
 }
 
 // MARK: - System Prompt Editor
@@ -168,15 +262,9 @@ private struct SystemPromptEditorView: View {
 
 #Preview("Settings") {
     NavigationStack {
-        SettingsView(serverURL: URL(string: "wss://pi.example.com")) {}
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-#Preview("Settings - Disconnected") {
-    NavigationStack {
-        SettingsView(serverURL: nil) {}
+        SettingsView(
+            connection: ServerConnection(serverURL: URL(string: "wss://pi.example.com")!)
+        ) {}
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
     }

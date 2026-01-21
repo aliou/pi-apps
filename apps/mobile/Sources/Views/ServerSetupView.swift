@@ -10,7 +10,7 @@ import PiCore
 import PiUI
 
 struct ServerSetupView: View {
-    @ObservedObject private var serverConfig = ServerConfig.shared
+    @State private var serverConfig = ServerConfig.shared
     @State private var urlText = ""
     @State private var isConnecting = false
     @State private var errorMessage: String?

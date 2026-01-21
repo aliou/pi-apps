@@ -59,6 +59,11 @@ public final class SessionEngine {
         messages = items
     }
 
+    /// Append a single message (e.g., system events)
+    public func appendMessage(_ item: ConversationItem) {
+        messages.append(item)
+    }
+
     /// Clear all messages
     public func clearMessages() {
         messages = []

@@ -35,6 +35,8 @@ const methodHandlers: Record<string, MethodHandler> = {
   get_messages: handleGetMessages,
   get_available_models: handleGetAvailableModels,
   set_model: handleSetModel,
+  get_default_model: handleGetDefaultModel,
+  set_default_model: handleSetDefaultModel,
   native_tool_response: handleNativeToolResponse,
 };
 
@@ -203,7 +205,7 @@ async function handleSessionAttach(
   }
 
   // Resume session if not active
-  await ctx.sessionManager.resumeSession(targetSessionId);
+  const active = await ctx.sessionManager.resumeSession(targetSessionId);
 
   // Detach from any previous sessions first
   const allSessions = ctx.sessionManager.listSessions();
@@ -216,7 +218,13 @@ async function handleSessionAttach(
   // Attach connection
   ctx.connection.attach(targetSessionId);
 
-  return { ok: true };
+  // Return current model info
+  const model = active.session.model;
+  const currentModel = model
+    ? { id: model.id, name: model.name, provider: model.provider }
+    : undefined;
+
+  return { ok: true, currentModel };
 }
 
 async function handleSessionDetach(
@@ -379,7 +387,77 @@ async function handleSetModel(
 
   await active.session.setModel(model);
 
-  return { model };
+  // Broadcast model change event to all attached connections
+  const modelInfo = {
+    id: model.id,
+    name: model.name,
+    provider: model.provider,
+  };
+  ctx.connectionManager.broadcastEvent(sessionId, "model_changed", {
+    model: modelInfo,
+  });
+
+  return { model: modelInfo };
+}
+
+async function handleGetDefaultModel(ctx: HandlerContext): Promise<unknown> {
+  const defaultModel = ctx.sessionManager.getDefaultModel();
+  if (!defaultModel) {
+    return { defaultModel: null };
+  }
+
+  // Resolve to full model info
+  const model = ctx.sessionManager.findAvailableModel(
+    defaultModel.provider,
+    defaultModel.modelId,
+  );
+
+  if (model) {
+    return {
+      defaultModel: {
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+      },
+    };
+  }
+
+  // Model exists in settings but not available (no API key?)
+  return {
+    defaultModel: {
+      id: defaultModel.modelId,
+      name: defaultModel.modelId,
+      provider: defaultModel.provider,
+    },
+  };
+}
+
+async function handleSetDefaultModel(
+  ctx: HandlerContext,
+  params: Record<string, unknown> | undefined,
+): Promise<unknown> {
+  const provider = params?.provider as string | undefined;
+  const modelId = params?.modelId as string | undefined;
+
+  if (!provider || !modelId) {
+    throw new Error("Missing provider or modelId");
+  }
+
+  // Verify model is available
+  const model = ctx.sessionManager.findAvailableModel(provider, modelId);
+  if (!model) {
+    throw new Error(`Model not available: ${provider}/${modelId}`);
+  }
+
+  ctx.sessionManager.setDefaultModel(provider, modelId);
+
+  return {
+    defaultModel: {
+      id: model.id,
+      name: model.name,
+      provider: model.provider,
+    },
+  };
 }
 
 async function handleNativeToolResponse(

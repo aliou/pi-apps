@@ -95,7 +95,7 @@ struct SessionListView: View {
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
-                SettingsView(serverURL: connection.serverURL) {
+                SettingsView(connection: connection) {
                     showSettings = false
                     Task { await connection.disconnect() }
                 }
