@@ -3,6 +3,25 @@ import { Type } from "@sinclair/typebox";
 
 const XCODECONTROL = "npx -y xcodemcp@latest";
 
+const XCODE_TOOLS_GUIDANCE = `
+## Xcode Tools
+
+Use the xcode_* tools to build, test, and run iOS/macOS projects.
+
+**Workflow:**
+1. Use \`xcode_get_schemes\` to discover available schemes
+2. Use \`xcode_get_destinations\` to find simulators/devices
+3. Use \`xcode_build\` to compile (check for errors)
+4. Use \`xcode_test\` to run tests
+5. Use \`xcode_run\` to launch on simulator/device
+
+**Tips:**
+- Always specify \`scheme\` for build/test/run operations
+- Use \`xcode_health_check\` to diagnose environment issues
+- Builds can take several minutes - the tools have a 5 min timeout
+- If a project has both .xcodeproj and .xcworkspace, prefer workspace
+`;
+
 interface XcodeResult {
   stdout: string;
   stderr: string;
@@ -10,6 +29,13 @@ interface XcodeResult {
 }
 
 export default function (pi: ExtensionAPI) {
+  // Inject guidance into system prompt
+  pi.on("before_agent_start", async (event) => {
+    return {
+      systemPrompt: `${event.systemPrompt}\n${XCODE_TOOLS_GUIDANCE}`,
+    };
+  });
+
   async function runXcode(args: string[], signal?: AbortSignal): Promise<XcodeResult> {
     const result = await pi.exec("bash", ["-c", `${XCODECONTROL} ${args.join(" ")}`], {
       signal,
