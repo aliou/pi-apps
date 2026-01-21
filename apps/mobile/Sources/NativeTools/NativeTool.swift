@@ -25,13 +25,35 @@ public protocol NativeToolExecutable: Sendable {
 /// Registry of all available native tools.
 public enum NativeTool: String, CaseIterable, Sendable {
     case getDeviceInfo = "get_device_info"
-    // Add more tools here:
-    // case addCalendarEvent = "add_calendar_event"
-    // case takePhoto = "take_photo"
+    case getCalendarEvents = "get_calendar_events"
+    case getSleepDuration = "get_sleep_duration"
+    case getLatestRun = "get_latest_run"
 
-    /// Get all tool definitions for hello handshake.
+    /// Get all tool definitions for hello handshake (deprecated, use availableDefinitions).
     public static var allDefinitions: [NativeToolDefinition] {
         allCases.map { $0.definition }
+    }
+
+    /// Get tool definitions only for tools that are available.
+    /// Excludes tools where permission has been denied.
+    public static var availableDefinitions: [NativeToolDefinition] {
+        allCases
+            .filter { $0.isAvailable }
+            .map { $0.definition }
+    }
+
+    /// Check if this tool is available (permission not denied).
+    public var isAvailable: Bool {
+        switch self {
+        case .getDeviceInfo:
+            return true  // No permission needed
+        case .getCalendarEvents:
+            return CalendarEventsTool.isAvailable()
+        case .getSleepDuration:
+            return SleepDurationTool.isAvailable()
+        case .getLatestRun:
+            return LatestRunTool.isAvailable()
+        }
     }
 
     /// Get the definition for this tool.
@@ -39,6 +61,12 @@ public enum NativeTool: String, CaseIterable, Sendable {
         switch self {
         case .getDeviceInfo:
             return DeviceInfoTool.definition
+        case .getCalendarEvents:
+            return CalendarEventsTool.definition
+        case .getSleepDuration:
+            return SleepDurationTool.definition
+        case .getLatestRun:
+            return LatestRunTool.definition
         }
     }
 
@@ -47,6 +75,12 @@ public enum NativeTool: String, CaseIterable, Sendable {
         switch self {
         case .getDeviceInfo:
             return DeviceInfoTool()
+        case .getCalendarEvents:
+            return CalendarEventsTool()
+        case .getSleepDuration:
+            return SleepDurationTool()
+        case .getLatestRun:
+            return LatestRunTool()
         }
     }
 

@@ -27,6 +27,10 @@
     </dict>
     <key>UILaunchScreen</key>
     <dict/>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Pi needs calendar access to read your events when you ask about your schedule.</string>
+    <key>NSHealthShareUsageDescription</key>
+    <string>Pi needs health access to read your sleep and workout data when you ask about them.</string>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>

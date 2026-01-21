@@ -193,8 +193,8 @@ public final class ServerConnection {
         transport = newTransport
 
         do {
-            // Connect with native tools
-            try await newTransport.connect(nativeTools: NativeTool.allDefinitions)
+            // Connect with native tools (only those that are available)
+            try await newTransport.connect(nativeTools: NativeTool.availableDefinitions)
             isConnected = await newTransport.isConnected
 
             if !isConnected {
@@ -203,7 +203,7 @@ public final class ServerConnection {
             }
 
             startEventForwarding()
-            print("[ServerConnection] Connected with \(NativeTool.allDefinitions.count) native tools")
+            print("[ServerConnection] Connected with \(NativeTool.availableDefinitions.count) native tools")
 
         } catch let error as RPCTransportError {
             transport = nil

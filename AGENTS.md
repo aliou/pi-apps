@@ -40,6 +40,22 @@ bun run lint  # biome
 - `packages/pi-core/` - RPC types, transport layer (Foundation only)
 - `packages/pi-ui/` - Shared UI components (SwiftUI)
 
+## Native Tools (Mobile)
+
+The mobile app exposes native iOS capabilities as tools the LLM can invoke. Tools are registered with the server during the hello handshake. See existing tools in `apps/mobile/Sources/NativeTools/Tools/` for examples.
+
+**Creating a native tool:**
+1. Create `apps/mobile/Sources/NativeTools/Tools/YourTool.swift` implementing `NativeToolExecutable`
+2. Add case to `NativeTool` enum in `NativeTool.swift` with raw value matching the tool name
+3. Update the `definition`, `makeExecutor()`, and `isAvailable` switch statements
+
+**Handling iOS permissions:**
+- Implement `isAvailable()` to check device capability (e.g., `HKHealthStore.isHealthDataAvailable()` returns false on iPad)
+- Add usage description keys to `Info.plist` (e.g., `NSCalendarsFullAccessUsageDescription`)
+- Request authorization in `execute()` - prompts appear on first use, not at app launch
+- For HealthKit read-only access: iOS hides authorization status for privacy, so `authorizationStatus(for:)` always returns `.notDetermined`. Tools should return "no data found" if the query returns empty results (could mean denied or no data).
+- For frameworks that don't conform to `Sendable` (EventKit, HealthKit), use `@preconcurrency import`
+
 ## Code Style
 
 **Swift:** Swift 6, SwiftLint enforced. Use `Theme.*` colors from PiUI. Types should be `Sendable`. Use `Self` in static refs.
