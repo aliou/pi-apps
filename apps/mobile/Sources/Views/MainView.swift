@@ -24,7 +24,7 @@ struct MainView: View {
             } else if isConnecting {
                 connectingView
             } else if let connection, connection.isConnected {
-                SessionListView()
+                ConversationView()
                     .environment(connection)
             } else {
                 connectionFailedView

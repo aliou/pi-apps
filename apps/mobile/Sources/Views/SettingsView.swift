@@ -36,8 +36,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showModelSelector) {
             ModelSelectorSheet(
-                connection: connection,
-                currentModel: defaultModel
+                models: availableModels,
+                currentModel: defaultModel,
+                recentModelIds: RecentSelections.loadRecentModelIds()
             ) { model in
                 Task { await setDefaultModel(model) }
             }
@@ -219,6 +220,7 @@ struct SettingsView: View {
             // Update local
             defaultModel = model
             serverConfig.setSelectedModel(provider: model.provider, modelId: model.id)
+            RecentSelections.addRecentModelId(model.id)
             print("[SettingsView] Default model set to: \(model.provider)/\(model.id)")
         } catch {
             print("[SettingsView] Failed to set default model: \(error)")
