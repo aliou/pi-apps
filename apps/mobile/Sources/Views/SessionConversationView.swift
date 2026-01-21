@@ -46,27 +46,40 @@ struct SessionConversationView: View {
 
     private var messageList: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(engine.messages) { item in
-                        ConversationItemView(item: item)
-                            .id(item.id)
-                    }
-
-                    if !engine.streamingText.isEmpty {
-                        StreamingBubbleView(text: engine.streamingText)
-                            .id("streaming")
-                    }
-
-                    if engine.isProcessing && engine.streamingText.isEmpty {
-                        ProcessingIndicatorView()
-                            .id("processing")
-                    }
-
-                    Color.clear.frame(height: 1).id("bottom")
+            List {
+                ForEach(engine.messages) { item in
+                    ConversationItemView(item: item)
+                        .id(item.id)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
-                .padding(.vertical, 12)
+
+                if !engine.streamingText.isEmpty {
+                    StreamingBubbleView(text: engine.streamingText)
+                        .id("streaming")
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+
+                if engine.isProcessing && engine.streamingText.isEmpty {
+                    ProcessingIndicatorView()
+                        .id("processing")
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+
+                Color.clear
+                    .frame(height: 1)
+                    .id("bottom")
+                    .listRowInsets(.init())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .simultaneousGesture(
                 DragGesture()
                     .onChanged { _ in
@@ -393,23 +406,13 @@ struct ConversationItemView: View {
 
 private struct InputFieldModifier: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: 20))
-        } else {
-            content
-                .background(.regularMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-        }
+        content.glassEffect(.regular, in: .rect(cornerRadius: 20))
     }
 }
 
 private struct GlassButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.glassEffect()
-        } else {
-            content
-        }
+        content.glassEffect()
     }
 }
 
