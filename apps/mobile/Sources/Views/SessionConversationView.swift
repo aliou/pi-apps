@@ -55,13 +55,13 @@ struct SessionConversationView: View {
                         .listRowBackground(Color.clear)
                 }
 
-                if !engine.streamingText.isEmpty {
-                    StreamingBubbleView(text: engine.streamingText)
-                        .id("streaming")
-                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
+                StreamingBubbleView(text: engine.streamingText)
+                    .id("streaming")
+                    .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .opacity(engine.streamingText.isEmpty ? 0 : 1)
+                    .frame(height: engine.streamingText.isEmpty ? 0 : nil)
 
                 if engine.isProcessing && engine.streamingText.isEmpty {
                     ProcessingIndicatorView()
