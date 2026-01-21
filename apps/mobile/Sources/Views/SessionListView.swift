@@ -15,18 +15,25 @@ struct SessionListView: View {
     @State private var selectedMode: SessionMode = .chat
     @State private var path = NavigationPath()
     @State private var sessions: [SessionInfo] = []
+    @State private var filteredSessions: [SessionInfo] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSettings = false
     @State private var showRepoSelector = false
 
-    private var filteredSessions: [SessionInfo] {
-        sessions.filter { $0.resolvedMode == selectedMode }
-    }
-
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
+                // Error banner
+                if let error = errorMessage {
+                    ErrorBannerView(
+                        message: error,
+                        onDismiss: { errorMessage = nil },
+                        onRetry: { Task { await loadSessions() } }
+                    )
+                    .padding(.top, 8)
+                }
+
                 // Segmented control
                 Picker("Mode", selection: $selectedMode) {
                     Text("Chat").tag(SessionMode.chat)
@@ -47,6 +54,7 @@ struct SessionListView: View {
                     }
                 }
             }
+            .animation(.default, value: errorMessage)
             .navigationTitle("Pi")
             .navigationDestination(for: SessionInfo.self) { session in
                 SessionConversationView(session: session)
@@ -77,6 +85,12 @@ struct SessionListView: View {
             }
             .task {
                 await loadSessions()
+            }
+            .onChange(of: sessions) { _, newValue in
+                updateFilteredSessions(from: newValue)
+            }
+            .onChange(of: selectedMode) { _, _ in
+                updateFilteredSessions(from: sessions)
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -169,10 +183,15 @@ struct SessionListView: View {
 
         do {
             sessions = try await connection.listSessions()
+            updateFilteredSessions(from: sessions)
         } catch {
             errorMessage = error.localizedDescription
             print("[SessionListView] Failed to load sessions: \(error)")
         }
+    }
+
+    private func updateFilteredSessions(from sessions: [SessionInfo]) {
+        filteredSessions = sessions.filter { $0.resolvedMode == selectedMode }
     }
 
     private func createChatSession() async {

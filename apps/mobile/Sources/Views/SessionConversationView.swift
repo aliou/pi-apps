@@ -21,6 +21,7 @@ struct SessionConversationView: View {
     @State private var isUserScrolling = false
     @State private var eventTask: Task<Void, Never>?
     @State private var lastScrollTime: Date = .distantPast
+    @State private var errorMessage: String?
 
     private var trimmedInputText: String {
         inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -30,9 +31,19 @@ struct SessionConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let error = errorMessage {
+                ErrorBannerView(
+                    message: error,
+                    onDismiss: { errorMessage = nil },
+                    onRetry: { Task { await setupEngine() } }
+                )
+                .padding(.top, 8)
+            }
+
             messageList
             inputArea
         }
+        .animation(.default, value: errorMessage)
         .navigationTitle(session.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -142,7 +153,7 @@ struct SessionConversationView: View {
                 .lineLimit(1...6)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .modifier(InputFieldModifier())
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
                 .onSubmit {
                     Task { await send() }
                 }
@@ -162,7 +173,7 @@ struct SessionConversationView: View {
                 Task { await send() }
             }
             .disabled(trimmedInputText.isEmpty)
-            .modifier(GlassButtonModifier())
+            .glassEffect()
 
             if engine.isProcessing {
                 Button {
@@ -172,16 +183,18 @@ struct SessionConversationView: View {
                         .font(.system(size: 32))
                         .foregroundStyle(Theme.error)
                 }
-                .modifier(GlassButtonModifier())
+                .glassEffect()
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
+}
 
-    // MARK: - Setup
+// MARK: - Setup & Event Handling
 
-    private func setupEngine() async {
+extension SessionConversationView {
+    func setupEngine() async {
         guard !isSetup else { return }
 
         do {
@@ -216,15 +229,15 @@ struct SessionConversationView: View {
             engine.setMessages(items)
 
             isSetup = true
+            errorMessage = nil
         } catch {
+            errorMessage = error.localizedDescription
             print("[SessionConversationView] Setup failed: \(error)")
         }
     }
 
-    // MARK: - Event Handling
-
     @MainActor
-    private func handleEvent(_ event: RPCEvent) {
+    func handleEvent(_ event: RPCEvent) {
         switch event {
         case .agentStart:
             engine.handleAgentStart()
@@ -256,7 +269,7 @@ struct SessionConversationView: View {
         }
     }
 
-    private func handleAssistantEvent(_ event: AssistantMessageEvent) {
+    func handleAssistantEvent(_ event: AssistantMessageEvent) {
         switch event {
         case .textDelta(let delta):
             engine.handleTextDelta(delta)
@@ -271,10 +284,12 @@ struct SessionConversationView: View {
             break
         }
     }
+}
 
-    // MARK: - Actions
+// MARK: - Actions
 
-    private func send(overrideBehavior: PiUI.StreamingBehavior? = nil) async {
+extension SessionConversationView {
+    func send(overrideBehavior: PiUI.StreamingBehavior? = nil) async {
         let text = trimmedInputText
         guard !text.isEmpty else { return }
 
@@ -286,14 +301,14 @@ struct SessionConversationView: View {
         await engine.send(text, defaultStreamingBehavior: behavior)
     }
 
-    private func scheduleScrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+    func scheduleScrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         Task { @MainActor in
             await Task.yield()
             scrollToBottom(proxy, animated: animated)
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+    func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         if animated {
             withAnimation(.easeOut(duration: 0.2)) {
                 proxy.scrollTo("bottom", anchor: .bottom)
@@ -302,10 +317,12 @@ struct SessionConversationView: View {
             proxy.scrollTo("bottom", anchor: .bottom)
         }
     }
+}
 
-    // MARK: - Message Conversion
+// MARK: - Message Conversion
 
-    private func convertMessagesToItems(_ messages: [Message]) -> [ConversationItem] {
+extension SessionConversationView {
+    func convertMessagesToItems(_ messages: [Message]) -> [ConversationItem] {
         var items: [ConversationItem] = []
         var toolResults: [String: String] = [:]
 
@@ -391,7 +408,7 @@ struct SessionConversationView: View {
         return items
     }
 
-    private func extractText(from content: MessageContent) -> String {
+    func extractText(from content: MessageContent) -> String {
         switch content {
         case .text(let text):
             return text
@@ -401,63 +418,6 @@ struct SessionConversationView: View {
                 .compactMap(\.text)
                 .joined(separator: "\n")
         }
-    }
-}
-
-// MARK: - Conversation Item View
-
-struct ConversationItemView: View {
-    let item: ConversationItem
-
-    var body: some View {
-        switch item {
-        case .userMessage(_, let text, let queuedBehavior):
-            if let queuedBehavior {
-                VStack(alignment: .trailing, spacing: 4) {
-                    HStack {
-                        Spacer()
-                        Text(queuedBehavior == .steer ? "steer" : "follow-up")
-                            .font(.caption2)
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .padding(.horizontal, 16)
-
-                    MessageBubbleView(role: .user, text: text, isQueued: true)
-                }
-            } else {
-                MessageBubbleView(role: .user, text: text)
-            }
-
-        case .assistantText(_, let text):
-            MessageBubbleView(role: .assistant, text: text)
-
-        case .toolCall(_, let name, let args, _, let status):
-            ToolCallHeader(
-                toolName: name,
-                args: args,
-                status: status,
-                showChevron: false
-            )
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Theme.toolStatusBg(status))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 16)
-        }
-    }
-}
-
-// MARK: - Glass Effect Modifiers
-
-private struct InputFieldModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content.glassEffect(.regular, in: .rect(cornerRadius: 20))
-    }
-}
-
-private struct GlassButtonModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content.glassEffect()
     }
 }
 

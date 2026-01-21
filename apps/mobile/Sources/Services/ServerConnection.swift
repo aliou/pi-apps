@@ -12,7 +12,7 @@ import PiCore
 // MARK: - Server-specific Types
 
 /// Information about a repository
-public struct RepoInfo: Decodable, Sendable {
+public struct RepoInfo: Decodable, Sendable, Equatable {
     public let id: String
     public let name: String
     public let fullName: String?

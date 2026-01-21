@@ -15,22 +15,10 @@ struct RepoSelectorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var repos: [RepoInfo] = []
+    @State private var filteredRepos: [RepoInfo] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var searchText = ""
-
-    // Filter repos based on search
-    private var filteredRepos: [RepoInfo] {
-        if searchText.isEmpty {
-            return repos
-        }
-        return repos.filter { repo in
-            repo.name.localizedCaseInsensitiveContains(searchText) ||
-            (repo.fullName?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-            (repo.description?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-            (repo.owner?.localizedCaseInsensitiveContains(searchText) ?? false)
-        }
-    }
 
     var body: some View {
         NavigationStack {
@@ -161,6 +149,12 @@ struct RepoSelectorSheet: View {
         .refreshable {
             await loadRepos()
         }
+        .onChange(of: repos) { _, newValue in
+            updateFilteredRepos(from: newValue)
+        }
+        .onChange(of: searchText) { _, _ in
+            updateFilteredRepos(from: repos)
+        }
     }
 
     private func repoRow(_ repo: RepoInfo) -> some View {
@@ -212,10 +206,24 @@ struct RepoSelectorSheet: View {
 
         do {
             repos = try await connection.listRepos()
+            updateFilteredRepos(from: repos)
             isLoading = false
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false
+        }
+    }
+
+    private func updateFilteredRepos(from repos: [RepoInfo]) {
+        if searchText.isEmpty {
+            filteredRepos = repos
+        } else {
+            filteredRepos = repos.filter { repo in
+                repo.name.localizedCaseInsensitiveContains(searchText) ||
+                (repo.fullName?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                (repo.description?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                (repo.owner?.localizedCaseInsensitiveContains(searchText) ?? false)
+            }
         }
     }
 }

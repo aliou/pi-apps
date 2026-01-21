@@ -32,31 +32,12 @@ struct ModelSelectorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var models: [Model] = []
+    @State private var filteredModels: [Model] = []
+    @State private var groupedModels: [String: [Model]] = [:]
+    @State private var sortedProviders: [String] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var searchText = ""
-
-    // Filter models based on search
-    private var filteredModels: [Model] {
-        if searchText.isEmpty {
-            return models
-        }
-        return models.filter { model in
-            model.name.localizedCaseInsensitiveContains(searchText) ||
-            model.provider.localizedCaseInsensitiveContains(searchText) ||
-            model.id.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
-    // Group filtered models by provider
-    private var modelsByProvider: [String: [Model]] {
-        Dictionary(grouping: filteredModels, by: \.provider)
-    }
-
-    // Sorted provider names for consistent ordering
-    private var sortedProviders: [String] {
-        modelsByProvider.keys.sorted()
-    }
 
     var body: some View {
         NavigationStack {
@@ -151,14 +132,14 @@ struct ModelSelectorSheet: View {
 
     private var modelListView: some View {
         List {
-            if filteredModels.isEmpty {
+            if filteredModels.isEmpty && !searchText.isEmpty {
                 // No search results
                 ContentUnavailableView.search(text: searchText)
                     .listRowBackground(Color.clear)
             } else {
                 ForEach(sortedProviders, id: \.self) { provider in
                     Section {
-                        ForEach(modelsByProvider[provider] ?? [], id: \.id) { model in
+                        ForEach(groupedModels[provider] ?? [], id: \.id) { model in
                             modelRow(model)
                         }
                     } header: {
@@ -172,6 +153,12 @@ struct ModelSelectorSheet: View {
         .scrollContentBackground(.hidden)
         .background(Theme.pageBg)
         .searchable(text: $searchText, prompt: "Search models")
+        .onChange(of: models) { _, newValue in
+            updateFilteredModels(from: newValue)
+        }
+        .onChange(of: searchText) { _, _ in
+            updateFilteredModels(from: models)
+        }
     }
 
     private func modelRow(_ model: Model) -> some View {
@@ -221,11 +208,26 @@ struct ModelSelectorSheet: View {
         do {
             let response = try await connection.getAvailableModels()
             models = response.models
+            updateFilteredModels(from: models)
             isLoading = false
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false
         }
+    }
+
+    private func updateFilteredModels(from models: [Model]) {
+        if searchText.isEmpty {
+            filteredModels = models
+        } else {
+            filteredModels = models.filter { model in
+                model.name.localizedCaseInsensitiveContains(searchText) ||
+                model.provider.localizedCaseInsensitiveContains(searchText) ||
+                model.id.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+        groupedModels = Dictionary(grouping: filteredModels, by: \.provider)
+        sortedProviders = groupedModels.keys.sorted()
     }
 }
 
