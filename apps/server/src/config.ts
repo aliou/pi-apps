@@ -9,6 +9,10 @@ export interface ServerConfig {
   port: number;
   host: string; // Use "::" for dual-stack (IPv4 + IPv6)
   dataDir: string;
+  tls?: {
+    cert: string;
+    key: string;
+  };
 }
 
 /**
@@ -55,6 +59,8 @@ export function parseArgs(args: string[]): ServerConfig {
   let port = parseInt(process.env.PI_SERVER_PORT || "3141", 10);
   let host = "::";
   let dataDir: string | undefined;
+  let tlsCert: string | undefined;
+  let tlsKey: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -68,17 +74,29 @@ export function parseArgs(args: string[]): ServerConfig {
       host = args[++i];
     } else if (arg === "--data-dir") {
       dataDir = args[++i];
+    } else if (arg === "--tls-cert") {
+      tlsCert = args[++i];
+    } else if (arg === "--tls-key") {
+      tlsKey = args[++i];
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
     }
   }
 
-  return {
+  const config: ServerConfig = {
     port,
     host,
     dataDir: getDataDir(dataDir),
   };
+
+  if (tlsCert && tlsKey) {
+    config.tls = { cert: tlsCert, key: tlsKey };
+  } else if (tlsCert || tlsKey) {
+    throw new Error("Both --tls-cert and --tls-key must be provided together");
+  }
+
+  return config;
 }
 
 function printHelp(): void {
@@ -93,6 +111,8 @@ Options:
   --host <host>           Bind host (default: :: for dual-stack)
   --data-dir <path>       Data directory (env: PI_SERVER_DATA_DIR)
                           Default: $XDG_DATA_HOME/pi-server or ~/.local/share/pi-server
+  --tls-cert <path>       TLS certificate file (enables HTTPS/WSS)
+  --tls-key <path>        TLS private key file
   --help, -h              Show this help
 
 Data Directory Structure:

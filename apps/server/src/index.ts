@@ -54,6 +54,9 @@ if (existsSync(envPath)) {
 console.log("Pi Server starting...");
 console.log(`  Data directory: ${config.dataDir}`);
 console.log(`  Listening on: ${config.host}:${config.port}`);
+if (config.tls) {
+  console.log(`  TLS enabled: cert=${config.tls.cert}`);
+}
 
 // Initialize managers
 const connectionManager = new ConnectionManager();
@@ -84,8 +87,8 @@ app.get("/", (c) => {
   });
 });
 
-// Start Bun server with WebSocket support
-Bun.serve<WSData>({
+// Build server options
+const serverOptions: Parameters<typeof Bun.serve<WSData>>[0] = {
   port: config.port,
   hostname: config.host,
 
@@ -152,10 +155,25 @@ Bun.serve<WSData>({
       );
     },
   },
-});
+};
 
-console.log(`Pi Server running at http://${config.host}:${config.port}`);
-console.log(`WebSocket endpoint: ws://${config.host}:${config.port}/rpc`);
+// Add TLS if configured
+if (config.tls) {
+  serverOptions.tls = {
+    cert: Bun.file(config.tls.cert),
+    key: Bun.file(config.tls.key),
+  };
+}
+
+// Start Bun server with WebSocket support
+Bun.serve<WSData>(serverOptions);
+
+const protocol = config.tls ? "https" : "http";
+const wsProtocol = config.tls ? "wss" : "ws";
+console.log(`Pi Server running at ${protocol}://${config.host}:${config.port}`);
+console.log(
+  `WebSocket endpoint: ${wsProtocol}://${config.host}:${config.port}/rpc`,
+);
 
 // Graceful shutdown handler
 function shutdown(signal: string) {
