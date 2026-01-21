@@ -1,27 +1,47 @@
 # Pi Apps
 
-Native macOS/iOS clients for the `pi` CLI coding agent, plus a WebSocket server for remote access.
+Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agent) coding agent.
 
-## Build Commands
-Swift apps require nix: `nix develop` first, or prefix with `nix develop --command bash -c "..."`.
-- `make setup` - First-time setup (creates Local.xcconfig, generates Xcode projects)
-- `make build` - Build desktop app (debug)
-- `make test` - Run tests
-- `make xcode` - Open workspace in Xcode
+## What is this?
+
+An attempt at creating native macOS/iOS clients for Pi - not just as a coding agent, but also as a general-purpose chat tool for mobile.
+
+**Architecture:**
+- **Mobile app** connects to a remote server via WebSocket. The server runs Pi as an RPC subprocess and bridges messages. Mobile cannot run Pi locally (iOS limitation).
+- **Desktop app** has dual mode:
+  - **Local mode:** Vendors and spawns the pi CLI directly, communicating via RPC over stdin/stdout
+  - **Remote mode:** Connects to a server via WebSocket, same as mobile
+- **Server** wraps Pi sessions, manages repos (cloned from GitHub), and exposes an RPC-over-WebSocket protocol for remote clients.
+
+## Build
+
+Swift apps require nix shell. Run `nix develop` first, or prefix commands with `nix develop --command bash -c "..."`.
+
+```bash
+make setup    # first-time (creates Local.xcconfig, generates xcode projects)
+make build    # build desktop (debug)
+make test     # run tests
+make xcode    # open in xcode
+```
 
 Server (TypeScript/Bun):
-- `cd apps/server && bun install` - Install dependencies
-- `bun run dev` - Run with hot reload
-- `bun run build` - Build standalone binary
-- `bun run lint` - Lint with Biome
+```bash
+cd apps/server && bun install
+bun run dev   # hot reload
+bun run build # standalone binary
+bun run lint  # biome
+```
 
 ## Structure
-- `apps/desktop/` - macOS app (XcodeGen project.yml, Sources/, Resources/)
-- `apps/mobile/` - iOS app (same structure, connects to server via WebSocket)
-- `apps/server/` - WebSocket server for remote pi agent access (Bun/Hono)
-- `packages/pi-core/` - RPC types, transport protocols (Foundation-only, no SwiftUI)
-- `packages/pi-ui/` - Shared UI: Theme, MarkdownTheme, ButtonStyles, ToolCallViews (SwiftUI)
+
+- `apps/desktop/` - macOS app, XcodeGen project.yml
+- `apps/mobile/` - iOS app, connects to server via WebSocket
+- `apps/server/` - WebSocket server (Bun/Hono)
+- `packages/pi-core/` - RPC types, transport layer (Foundation only)
+- `packages/pi-ui/` - Shared UI components (SwiftUI)
 
 ## Code Style
-Swift: Swift 6, SwiftLint enforced (`.swiftlint.yml`), use `Theme.*` colors from PiUI, `Sendable` types, `Self` in static refs.
-TypeScript: Biome for linting/formatting (`biome.json`).
+
+**Swift:** Swift 6, SwiftLint enforced. Use `Theme.*` colors from PiUI. Types should be `Sendable`. Use `Self` in static refs.
+
+**TypeScript:** Biome for lint/format.

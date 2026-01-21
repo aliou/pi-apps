@@ -1,70 +1,79 @@
 # Pi Apps
 
-Native Apple platform clients for the Pi coding agent.
-
-## Quick Start
-
-See [Installation](#installation) below to set up your development environment, then:
-
-```bash
-# First-time setup
-make setup
-
-# Open in Xcode
-make xcode
-```
+Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agent) coding agent.
 
 ## Structure
 
 ```
 pi-apps/
 ├── apps/
-│   ├── desktop/    # macOS app
-│   └── mobile/     # iOS app (placeholder)
-├── packages/
-│   └── pi-core/    # Shared Swift package
-└── Config/         # Build configuration
+│   ├── desktop/       # macOS app (local subprocess)
+│   ├── mobile/        # iOS app (connects to server)
+│   └── server/        # WebSocket server (Bun/Hono)
+└── packages/
+    ├── pi-core/       # RPC types, transport protocols
+    └── pi-ui/         # Shared SwiftUI components
 ```
 
-## Commands
+## Quick Start
 
-| Command | Description |
-|---------|-------------|
-| `make setup` | First-time setup (creates Local.xcconfig, generates projects) |
-| `make generate` | Regenerate Xcode projects from YAML specs |
-| `make build` | Build debug version |
-| `make build-release` | Build release version |
-| `make test` | Run tests |
-| `make clean` | Remove generated projects and build artifacts |
-| `make xcode` | Generate projects and open in Xcode |
+```bash
+# enter nix shell (required for swift apps)
+nix develop
+
+# first-time setup
+make setup
+
+# open in xcode
+make xcode
+```
+
+## Apps
+
+### Desktop (macOS)
+
+Runs pi locally via subprocess. Communicates over stdin/stdout using JSONL.
+
+```bash
+make build        # build debug
+make xcode        # open in xcode
+```
+
+### Mobile (iOS)
+
+Connects to a pi-server instance via WebSocket. Cannot run pi locally (iOS limitation).
+
+### Server
+
+WebSocket server that wraps pi sessions. Enables iOS and remote clients.
+
+```bash
+cd apps/server
+bun install
+bun run dev       # dev with hot reload
+bun run build     # standalone binary
+```
 
 ## Configuration
 
-Each developer needs their own bundle IDs. On first `make setup`, a `Config/Local.xcconfig` is created from the example. Edit it with your own values:
+Bundle IDs are developer-specific. On first `make setup`, `Config/Local.xcconfig` is created:
 
 ```xcconfig
 PI_DESKTOP_BUNDLE_ID = dev.yourname.pi.desktop
 PI_MOBILE_BUNDLE_ID = dev.yourname.pi.mobile
 ```
 
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | First-time setup |
+| `make build` | Build desktop (debug) |
+| `make test` | Run tests |
+| `make xcode` | Open workspace in Xcode |
+| `make clean` | Remove build artifacts |
+
 ## Requirements
 
-- macOS with Xcode installed
-- Development tools (see installation options below)
-
-## Installation
-
-### Option 1: Using Nix
-
-```bash
-# Enter development environment
-nix develop
-```
-
-### Option 2: Using Homebrew
-
-```bash
-brew install xcodegen swiftlint
-```
-
-> **Note:** When using Homebrew, pre-commit hooks for SwiftLint are not automatically configured. You can manually run `swiftlint` before committing or set up your own pre-commit hooks.
+- macOS with Xcode 26+
+- Nix (for development shell)
