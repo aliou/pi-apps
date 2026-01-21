@@ -13,10 +13,10 @@ export interface ServerConfig {
 }
 
 export interface SandboxConfig {
-  /** Sandbox provider: "modal", "koyeb", or "cloudflare" */
-  provider: "modal" | "koyeb" | "cloudflare";
-  /** API token for the provider */
-  apiToken: string;
+  /** Sandbox provider: "modal", "koyeb", "cloudflare", or "docker" */
+  provider: "modal" | "koyeb" | "cloudflare" | "docker";
+  /** API token for the provider (not required for docker) */
+  apiToken?: string;
   /** Docker image (default: "node:20-slim") */
   image?: string;
   /** Instance type (default: "small") */
@@ -27,6 +27,10 @@ export interface SandboxConfig {
   idleTimeout?: number;
   /** Cloudflare Worker URL (required for cloudflare provider) */
   workerUrl?: string;
+  /** Docker socket path (optional, for docker provider) */
+  dockerSocketPath?: string;
+  /** Docker host (optional, for docker provider) */
+  dockerHost?: string;
 }
 
 /**
@@ -107,10 +111,11 @@ export function parseArgs(args: string[]): ServerConfig {
  * Get sandbox configuration from environment variables.
  *
  * Environment variables:
- * - SANDBOX_PROVIDER: "modal", "koyeb", or "cloudflare"
+ * - SANDBOX_PROVIDER: "modal", "koyeb", "cloudflare", or "docker"
  * - MODAL_TOKEN_ID + MODAL_TOKEN_SECRET: Modal credentials
  * - KOYEB_API_TOKEN: Koyeb credentials
  * - CLOUDFLARE_SANDBOX_WORKER_URL + CLOUDFLARE_API_TOKEN: Cloudflare credentials
+ * - DOCKER_SOCKET_PATH + DOCKER_HOST: Docker connection (optional)
  * - SANDBOX_IMAGE: Docker image (optional)
  * - SANDBOX_INSTANCE_TYPE: Instance size (optional)
  * - SANDBOX_TIMEOUT: Timeout in seconds (optional)
@@ -121,14 +126,17 @@ function getSandboxConfigFromEnv(): SandboxConfig | undefined {
     | "modal"
     | "koyeb"
     | "cloudflare"
+    | "docker"
     | undefined;
 
   if (!provider) {
     return undefined;
   }
 
-  let apiToken: string;
+  let apiToken: string | undefined;
   let workerUrl: string | undefined;
+  let dockerSocketPath: string | undefined;
+  let dockerHost: string | undefined;
 
   if (provider === "modal") {
     const tokenId = process.env.MODAL_TOKEN_ID;
@@ -165,6 +173,10 @@ function getSandboxConfigFromEnv(): SandboxConfig | undefined {
       );
       return undefined;
     }
+  } else if (provider === "docker") {
+    // Docker doesn't require API token
+    dockerSocketPath = process.env.DOCKER_SOCKET_PATH;
+    dockerHost = process.env.DOCKER_HOST;
   } else {
     console.warn(`Unknown SANDBOX_PROVIDER: ${provider}`);
     return undefined;
@@ -174,6 +186,8 @@ function getSandboxConfigFromEnv(): SandboxConfig | undefined {
     provider,
     apiToken,
     workerUrl,
+    dockerSocketPath,
+    dockerHost,
     image: process.env.SANDBOX_IMAGE,
     instanceType: process.env.SANDBOX_INSTANCE_TYPE as
       | "nano"
@@ -208,12 +222,14 @@ Sandbox Mode (for running sessions in isolated containers):
   Set SANDBOX_PROVIDER to enable sandbox mode.
 
   Environment Variables:
-    SANDBOX_PROVIDER              Provider: "modal", "koyeb", or "cloudflare"
+    SANDBOX_PROVIDER              Provider: "modal", "koyeb", "cloudflare", or "docker"
     MODAL_TOKEN_ID                Modal token ID (for modal provider)
     MODAL_TOKEN_SECRET            Modal token secret (for modal provider)
     KOYEB_API_TOKEN               Koyeb API token (for koyeb provider)
     CLOUDFLARE_SANDBOX_WORKER_URL Cloudflare Worker URL (for cloudflare provider)
     CLOUDFLARE_API_TOKEN          Cloudflare API token (for cloudflare provider)
+    DOCKER_SOCKET_PATH            Docker socket path (for docker provider, optional)
+    DOCKER_HOST                   Docker host URL (for docker provider, optional)
     SANDBOX_IMAGE                 Docker image (default: node:20-slim)
     SANDBOX_INSTANCE_TYPE         Instance size: nano, small, medium, large
     SANDBOX_TIMEOUT               Sandbox timeout in seconds (default: 1800)

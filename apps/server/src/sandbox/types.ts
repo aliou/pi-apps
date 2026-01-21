@@ -2,7 +2,8 @@
  * Sandbox abstraction types.
  *
  * Defines the interface for ephemeral compute environments that can run
- * pi-server instances in isolation. Implementations exist for Modal, Koyeb, and Cloudflare.
+ * pi-server instances in isolation. Implementations exist for Modal, Koyeb,
+ * Cloudflare, and Docker.
  */
 
 /**
@@ -258,10 +259,10 @@ export interface SandboxProvider {
  */
 export interface SandboxProviderConfig {
   /** Provider type */
-  provider: "modal" | "koyeb" | "cloudflare";
+  provider: "modal" | "koyeb" | "cloudflare" | "docker";
 
-  /** API token/key for the provider */
-  apiToken: string;
+  /** API token/key for the provider (not required for docker) */
+  apiToken?: string;
 
   /** Default image to use */
   defaultImage?: string;

@@ -7,6 +7,7 @@
  * - Modal (https://modal.com) - via "modal" npm package
  * - Koyeb (https://koyeb.com) - via "@koyeb/sandbox-sdk" npm package
  * - Cloudflare (https://developers.cloudflare.com/sandbox/) - via Worker proxy
+ * - Docker (local) - via "dockerode" npm package for local development
  *
  * @example
  * ```typescript
@@ -43,6 +44,7 @@
 
 // Providers
 export { CloudflareSandboxProvider } from "./cloudflare.js";
+export { DockerSandboxProvider } from "./docker.js";
 export { KoyebSandboxProvider } from "./koyeb.js";
 // Session manager
 export {
@@ -70,6 +72,7 @@ export { INSTANCE_SPECS } from "./types.js";
 
 // Provider factory
 import { CloudflareSandboxProvider } from "./cloudflare.js";
+import { DockerSandboxProvider } from "./docker.js";
 import { KoyebSandboxProvider } from "./koyeb.js";
 import { ModalSandboxProvider } from "./modal.js";
 import type { SandboxProvider, SandboxProviderConfig } from "./types.js";
@@ -87,6 +90,8 @@ export function createSandboxProvider(
       return new KoyebSandboxProvider(config);
     case "cloudflare":
       return new CloudflareSandboxProvider(config);
+    case "docker":
+      return new DockerSandboxProvider(config);
     default:
       throw new Error(`Unknown sandbox provider: ${config.provider}`);
   }
@@ -96,23 +101,25 @@ export function createSandboxProvider(
  * Get sandbox provider from environment variables.
  *
  * Reads configuration from:
- * - SANDBOX_PROVIDER: "modal", "koyeb", or "cloudflare"
+ * - SANDBOX_PROVIDER: "modal", "koyeb", "cloudflare", or "docker"
  * - MODAL_TOKEN_ID + MODAL_TOKEN_SECRET: Modal credentials
  * - KOYEB_API_TOKEN: Koyeb credentials
  * - CLOUDFLARE_SANDBOX_WORKER_URL + CLOUDFLARE_API_TOKEN: Cloudflare credentials
+ * - DOCKER_HOST or DOCKER_SOCKET_PATH: Docker connection (optional)
  */
 export function getSandboxProviderFromEnv(): SandboxProvider | null {
   const providerType = process.env.SANDBOX_PROVIDER as
     | "modal"
     | "koyeb"
     | "cloudflare"
+    | "docker"
     | undefined;
 
   if (!providerType) {
     return null;
   }
 
-  let apiToken: string;
+  let apiToken: string | undefined;
   let providerConfig: Record<string, unknown> | undefined;
 
   if (providerType === "modal") {
@@ -152,6 +159,18 @@ export function getSandboxProviderFromEnv(): SandboxProvider | null {
     }
 
     providerConfig = { workerUrl };
+  } else if (providerType === "docker") {
+    // Docker doesn't require API token
+    // Optional: custom socket path or Docker host
+    const socketPath = process.env.DOCKER_SOCKET_PATH;
+    const dockerHost = process.env.DOCKER_HOST;
+
+    if (socketPath || dockerHost) {
+      providerConfig = {
+        socketPath,
+        host: dockerHost,
+      };
+    }
   } else {
     console.warn(`Unknown SANDBOX_PROVIDER: ${providerType}`);
     return null;

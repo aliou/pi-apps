@@ -472,13 +472,13 @@ export class CloudflareSandboxProvider implements SandboxProvider {
     }
 
     this.config = config;
-    this.apiToken = config.apiToken;
 
-    // Worker URL can be passed via providerConfig or as the apiToken in format "url:token"
+    // Worker URL can be passed via providerConfig or as the apiToken in format "url|token"
     const workerUrl = config.providerConfig?.workerUrl as string | undefined;
     if (workerUrl) {
       this.workerUrl = workerUrl;
-    } else if (config.apiToken.includes("|")) {
+      this.apiToken = config.apiToken ?? "";
+    } else if (config.apiToken?.includes("|")) {
       // Support format: "worker-url|api-token"
       const [url, token] = config.apiToken.split("|");
       this.workerUrl = url;
@@ -493,6 +493,13 @@ export class CloudflareSandboxProvider implements SandboxProvider {
         );
       }
       this.workerUrl = envUrl;
+      this.apiToken = config.apiToken ?? "";
+    }
+
+    if (!this.apiToken) {
+      throw new Error(
+        "CLOUDFLARE_API_TOKEN is required for cloudflare provider",
+      );
     }
 
     // Ensure URL doesn't have trailing slash

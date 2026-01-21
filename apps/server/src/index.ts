@@ -65,6 +65,18 @@ console.log(`  Listening on: ${config.host}:${config.port}`);
 let sandboxProvider: SandboxProvider | undefined;
 if (config.sandbox) {
   console.log(`  Sandbox mode: ${config.sandbox.provider}`);
+
+  // Build provider-specific config
+  let providerConfig: Record<string, unknown> | undefined;
+  if (config.sandbox.provider === "cloudflare" && config.sandbox.workerUrl) {
+    providerConfig = { workerUrl: config.sandbox.workerUrl };
+  } else if (config.sandbox.provider === "docker") {
+    providerConfig = {
+      socketPath: config.sandbox.dockerSocketPath,
+      host: config.sandbox.dockerHost,
+    };
+  }
+
   sandboxProvider = createSandboxProvider({
     provider: config.sandbox.provider,
     apiToken: config.sandbox.apiToken,
@@ -72,10 +84,7 @@ if (config.sandbox) {
     defaultInstanceType: config.sandbox.instanceType,
     defaultTimeout: config.sandbox.timeout,
     defaultIdleTimeout: config.sandbox.idleTimeout,
-    providerConfig:
-      config.sandbox.provider === "cloudflare" && config.sandbox.workerUrl
-        ? { workerUrl: config.sandbox.workerUrl }
-        : undefined,
+    providerConfig,
   });
 } else {
   console.log("  Mode: local");
