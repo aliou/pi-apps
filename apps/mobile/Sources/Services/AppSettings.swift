@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import PiUI
 
 /// Observable app settings with automatic persistence
 @MainActor
@@ -25,15 +26,27 @@ public final class AppSettings {
         }
     }
 
+    /// Default behavior when sending during streaming
+    public var streamingBehavior: StreamingBehavior {
+        didSet {
+            UserDefaults.standard.set(streamingBehavior.rawValue, forKey: Keys.streamingBehavior)
+        }
+    }
+
     // MARK: - Initialization
 
     private enum Keys {
         static let chatSystemPrompt = "chatSystemPrompt"
+        static let streamingBehavior = "streamingBehavior"
     }
 
     private init() {
         self.chatSystemPrompt = UserDefaults.standard.string(forKey: Keys.chatSystemPrompt)
             ?? Self.defaultChatSystemPrompt
+
+        let storedBehavior = UserDefaults.standard.string(forKey: Keys.streamingBehavior)
+        self.streamingBehavior = StreamingBehavior(rawValue: storedBehavior ?? StreamingBehavior.steer.rawValue)
+            ?? .steer
     }
 
     // MARK: - Default Prompt

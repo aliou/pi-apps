@@ -9,13 +9,18 @@
 import Foundation
 import SwiftUI
 
+public enum StreamingBehavior: String, Sendable {
+    case steer
+    case followUp
+}
+
 /// Callbacks for platform-specific RPC operations
 public struct SessionEngineCallbacks: Sendable {
-    public let sendPrompt: @Sendable (String) async throws -> Void
+    public let sendPrompt: @Sendable (String, StreamingBehavior?) async throws -> Void
     public let abort: @Sendable () async throws -> Void
 
     public init(
-        sendPrompt: @escaping @Sendable (String) async throws -> Void,
+        sendPrompt: @escaping @Sendable (String, StreamingBehavior?) async throws -> Void,
         abort: @escaping @Sendable () async throws -> Void
     ) {
         self.sendPrompt = sendPrompt
@@ -65,7 +70,7 @@ public final class SessionEngine {
     // MARK: - User Actions
 
     /// Send a user message
-    public func send(_ text: String) async {
+    public func send(_ text: String, defaultStreamingBehavior: StreamingBehavior = .steer) async {
         guard let callbacks else {
             error = "Engine not configured"
             return
@@ -74,14 +79,17 @@ public final class SessionEngine {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
+        let wasProcessing = isProcessing
+        let streamingBehavior: StreamingBehavior? = wasProcessing ? defaultStreamingBehavior : nil
+
         // Add user message immediately
         let userMessageId = UUID().uuidString
-        messages.append(.userMessage(id: userMessageId, text: trimmed))
+        messages.append(.userMessage(id: userMessageId, text: trimmed, queuedBehavior: streamingBehavior))
         isProcessing = true
         error = nil
 
         do {
-            try await callbacks.sendPrompt(trimmed)
+            try await callbacks.sendPrompt(trimmed, streamingBehavior)
         } catch {
             self.error = error.localizedDescription
             isProcessing = false
@@ -107,6 +115,10 @@ public final class SessionEngine {
         isProcessing = true
         streamingText = ""
         streamingId = UUID().uuidString
+    }
+
+    public func handleTurnStart() {
+        clearNextQueuedBehavior()
     }
 
     public func handleAgentEnd(success: Bool, errorMessage: String?) {
@@ -239,6 +251,19 @@ public final class SessionEngine {
                 output: newOutput,
                 status: status
             )
+        }
+    }
+
+    private func clearNextQueuedBehavior() {
+        guard let index = messages.firstIndex(where: { item in
+            if case .userMessage(_, _, let queuedBehavior) = item {
+                return queuedBehavior != nil
+            }
+            return false
+        }) else { return }
+
+        if case .userMessage(let id, let text, _) = messages[index] {
+            messages[index] = .userMessage(id: id, text: text, queuedBehavior: nil)
         }
     }
 }

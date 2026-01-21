@@ -16,6 +16,7 @@ struct SessionConversationView: View {
     @State private var engine = SessionEngine()
     @State private var inputText = ""
     @State private var isSetup = false
+    @State private var settings = AppSettings.shared
     @State private var autoScrollEnabled = true
     @State private var isUserScrolling = false
     @State private var eventTask: Task<Void, Never>?
@@ -55,6 +56,12 @@ struct SessionConversationView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 }
+
+                statusRow
+                    .id("status")
+                    .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
 
                 Color.clear
                     .frame(height: 1)
@@ -106,12 +113,17 @@ struct SessionConversationView: View {
                     .padding(.bottom, 16)
                 }
             }
-            .overlay(alignment: .bottomLeading) {
-                if engine.isProcessing && engine.streamingId == nil {
-                    ProcessingIndicatorView()
-                        .padding(.bottom, 8)
-                }
-            }
+        }
+    }
+
+    // MARK: - Status Row
+
+    @ViewBuilder
+    private var statusRow: some View {
+        if engine.isProcessing && engine.streamingText.isEmpty {
+            ProcessingIndicatorView()
+        } else {
+            Color.clear.frame(height: 1)
         }
     }
 
@@ -167,8 +179,9 @@ struct SessionConversationView: View {
 
             // Configure engine with callbacks
             engine.configure(callbacks: SessionEngineCallbacks(
-                sendPrompt: { text in
-                    try await connection.prompt(text)
+                sendPrompt: { text, streamingBehavior in
+                    let rpcBehavior = streamingBehavior.flatMap { PiCore.StreamingBehavior(rawValue: $0.rawValue) }
+                    try await connection.prompt(text, streamingBehavior: rpcBehavior)
                 },
                 abort: {
                     try await connection.abort()
@@ -207,6 +220,9 @@ struct SessionConversationView: View {
 
         case .agentEnd(let success, let error):
             engine.handleAgentEnd(success: success, errorMessage: error?.message)
+
+        case .turnStart:
+            engine.handleTurnStart()
 
         case .messageEnd:
             engine.handleMessageEnd()
@@ -255,7 +271,7 @@ struct SessionConversationView: View {
         isInputFocused = false
         autoScrollEnabled = true
 
-        await engine.send(text)
+        await engine.send(text, defaultStreamingBehavior: settings.streamingBehavior)
     }
 
     private func scheduleScrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
@@ -298,7 +314,7 @@ struct SessionConversationView: View {
                 if let content = message.content {
                     let text = extractText(from: content)
                     if !text.isEmpty {
-                        items.append(.userMessage(id: message.id, text: text))
+                        items.append(.userMessage(id: message.id, text: text, queuedBehavior: nil))
                     }
                 }
 
@@ -383,8 +399,22 @@ struct ConversationItemView: View {
 
     var body: some View {
         switch item {
-        case .userMessage(_, let text):
-            MessageBubbleView(role: .user, text: text)
+        case .userMessage(_, let text, let queuedBehavior):
+            if let queuedBehavior {
+                VStack(alignment: .trailing, spacing: 4) {
+                    HStack {
+                        Spacer()
+                        Text(queuedBehavior == .steer ? "steer" : "follow-up")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(.horizontal, 16)
+
+                    MessageBubbleView(role: .user, text: text)
+                }
+            } else {
+                MessageBubbleView(role: .user, text: text)
+            }
 
         case .assistantText(_, let text):
             MessageBubbleView(role: .assistant, text: text)

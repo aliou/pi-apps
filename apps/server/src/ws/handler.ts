@@ -268,11 +268,18 @@ async function handlePrompt(
     throw new Error(`Session not active: ${sessionId}`);
   }
 
+  const streamingBehavior = params?.streamingBehavior as
+    | "steer"
+    | "followUp"
+    | undefined;
+
   // Don't await - prompt runs async, events stream back
-  active.session.prompt(message).catch((error) => {
-    console.error(`Prompt error for session ${sessionId}:`, error);
-    console.error(error.stack);
-  });
+  active.session
+    .prompt(message, streamingBehavior ? { streamingBehavior } : undefined)
+    .catch((error) => {
+      console.error(`Prompt error for session ${sessionId}:`, error);
+      console.error(error.stack);
+    });
 
   return { ok: true };
 }

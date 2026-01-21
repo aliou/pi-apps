@@ -373,8 +373,8 @@ public final class ServerConnection {
 
     // MARK: - Agent Operations
 
-    public func prompt(_ message: String) async throws {
-        let command = PromptCommand(message: message)
+    public func prompt(_ message: String, streamingBehavior: StreamingBehavior? = nil) async throws {
+        let command = PromptCommand(message: message, streamingBehavior: streamingBehavior)
         try await sendVoid(method: command.type, params: command)
     }
 

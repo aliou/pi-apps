@@ -277,6 +277,11 @@ public protocol RPCCommand: Encodable, Sendable {
     var type: String { get }
 }
 
+public enum StreamingBehavior: String, Codable, Sendable {
+    case steer
+    case followUp
+}
+
 /// Prompt command - send a message to the agent
 public struct PromptCommand: RPCCommand, Sendable {
     public let type = "prompt"
@@ -285,19 +290,22 @@ public struct PromptCommand: RPCCommand, Sendable {
     public let allowedTools: [String]?
     public let disallowedTools: [String]?
     public let mcpConfigPaths: [String]?
+    public let streamingBehavior: StreamingBehavior?
 
     public init(
         message: String,
         customSystemPrompt: String? = nil,
         allowedTools: [String]? = nil,
         disallowedTools: [String]? = nil,
-        mcpConfigPaths: [String]? = nil
+        mcpConfigPaths: [String]? = nil,
+        streamingBehavior: StreamingBehavior? = nil
     ) {
         self.message = message
         self.customSystemPrompt = customSystemPrompt
         self.allowedTools = allowedTools
         self.disallowedTools = disallowedTools
         self.mcpConfigPaths = mcpConfigPaths
+        self.streamingBehavior = streamingBehavior
     }
 }
 

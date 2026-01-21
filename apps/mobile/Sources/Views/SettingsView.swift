@@ -1,5 +1,4 @@
 import SwiftUI
-import PiCore
 import PiUI
 
 struct SettingsView: View {
@@ -39,6 +38,19 @@ struct SettingsView: View {
                 Text("Chat System Prompt")
             } footer: {
                 Text("Instructions for chat sessions.")
+                    .foregroundColor(Theme.textSecondary)
+            }
+
+            Section {
+                Picker("During Streaming", selection: $settings.streamingBehavior) {
+                    Text("Steer").tag(PiUI.StreamingBehavior.steer)
+                    Text("Follow-up").tag(PiUI.StreamingBehavior.followUp)
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Queued Message Behavior")
+            } footer: {
+                Text("Used when sending a message while the agent is still streaming.")
                     .foregroundColor(Theme.textSecondary)
             }
 
