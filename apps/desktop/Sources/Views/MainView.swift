@@ -537,6 +537,19 @@ class AppState: ObservableObject {
         case .stateUpdate(let context):
             debugStore?.addReceived(type: "state_update", summary: "model: \(context.model?.id ?? "none")")
 
+        case .modelChanged(let model):
+            debugStore?.addReceived(type: "model_changed", summary: "\(model.provider)/\(model.id)")
+
+        case .nativeToolRequest(let request):
+            debugStore?.addReceived(
+                type: "native_tool_request",
+                summary: request.toolName,
+                details: "callId: \(request.callId)"
+            )
+
+        case .nativeToolCancel(let callId):
+            debugStore?.addReceived(type: "native_tool_cancel", summary: callId)
+
         case .unknown(let type, let raw):
             let rawString = String(data: raw, encoding: .utf8) ?? "?"
             debugStore?.addReceived(type: "unknown", summary: type, details: rawString)
