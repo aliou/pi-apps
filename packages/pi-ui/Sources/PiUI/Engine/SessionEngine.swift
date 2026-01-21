@@ -123,7 +123,12 @@ public final class SessionEngine {
     }
 
     public func handleTextDelta(_ delta: String) {
+        if streamingId == nil {
+            streamingId = UUID().uuidString
+        }
+
         streamingText += delta
+        updateStreamingMessage(id: streamingId, text: streamingText)
     }
 
     public func handleToolUseStart(toolCallId: String, toolName: String) {
@@ -198,12 +203,28 @@ public final class SessionEngine {
     // MARK: - Private Helpers
 
     private func flushStreamingText() {
-        guard !streamingText.isEmpty else { return }
+        guard !streamingText.isEmpty else {
+            streamingId = nil
+            return
+        }
 
         let id = streamingId ?? UUID().uuidString
-        messages.append(.assistantText(id: id, text: streamingText))
+        updateStreamingMessage(id: id, text: streamingText)
         streamingText = ""
-        streamingId = UUID().uuidString
+        streamingId = nil
+    }
+
+    private func updateStreamingMessage(id: String?, text: String) {
+        guard let id else { return }
+
+        if let index = messages.firstIndex(where: { $0.id == id }) {
+            if case .assistantText = messages[index] {
+                messages[index] = .assistantText(id: id, text: text)
+            }
+            return
+        }
+
+        messages.append(.assistantText(id: id, text: text))
     }
 
     private func updateToolCall(id: String, output: String?, status: ToolCallStatus) {

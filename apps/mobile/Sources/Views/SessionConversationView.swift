@@ -46,26 +46,11 @@ struct SessionConversationView: View {
 
     private var messageList: some View {
         ScrollViewReader { proxy in
+            // List used to avoid ScrollView + LazyVStack stalling during streaming updates.
             List {
                 ForEach(engine.messages) { item in
                     ConversationItemView(item: item)
                         .id(item.id)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
-
-                if !engine.streamingText.isEmpty {
-                    StreamingBubbleView(text: engine.streamingText)
-                        .id("streaming")
-                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
-
-                if engine.isProcessing && engine.streamingText.isEmpty {
-                    ProcessingIndicatorView()
-                        .id("processing")
                         .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -94,15 +79,16 @@ struct SessionConversationView: View {
             )
             .onChange(of: engine.messages.count) { _, _ in
                 if autoScrollEnabled && !isUserScrolling {
-                    scrollToBottom(proxy)
+                    scheduleScrollToBottom(proxy, animated: false)
                 }
             }
-            .onChange(of: engine.streamingText) { _, _ in
+            .onChange(of: engine.streamingText) { _, newValue in
+                guard !newValue.isEmpty else { return }
                 // Throttle scroll during streaming to avoid performance issues
                 let now = Date()
                 if autoScrollEnabled && !isUserScrolling && now.timeIntervalSince(lastScrollTime) > 0.1 {
                     lastScrollTime = now
-                    scrollToBottom(proxy)
+                    scheduleScrollToBottom(proxy)
                 }
             }
             .overlay(alignment: .bottomTrailing) {
@@ -118,6 +104,12 @@ struct SessionConversationView: View {
                     }
                     .padding(.trailing, 16)
                     .padding(.bottom, 16)
+                }
+            }
+            .overlay(alignment: .bottomLeading) {
+                if engine.isProcessing && engine.streamingId == nil {
+                    ProcessingIndicatorView()
+                        .padding(.bottom, 8)
                 }
             }
         }
@@ -266,8 +258,19 @@ struct SessionConversationView: View {
         await engine.send(text)
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.2)) {
+    private func scheduleScrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        Task { @MainActor in
+            await Task.yield()
+            scrollToBottom(proxy, animated: animated)
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+        } else {
             proxy.scrollTo("bottom", anchor: .bottom)
         }
     }
