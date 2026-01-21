@@ -1,4 +1,5 @@
-.PHONY: all setup generate build build-release test clean xcode help
+.PHONY: all setup generate build build-release test clean xcode help \
+	server-build server-build-linux-arm64 server-build-darwin-arm64
 
 # Tools
 XCODEGEN := xcodegen
@@ -61,6 +62,26 @@ build-release: generate
 		| grep -E "^(Build|Compile|Link|error:|warning:)" || true
 
 # =============================================================================
+# Server Builds
+# =============================================================================
+
+SERVER_DIR := apps/server
+SERVER_DIST := $(SERVER_DIR)/dist
+
+server-build-linux-arm64:
+	@echo "==> Building pi-server (linux-arm64)..."
+	@cd $(SERVER_DIR) && bun build --compile --target=bun-linux-arm64 src/index.ts --outfile dist/pi-server-linux-arm64
+	@cp $(SERVER_DIR)/node_modules/@mariozechner/pi-coding-agent/package.json $(SERVER_DIST)/
+
+server-build-darwin-arm64:
+	@echo "==> Building pi-server (darwin-arm64)..."
+	@cd $(SERVER_DIR) && bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dist/pi-server-darwin-arm64
+	@cp $(SERVER_DIR)/node_modules/@mariozechner/pi-coding-agent/package.json $(SERVER_DIST)/
+
+server-build: server-build-linux-arm64 server-build-darwin-arm64
+	@echo "==> All server binaries built in $(SERVER_DIST)/"
+
+# =============================================================================
 # Testing
 # =============================================================================
 
@@ -106,10 +127,15 @@ help:
 	@echo "  setup         - First-time setup (creates Local.xcconfig, generates projects)"
 	@echo "  generate      - Regenerate Xcode projects from YAML specs"
 	@echo ""
-	@echo "Building:"
+	@echo "Building (Desktop):"
 	@echo "  build         - Build debug version"
 	@echo "  build-release - Build release version"
 	@echo "  test          - Run tests"
+	@echo ""
+	@echo "Building (Server):"
+	@echo "  server-build              - Build all aarch64 binaries"
+	@echo "  server-build-linux-arm64  - Build for Linux aarch64"
+	@echo "  server-build-darwin-arm64 - Build for macOS aarch64"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean         - Remove generated projects and build artifacts"
