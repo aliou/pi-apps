@@ -16,10 +16,12 @@ public struct MessageBubbleView: View {
 
     public let role: Role
     public let text: String
+    public let isQueued: Bool
 
-    public init(role: Role, text: String) {
+    public init(role: Role, text: String, isQueued: Bool = false) {
         self.role = role
         self.text = text
+        self.isQueued = isQueued
     }
 
     public var body: some View {
@@ -40,7 +42,7 @@ public struct MessageBubbleView: View {
                 .font(.body)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .modifier(UserBubbleModifier())
+                .modifier(UserBubbleModifier(isQueued: isQueued))
         }
         .padding(.horizontal, 16)
     }
@@ -66,18 +68,23 @@ public struct MessageBubbleView: View {
 // MARK: - Platform/Version-specific Modifiers
 
 private struct UserBubbleModifier: ViewModifier {
+    let isQueued: Bool
+
     func body(content: Content) -> some View {
+        let tint = isQueued ? Theme.queuedUserMessageTint : Theme.userMessageTint
+        let background = isQueued ? Theme.queuedUserMessageBg : Theme.userMessageBg
+
         if #available(iOS 26.0, macOS 26.0, *) {
             #if os(iOS)
-            content.glassEffect(.regular.tint(Theme.userMessageTint), in: .rect(cornerRadius: 16))
+            content.glassEffect(.regular.tint(tint), in: .rect(cornerRadius: 16))
             #else
             content
-                .background(Theme.userMessageBg)
+                .background(background)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             #endif
         } else {
             content
-                .background(Theme.userMessageBg)
+                .background(background)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }

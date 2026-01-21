@@ -30,6 +30,7 @@ public enum Theme {
     // MARK: - Message Bubble Tints (for glass effects)
 
     public static let userMessageTint = Color.blue
+    public static let queuedUserMessageTint = Color.gray
     public static let assistantMessageTint = Color.clear  // Pure glass, no tint
 
     // MARK: - Tool Status
@@ -67,6 +68,7 @@ public enum Theme {
     public static let hoverBg = Color(light: rgb(0.878, 0.878, 0.909), dark: rgb(0.164, 0.164, 0.203))
 
     public static let userMessageBg = Color(light: rgb(0.909, 0.909, 0.909), dark: rgb(0.203, 0.207, 0.254))
+    public static let queuedUserMessageBg = Color(light: rgb(0.925, 0.925, 0.925), dark: rgb(0.180, 0.180, 0.200))
     public static let toolPendingBg = Color(light: rgb(0.909, 0.909, 0.941), dark: rgb(0.156, 0.156, 0.196))
     public static let toolSuccessBg = Color(light: rgb(0.909, 0.941, 0.909), dark: rgb(0.156, 0.196, 0.156))
     public static let toolErrorBg = Color(light: rgb(0.941, 0.909, 0.909), dark: rgb(0.235, 0.156, 0.156))

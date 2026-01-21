@@ -22,6 +22,10 @@ struct SessionConversationView: View {
     @State private var eventTask: Task<Void, Never>?
     @State private var lastScrollTime: Date = .distantPast
 
+    private var trimmedInputText: String {
+        inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -143,6 +147,23 @@ struct SessionConversationView: View {
                     Task { await send() }
                 }
 
+            Menu {
+                Button("Send as Steer") {
+                    Task { await send(overrideBehavior: .steer) }
+                }
+                Button("Send as Follow-up") {
+                    Task { await send(overrideBehavior: .followUp) }
+                }
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(trimmedInputText.isEmpty ? .secondary : Theme.accent)
+            } primaryAction: {
+                Task { await send() }
+            }
+            .disabled(trimmedInputText.isEmpty)
+            .modifier(GlassButtonModifier())
+
             if engine.isProcessing {
                 Button {
                     Task { await engine.abort() }
@@ -151,16 +172,6 @@ struct SessionConversationView: View {
                         .font(.system(size: 32))
                         .foregroundStyle(Theme.error)
                 }
-                .modifier(GlassButtonModifier())
-            } else {
-                Button {
-                    Task { await send() }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : Theme.accent)
-                }
-                .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .modifier(GlassButtonModifier())
             }
         }
@@ -263,15 +274,16 @@ struct SessionConversationView: View {
 
     // MARK: - Actions
 
-    private func send() async {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func send(overrideBehavior: PiUI.StreamingBehavior? = nil) async {
+        let text = trimmedInputText
         guard !text.isEmpty else { return }
 
         inputText = ""
         isInputFocused = false
         autoScrollEnabled = true
 
-        await engine.send(text, defaultStreamingBehavior: settings.streamingBehavior)
+        let behavior = overrideBehavior ?? settings.streamingBehavior
+        await engine.send(text, defaultStreamingBehavior: behavior)
     }
 
     private func scheduleScrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
@@ -410,7 +422,7 @@ struct ConversationItemView: View {
                     }
                     .padding(.horizontal, 16)
 
-                    MessageBubbleView(role: .user, text: text)
+                    MessageBubbleView(role: .user, text: text, isQueued: true)
                 }
             } else {
                 MessageBubbleView(role: .user, text: text)
