@@ -156,3 +156,14 @@ Bun.serve<WSData>({
 
 console.log(`Pi Server running at http://${config.host}:${config.port}`);
 console.log(`WebSocket endpoint: ws://${config.host}:${config.port}/rpc`);
+
+// Graceful shutdown handler
+function shutdown(signal: string) {
+  console.log(`\nReceived ${signal}, shutting down...`);
+  sessionManager.shutdown();
+  process.exit(0);
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGHUP", () => shutdown("SIGHUP"));

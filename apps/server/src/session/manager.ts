@@ -415,4 +415,16 @@ export class SessionManager {
     const statePath = join(this.dataDir, "state.json");
     writeFileSync(statePath, JSON.stringify(this.state, null, 2));
   }
+
+  /**
+   * Gracefully shutdown all active sessions.
+   */
+  shutdown(): void {
+    for (const [sessionId, active] of this.sessions) {
+      console.log(`Shutting down session: ${sessionId}`);
+      active.unsubscribe();
+      active.session.dispose();
+    }
+    this.sessions.clear();
+  }
 }
