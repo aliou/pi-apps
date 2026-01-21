@@ -100,12 +100,6 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         Section {
-            NavigationLink {
-                DeviceContextView()
-            } label: {
-                Text("Device Context")
-            }
-
             LabeledContent("Version") {
                 Text(appVersion)
                     .foregroundStyle(.secondary)
@@ -167,22 +161,6 @@ private struct SystemPromptEditorView: View {
             .onAppear {
                 isFocused = true
             }
-    }
-}
-
-// MARK: - Device Context View
-
-private struct DeviceContextView: View {
-    var body: some View {
-        ScrollView {
-            Text(AppSettings.buildDeviceContext())
-                .font(.body.monospaced())
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .navigationTitle("Device Context")
-        .navigationBarTitleDisplayMode(.inline)
-        .background(Color(.systemGroupedBackground))
     }
 }
 

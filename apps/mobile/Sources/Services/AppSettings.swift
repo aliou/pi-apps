@@ -70,38 +70,13 @@ public final class AppSettings {
         refer to the Client Context below - you're running on the user's mobile device via the Pi app.
         """
 
-    // MARK: - Device Context
-
-    /// Build device context string to append to system prompt
-    public static func buildDeviceContext() -> String {
-        let device = UIDevice.current
-        let deviceModel = device.model // "iPhone", "iPad"
-        let systemVersion = device.systemVersion
-        let deviceName = device.name // User's device name like "John's iPhone"
-
-        let isPhone = device.userInterfaceIdiom == .phone
-        let deviceType = isPhone ? "mobile phone" : "tablet"
-
-        return """
-
-            ## Client Context
-            You are running on the user's \(deviceType) via the Pi Mobile app.
-            - Device: \(deviceModel) (\(deviceName))
-            - OS: iOS \(systemVersion)
-            - Connection: Pi Mobile app communicating with a pi server via WebSocket
-
-            When asked where you're running or about your environment, mention you're on their \(deviceType) (\(deviceName)).
-            Keep responses concise and easy to read on a \(isPhone ? "small" : "medium-sized") screen.
-            """
-    }
-
     // MARK: - Computed
 
-    /// Returns the full system prompt with device context appended
+    /// Returns the effective chat system prompt (trimmed, or nil if empty)
     public var effectiveChatSystemPrompt: String? {
         let base = chatSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !base.isEmpty else { return nil }
-        return base + Self.buildDeviceContext()
+        return base
     }
 
     /// Reset to default prompt
