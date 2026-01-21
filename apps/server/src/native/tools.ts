@@ -18,14 +18,17 @@ export interface NativeTool {
   execute: (
     toolCallId: string,
     params: Record<string, unknown>,
-    onUpdate?: (update: {
-      content?: Array<{ type: string; text: string }>;
-    }) => void,
-    ctx?: unknown,
+    onUpdate:
+      | ((update: {
+          content: Array<{ type: "text"; text: string }>;
+          details: unknown;
+        }) => void)
+      | undefined,
+    ctx: unknown,
     signal?: AbortSignal,
   ) => Promise<{
-    content: Array<{ type: string; text: string }>;
-    details?: unknown;
+    content: Array<{ type: "text"; text: string }>;
+    details: unknown;
   }>;
 }
 
