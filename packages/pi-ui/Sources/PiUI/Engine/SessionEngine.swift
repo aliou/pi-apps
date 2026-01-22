@@ -8,11 +8,7 @@
 
 import Foundation
 import SwiftUI
-
-public enum StreamingBehavior: String, Sendable {
-    case steer
-    case followUp
-}
+import PiCore
 
 /// Callbacks for platform-specific RPC operations
 public struct SessionEngineCallbacks: Sendable {

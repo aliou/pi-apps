@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import PiCore
 import PiUI
 
 /// Observable app settings with automatic persistence

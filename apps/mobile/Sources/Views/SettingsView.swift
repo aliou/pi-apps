@@ -134,8 +134,8 @@ struct SettingsView: View {
     private var messageBehaviorSection: some View {
         Section {
             Picker("During Streaming", selection: $settings.streamingBehavior) {
-                Text("Steer").tag(PiUI.StreamingBehavior.steer)
-                Text("Follow-up").tag(PiUI.StreamingBehavior.followUp)
+                Text("Steer").tag(StreamingBehavior.steer)
+                Text("Follow-up").tag(StreamingBehavior.followUp)
             }
         } header: {
             Text("Message Delivery")
