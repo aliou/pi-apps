@@ -176,15 +176,9 @@ public struct SleepDurationTool: NativeToolExecutable {
     }
 
     private func processSingleNight(samples: [HKCategorySample], date: Date) -> [String: Any] {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
-
         guard !samples.isEmpty else {
             return [
-                "date": dateFormatter.string(from: date),
+                "date": ToolDateFormatter.dateOnly.string(from: date),
                 "totalDurationMinutes": NSNull(),
                 "message": "No sleep data found"
             ]
@@ -196,7 +190,7 @@ public struct SleepDurationTool: NativeToolExecutable {
         }
 
         var result: [String: Any] = [
-            "date": dateFormatter.string(
+            "date": ToolDateFormatter.dateOnly.string(
                 from: Calendar.current.date(byAdding: .day, value: -1, to: date) ?? date),
             "totalDurationMinutes": Int(stats.totalMinutes),
             "stages": [
@@ -208,10 +202,10 @@ public struct SleepDurationTool: NativeToolExecutable {
         ]
 
         if let bedtime = stats.bedtime {
-            result["bedtime"] = timeFormatter.string(from: bedtime)
+            result["bedtime"] = ToolDateFormatter.timeOnly.string(from: bedtime)
         }
         if let wakeTime = stats.wakeTime {
-            result["wakeTime"] = timeFormatter.string(from: wakeTime)
+            result["wakeTime"] = ToolDateFormatter.timeOnly.string(from: wakeTime)
         }
 
         return result
@@ -221,8 +215,6 @@ public struct SleepDurationTool: NativeToolExecutable {
         -> [String: Any]
     {
         let calendar = Calendar.current
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
 
         // Group samples by night (date they ended on)
         var nightlyData: [String: SleepStats] = [:]
@@ -238,7 +230,7 @@ public struct SleepDurationTool: NativeToolExecutable {
                 nightDate = calendar.date(byAdding: .day, value: 1, to: sample.endDate)!
             }
 
-            let nightKey = dateFormatter.string(from: nightDate)
+            let nightKey = ToolDateFormatter.dateOnly.string(from: nightDate)
             var stats = nightlyData[nightKey] ?? SleepStats()
             stats.process(sample: sample)
             nightlyData[nightKey] = stats
@@ -264,8 +256,8 @@ public struct SleepDurationTool: NativeToolExecutable {
             : 0
 
         return [
-            "startDate": dateFormatter.string(from: startDate),
-            "endDate": dateFormatter.string(
+            "startDate": ToolDateFormatter.dateOnly.string(from: startDate),
+            "endDate": ToolDateFormatter.dateOnly.string(
                 from: calendar.date(byAdding: .day, value: -1, to: endDate) ?? endDate),
             "nights": nights,
             "summary": [

@@ -164,9 +164,6 @@ public struct CreateReminderTool: NativeToolExecutable {
         }
 
         // Build response
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm"
-
         var response: [String: Any] = [
             "success": true,
             "title": title,
@@ -175,7 +172,7 @@ public struct CreateReminderTool: NativeToolExecutable {
 
         if let components = reminder.dueDateComponents,
            let dueDate = Calendar.current.date(from: components) {
-            response["dueDate"] = dateFormatter.string(from: dueDate)
+            response["dueDateTime"] = ToolDateFormatter.dateTime.string(from: dueDate)
         }
 
         if let priorityString = args["priority"]?.value as? String {

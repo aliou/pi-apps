@@ -132,17 +132,10 @@ public struct WorkoutsTool: NativeToolExecutable {
         }
 
         // Format results
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
-
         let formattedWorkouts: [[String: Any]] = workouts.map { workout in
             var result: [String: Any] = [
                 "type": Self.workoutTypeName(workout.workoutActivityType),
-                "date": dateFormatter.string(from: workout.startDate),
-                "startTime": timeFormatter.string(from: workout.startDate),
+                "dateTime": ToolDateFormatter.dateTime.string(from: workout.startDate),
                 "durationMinutes": round(workout.duration / 60.0 * 10) / 10
             ]
 
@@ -165,8 +158,8 @@ public struct WorkoutsTool: NativeToolExecutable {
         return [
             "workouts": formattedWorkouts,
             "count": formattedWorkouts.count,
-            "startDate": dateFormatter.string(from: startDate),
-            "endDate": dateFormatter.string(from: endDate)
+            "startDate": ToolDateFormatter.dateTime.string(from: startDate),
+            "endDate": ToolDateFormatter.dateTime.string(from: endDate)
         ]
     }
 

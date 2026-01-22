@@ -116,12 +116,6 @@ public struct GetRemindersTool: NativeToolExecutable {
         }
 
         // Format results
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
-
         let formattedReminders: [[String: Any]] = filteredReminders.compactMap { reminder in
             guard let title = reminder.title, !title.isEmpty else { return nil }
 
@@ -134,9 +128,10 @@ public struct GetRemindersTool: NativeToolExecutable {
             // Due date
             if let dueDateComponents = reminder.dueDateComponents,
                let dueDate = Calendar.current.date(from: dueDateComponents) {
-                result["dueDate"] = dateFormatter.string(from: dueDate)
                 if dueDateComponents.hour != nil {
-                    result["dueTime"] = timeFormatter.string(from: dueDate)
+                    result["dueDateTime"] = ToolDateFormatter.dateTime.string(from: dueDate)
+                } else {
+                    result["dueDate"] = ToolDateFormatter.dateOnly.string(from: dueDate)
                 }
             }
 

@@ -77,22 +77,17 @@ public struct CalendarEventsTool: NativeToolExecutable {
         let events = eventStore.events(matching: predicate)
 
         // Format response
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
-
         let formattedEvents: [[String: Any]] = events.map { event in
             var eventDict: [String: Any] = [
                 "title": event.title ?? "Untitled",
-                "date": dateFormatter.string(from: event.startDate),
                 "isAllDay": event.isAllDay
             ]
 
-            if !event.isAllDay {
-                eventDict["startTime"] = timeFormatter.string(from: event.startDate)
-                eventDict["endTime"] = timeFormatter.string(from: event.endDate)
+            if event.isAllDay {
+                eventDict["date"] = ToolDateFormatter.dateOnly.string(from: event.startDate)
+            } else {
+                eventDict["startDateTime"] = ToolDateFormatter.dateTime.string(from: event.startDate)
+                eventDict["endDateTime"] = ToolDateFormatter.dateTime.string(from: event.endDate)
             }
 
             if let location = event.location, !location.isEmpty {
@@ -117,10 +112,10 @@ public struct CalendarEventsTool: NativeToolExecutable {
         ]
 
         if isSingleDay {
-            result["date"] = dateFormatter.string(from: startDate)
+            result["date"] = ToolDateFormatter.dateOnly.string(from: startDate)
         } else {
-            result["startDate"] = dateFormatter.string(from: startDate)
-            result["endDate"] = dateFormatter.string(
+            result["startDate"] = ToolDateFormatter.dateOnly.string(from: startDate)
+            result["endDate"] = ToolDateFormatter.dateOnly.string(
                 from: calendar.date(byAdding: .day, value: -1, to: endDate) ?? endDate)
         }
 

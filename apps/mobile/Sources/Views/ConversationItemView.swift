@@ -20,8 +20,8 @@ struct ConversationItemView: View {
         case .assistantText(_, let text):
             MessageBubbleView(role: .assistant, text: text)
 
-        case .toolCall(_, let name, let args, _, let status):
-            toolCallView(name: name, args: args, status: status)
+        case .toolCall(_, let name, let args, let output, let status):
+            ExpandableToolCallView(name: name, args: args, output: output, status: status)
 
         case .systemEvent(_, let event):
             systemEventView(event: event)
@@ -50,20 +50,6 @@ struct ConversationItemView: View {
         } else {
             MessageBubbleView(role: .user, text: text)
         }
-    }
-
-    private func toolCallView(name: String, args: String?, status: ToolCallStatus) -> some View {
-        ToolCallHeader(
-            toolName: name,
-            args: args,
-            status: status,
-            showChevron: false
-        )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Theme.toolStatusBg(status))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal, 16)
     }
 
     @ViewBuilder

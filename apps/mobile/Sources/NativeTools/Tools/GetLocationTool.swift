@@ -38,6 +38,8 @@ public struct GetLocationTool: NativeToolExecutable {
             return false
         }
 
+        // TODO: This can cause UI unresponsiveness on main thread.
+        // Should refactor to check status asynchronously or defer to execute().
         let status = CLLocationManager().authorizationStatus
         switch status {
         case .notDetermined, .authorizedWhenInUse, .authorizedAlways:
@@ -67,14 +69,21 @@ public struct GetLocationTool: NativeToolExecutable {
 
         // Request location
         let location = try await locationFetcher.getCurrentLocation()
+        let isReducedAccuracy = await locationFetcher.isReducedAccuracy
 
         // Build base response
         var response: [String: Any] = [
             "latitude": location.coordinate.latitude,
             "longitude": location.coordinate.longitude,
             "accuracy": location.horizontalAccuracy,
+            "accuracyLevel": isReducedAccuracy ? "reduced" : "full",
             "timestamp": ISO8601DateFormatter().string(from: location.timestamp)
         ]
+
+        // Note if reduced accuracy
+        if isReducedAccuracy {
+            response["note"] = "Location is approximate. User granted reduced accuracy permission."
+        }
 
         // Add altitude if valid
         if location.verticalAccuracy >= 0 {
@@ -170,16 +179,27 @@ public struct GetLocationTool: NativeToolExecutable {
 // MARK: - Location Fetcher
 
 #if os(iOS)
+/// Result from location fetcher including accuracy authorization
+struct LocationResult {
+    let location: CLLocation
+    let isReducedAccuracy: Bool
+}
+
 /// Async wrapper for CLLocationManager
 @MainActor
 private final class LocationFetcher: NSObject, CLLocationManagerDelegate {
     private let locationManager = CLLocationManager()
-    private var continuation: CheckedContinuation<CLLocation, Error>?
+    private var locationContinuation: CheckedContinuation<CLLocation, Error>?
+    private var authContinuation: CheckedContinuation<CLAuthorizationStatus, Never>?
 
     override init() {
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
+    }
+
+    var isReducedAccuracy: Bool {
+        locationManager.accuracyAuthorization == .reducedAccuracy
     }
 
     func getCurrentLocation() async throws -> CLLocation {
@@ -188,7 +208,7 @@ private final class LocationFetcher: NSObject, CLLocationManagerDelegate {
 
         switch status {
         case .notDetermined:
-            // Request permission and wait
+            // Request permission and wait for user response
             return try await requestAuthorizationAndLocation()
 
         case .authorizedWhenInUse, .authorizedAlways:
@@ -211,63 +231,90 @@ private final class LocationFetcher: NSObject, CLLocationManagerDelegate {
     }
 
     private func requestAuthorizationAndLocation() async throws -> CLLocation {
-        // Request when-in-use authorization
-        locationManager.requestWhenInUseAuthorization()
-
-        // Wait briefly for authorization response, then request location
-        // The delegate will handle the authorization change
-        try await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
-
-        let newStatus = locationManager.authorizationStatus
-        guard newStatus == .authorizedWhenInUse || newStatus == .authorizedAlways else {
-            throw NativeToolError.executionFailed(
-                "Location permission not granted. Please allow location access when prompted."
-            )
+        // Wait for user to make a choice in the permission dialog
+        // iOS requires user to tap Allow Once/Allow While Using/Don't Allow - no dismiss option
+        let newStatus = await withCheckedContinuation { continuation in
+            self.authContinuation = continuation
+            self.locationManager.requestWhenInUseAuthorization()
         }
 
-        return try await requestLocation()
+        switch newStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            return try await requestLocation()
+
+        case .denied:
+            throw NativeToolError.executionFailed(
+                "Location access denied. Please enable in Settings > Privacy > Location Services."
+            )
+
+        case .restricted:
+            throw NativeToolError.executionFailed(
+                "Location access restricted on this device."
+            )
+
+        case .notDetermined:
+            throw NativeToolError.executionFailed(
+                "Location permission not granted. Please try again."
+            )
+
+        @unknown default:
+            throw NativeToolError.executionFailed("Unknown location authorization status.")
+        }
     }
 
     private func requestLocation() async throws -> CLLocation {
         try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
+            self.locationContinuation = continuation
             locationManager.requestLocation()
         }
     }
 
     // MARK: - CLLocationManagerDelegate
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
         Task { @MainActor in
-            if let location = locations.last {
-                continuation?.resume(returning: location)
-                continuation = nil
-            }
+            // Only resume if user has made a decision (not still showing dialog)
+            // When status is .notDetermined, user hasn't responded yet
+            guard status != .notDetermined else { return }
+
+            // Resume authorization continuation if waiting
+            authContinuation?.resume(returning: status)
+            authContinuation = nil
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        Task { @MainActor in
+            locationContinuation?.resume(returning: location)
+            locationContinuation = nil
         }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        Task { @MainActor in
-            let nsError = error as NSError
-            let message: String
+        let nsError = error as NSError
+        let message: String
 
-            if nsError.domain == kCLErrorDomain {
-                switch CLError.Code(rawValue: nsError.code) {
-                case .denied:
-                    message = "Location access denied."
-                case .locationUnknown:
-                    message = "Unable to determine location. Please try again."
-                case .network:
-                    message = "Network error while fetching location."
-                default:
-                    message = "Location error: \(error.localizedDescription)"
-                }
-            } else {
+        if nsError.domain == kCLErrorDomain {
+            switch CLError.Code(rawValue: nsError.code) {
+            case .denied:
+                message = "Location access denied."
+            case .locationUnknown:
+                message = "Unable to determine location. Please try again."
+            case .network:
+                message = "Network error while fetching location."
+            default:
                 message = "Location error: \(error.localizedDescription)"
             }
+        } else {
+            message = "Location error: \(error.localizedDescription)"
+        }
 
-            continuation?.resume(throwing: NativeToolError.executionFailed(message))
-            continuation = nil
+        let toolError = NativeToolError.executionFailed(message)
+        Task { @MainActor in
+            locationContinuation?.resume(throwing: toolError)
+            locationContinuation = nil
         }
     }
 }
