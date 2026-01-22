@@ -33,6 +33,8 @@
     <string>Pi needs health access to read your sleep and workout data when you ask about them.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Pi needs access to your reminders to help you manage tasks and to-do items.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Pi needs your location to provide location-aware assistance and find nearby places.</string>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
