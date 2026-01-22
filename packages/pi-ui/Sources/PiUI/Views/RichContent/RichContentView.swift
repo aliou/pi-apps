@@ -37,8 +37,7 @@ public struct RichContentView: View {
     private var contentView: some View {
         switch content {
         case .chart(let data):
-            // Placeholder until Phase 2
-            ChartPlaceholderView(data: data)
+            ChartView(data: data)
 
         case .map(let data):
             // Placeholder until Phase 8
