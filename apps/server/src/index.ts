@@ -5,6 +5,8 @@
  * enabling iOS and other remote clients to use the coding agent.
  */
 
+import { readFileSync } from "node:fs";
+import { createServer as createHttpsServer } from "node:https";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { Hono } from "hono";
@@ -27,6 +29,9 @@ loadEnv(config.dataDir);
 console.log("Pi Server starting...");
 console.log(`  Data directory: ${config.dataDir}`);
 console.log(`  Listening on: ${config.host}:${config.port}`);
+if (config.tls) {
+  console.log(`  TLS enabled: cert=${config.tls.cert}`);
+}
 
 // Initialize managers
 const connectionManager = new ConnectionManager();
@@ -51,18 +56,31 @@ registerRpcRoute({
   dataDir: config.dataDir,
 });
 
+// Build server options
+const protocol = config.tls ? "https" : "http";
+const wsProtocol = config.tls ? "wss" : "ws";
+
+// biome-ignore lint/suspicious/noExplicitAny: @hono/node-server types don't expose full options
+const serveOptions: any = {
+  fetch: app.fetch,
+  port: config.port,
+  hostname: config.host === "::" ? "0.0.0.0" : config.host,
+};
+
+// Add TLS if configured
+if (config.tls) {
+  serveOptions.createServer = createHttpsServer;
+  serveOptions.serverOptions = {
+    cert: readFileSync(config.tls.cert),
+    key: readFileSync(config.tls.key),
+  };
+}
+
 // Start server
-const server = serve(
-  {
-    fetch: app.fetch,
-    port: config.port,
-    hostname: config.host === "::" ? "0.0.0.0" : config.host,
-  },
-  (info) => {
-    console.log(`Pi Server running at http://${info.address}:${info.port}`);
-    console.log(`WebSocket endpoint: ws://${info.address}:${info.port}/rpc`);
-  },
-);
+const server = serve(serveOptions, (info) => {
+  console.log(`Pi Server running at ${protocol}://${info.address}:${info.port}`);
+  console.log(`WebSocket endpoint: ${wsProtocol}://${info.address}:${info.port}/rpc`);
+});
 
 // Inject WebSocket handling
 injectWebSocket(server);
