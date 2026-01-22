@@ -199,7 +199,10 @@ struct ServerSetupView: View {
         ]
 
         let helloData = try JSONSerialization.data(withJSONObject: hello)
-        try await task.send(.data(helloData))
+        guard let helloString = String(data: helloData, encoding: .utf8) else {
+            throw RPCTransportError.invalidResponse("Failed to encode hello as string")
+        }
+        try await task.send(.string(helloString))
 
         // Receive response with timeout
         let response = try await withThrowingTaskGroup(of: URLSessionWebSocketTask.Message.self) { group in

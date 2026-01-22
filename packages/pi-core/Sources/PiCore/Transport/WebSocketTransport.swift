@@ -225,6 +225,9 @@ public actor WebSocketTransport: RPCTransport {
 
         let encoder = JSONEncoder()
         let requestData = try encoder.encode(request)
+        guard let requestString = String(data: requestData, encoding: .utf8) else {
+            throw RPCTransportError.invalidResponse("Failed to encode request as string")
+        }
 
         return try await withCheckedThrowingContinuation { continuation in
             Task {
@@ -236,7 +239,7 @@ public actor WebSocketTransport: RPCTransport {
                 )
 
                 do {
-                    try await webSocketTask.send(.data(requestData))
+                    try await webSocketTask.send(.string(requestString))
                 } catch {
                     // Remove pending request and fail
                     await connection.failRequest(
