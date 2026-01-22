@@ -50,7 +50,7 @@ struct ServerSetupView: View {
                         .fontWeight(.medium)
                         .foregroundStyle(Theme.textSecondary)
 
-                    TextField("ws://localhost:3141", text: $urlText)
+                    TextField("ws://localhost:31415", text: $urlText)
                         .textFieldStyle(.plain)
                         .padding(12)
                         .background(Theme.inputBg)
@@ -290,7 +290,7 @@ private struct ServerSetupPreview: View {
                         .fontWeight(.medium)
                         .foregroundStyle(Theme.textSecondary)
 
-                    Text(urlText.isEmpty ? "ws://localhost:3141" : urlText)
+                    Text(urlText.isEmpty ? "ws://localhost:31415" : urlText)
                         .foregroundStyle(urlText.isEmpty ? Theme.muted : Theme.text)
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)

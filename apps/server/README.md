@@ -24,7 +24,7 @@ npm run test       # run tests
 
 ```bash
 node dist/index.js [options]
-  --port, -p <port>    Listen port (default: 3141)
+  --port, -p <port>    Listen port (default: 31415)
   --host <host>        Bind host (default: ::)
   --data-dir <path>    Data directory
   --tls-cert <path>    TLS certificate file
@@ -120,7 +120,7 @@ Connect to `ws://<host>:<port>/rpc`
 
 ```bash
 npm run build
-node dist/index.js --port 3141 --data-dir /var/lib/pi-server
+node dist/index.js --port 31415 --data-dir /var/lib/pi-server
 ```
 
 The build outputs a bundled JS file. `@mariozechner/pi-coding-agent` is externalized (must be in node_modules at runtime).

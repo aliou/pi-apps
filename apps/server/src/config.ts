@@ -56,7 +56,7 @@ export function ensureDataDirs(dataDir: string): void {
  * Parse CLI arguments.
  */
 export function parseArgs(args: string[]): ServerConfig {
-  let port = parseInt(process.env.PI_SERVER_PORT || "3141", 10);
+  let port = parseInt(process.env.PI_SERVER_PORT || "31415", 10);
   let host = "::";
   let dataDir: string | undefined;
   let tlsCert: string | undefined;
@@ -117,7 +117,7 @@ Usage:
   pi-server [options]
 
 Options:
-  --port, -p <port>       Listen port (default: 3141, env: PI_SERVER_PORT)
+  --port, -p <port>       Listen port (default: 31415, env: PI_SERVER_PORT)
   --host <host>           Bind host (default: :: for dual-stack)
   --data-dir <path>       Data directory (env: PI_SERVER_DATA_DIR)
                           Default: $XDG_DATA_HOME/pi-server or ~/.local/share/pi-server
