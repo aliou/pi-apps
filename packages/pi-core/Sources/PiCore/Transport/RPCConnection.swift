@@ -223,14 +223,25 @@ public actor RPCConnection {
 
         case "tool_execution_update":
             let toolCallId = dict["toolCallId"] as? String ?? ""
-            let output = dict["output"] as? String ?? ""
+            // Extract output from partialResult.content array (pi-agent-core format)
+            var output: String = ""
+            if let partialResult = dict["partialResult"] as? [String: Any],
+               let content = partialResult["content"] as? [[String: Any]] {
+                output = content.compactMap { $0["text"] as? String }.joined()
+            }
             return .toolExecutionUpdate(toolCallId: toolCallId, output: output)
 
         case "tool_execution_end":
             let toolCallId = dict["toolCallId"] as? String ?? ""
-            let output = dict["output"] as? String
-            let statusStr = dict["status"] as? String ?? "success"
-            let status = ToolStatus(rawValue: statusStr) ?? .success
+            // Extract output from result.content array (pi-agent-core format)
+            var output: String?
+            if let result = dict["result"] as? [String: Any],
+               let content = result["content"] as? [[String: Any]] {
+                output = content.compactMap { $0["text"] as? String }.joined()
+            }
+            // Use isError boolean (pi-agent-core format)
+            let isError = dict["isError"] as? Bool ?? false
+            let status: ToolStatus = isError ? .error : .success
             return .toolExecutionEnd(toolCallId: toolCallId, output: output, status: status)
 
         case "auto_compaction_start":

@@ -30,8 +30,8 @@ public struct ChartView: View {
             chartContent
                 .frame(height: 200)
 
-            // Legend (if colors are specified)
-            if hasCustomColors {
+            // Legend (only for distinct color categories, not per-item colors)
+            if hasLegendColors {
                 legendView
             }
         }
@@ -60,8 +60,9 @@ public struct ChartView: View {
             .cornerRadius(4)
         }
         .chartXAxis {
-            AxisMarks { _ in
-                AxisValueLabel()
+            AxisMarks(values: .automatic(desiredCount: min(data.data.count, 6))) { _ in
+                AxisValueLabel(orientation: .verticalReversed)
+                    .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
             }
         }
@@ -70,6 +71,7 @@ public struct ChartView: View {
                 AxisGridLine()
                     .foregroundStyle(Theme.border)
                 AxisValueLabel()
+                    .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
             }
         }
@@ -92,8 +94,9 @@ public struct ChartView: View {
             .symbolSize(40)
         }
         .chartXAxis {
-            AxisMarks { _ in
-                AxisValueLabel()
+            AxisMarks(values: .automatic(desiredCount: min(data.data.count, 6))) { _ in
+                AxisValueLabel(orientation: .verticalReversed)
+                    .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
             }
         }
@@ -102,6 +105,7 @@ public struct ChartView: View {
                 AxisGridLine()
                     .foregroundStyle(Theme.border)
                 AxisValueLabel()
+                    .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
             }
         }
@@ -122,8 +126,12 @@ public struct ChartView: View {
 
     // MARK: - Colors
 
-    private var hasCustomColors: Bool {
-        data.data.contains { $0.color != nil }
+    /// Only show legend when there are distinct color categories (not one color per data point)
+    private var hasLegendColors: Bool {
+        let colors = Set(data.data.compactMap { $0.color })
+        // Show legend only if there are 2+ distinct colors AND fewer colors than data points
+        // (meaning colors represent categories, not individual items)
+        return colors.count >= 2 && colors.count < data.data.count
     }
 
     private func color(for point: ChartDataPoint) -> Color {

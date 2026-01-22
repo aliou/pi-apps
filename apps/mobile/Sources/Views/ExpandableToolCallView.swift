@@ -40,28 +40,29 @@ struct ExpandableToolCallView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header (always visible, tappable)
-            Button {
+            // Using contentShape for full-row tap target
+            ToolCallHeader(
+                toolName: name,
+                args: args,
+                status: status,
+                showChevron: hasExpandableContent,
+                isExpanded: isExpanded
+            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard hasExpandableContent else { return }
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isExpanded.toggle()
                 }
-            } label: {
-                ToolCallHeader(
-                    toolName: name,
-                    args: args,
-                    status: status,
-                    showChevron: hasExpandableContent,
-                    isExpanded: isExpanded
-                )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
             }
-            .buttonStyle(.plain)
 
             // Expanded content
             if isExpanded && hasExpandableContent {
                 expandedContent
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 12)
             }
         }
         .background(Theme.toolStatusBg(status))
@@ -70,18 +71,34 @@ struct ExpandableToolCallView: View {
     }
 
     private var hasExpandableContent: Bool {
-        chartData != nil || (output != nil && !output!.isEmpty)
+        // Show chevron while running (output coming) or when we have content
+        status == .running || chartData != nil || (output != nil && !output!.isEmpty)
     }
 
     @ViewBuilder
     private var expandedContent: some View {
         if let chart = chartData {
-            // Render chart inline
+            // Render chart inline with title shown above chart (not in header)
             VStack(alignment: .leading, spacing: 8) {
                 Divider()
                     .padding(.bottom, 4)
 
-                ChartView(data: chart)
+                // Show chart title here since header just says "display_chart"
+                if let title = chart.title {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                }
+
+                // Chart without title to avoid duplication
+                let chartNoTitle = ChartDisplayData(
+                    chartType: chart.chartType,
+                    title: nil,
+                    data: chart.data,
+                    xAxisLabel: chart.xAxisLabel,
+                    yAxisLabel: chart.yAxisLabel
+                )
+                ChartView(data: chartNoTitle)
                     .frame(height: 200)
             }
         } else if let output, !output.isEmpty {
@@ -97,6 +114,20 @@ struct ExpandableToolCallView: View {
                         .textSelection(.enabled)
                 }
                 .frame(maxHeight: 150)
+            }
+        } else if status == .running {
+            // Show loading indicator while tool is running
+            VStack(alignment: .leading, spacing: 8) {
+                Divider()
+                    .padding(.bottom, 4)
+
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Running...")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Theme.muted)
+                }
             }
         }
     }
