@@ -10,7 +10,7 @@ import type {
   ResumeInfo,
   WSEvent,
   WSResponse,
-} from "../types.js";
+} from "../types";
 
 const REPLAY_WINDOW_SEC = 60;
 const MAX_BUFFERED_EVENTS = 1000;
@@ -145,11 +145,7 @@ export class Connection {
    * Handle response from native client.
    * @returns true if callId was found and handled
    */
-  handleNativeToolResponse(
-    callId: string,
-    result?: unknown,
-    error?: { message: string },
-  ): boolean {
+  handleNativeToolResponse(callId: string, result?: unknown, error?: { message: string }): boolean {
     const pending = this.pendingCalls.get(callId);
     if (!pending) return false;
 
@@ -316,7 +312,9 @@ export class ConnectionManager {
 
     // Trim old events
     const cutoff = Date.now() - REPLAY_WINDOW_SEC * 1000;
-    while (buffer.length > 0 && buffer[0].timestamp < cutoff) {
+    while (buffer.length > 0) {
+      const first = buffer[0];
+      if (!first || first.timestamp >= cutoff) break;
       buffer.shift();
     }
 
@@ -352,9 +350,7 @@ export class ConnectionManager {
    * Replay missed events on resume.
    */
   private replayEvents(connection: Connection, resumeInfo: ResumeInfo): void {
-    for (const [sessionId, lastSeq] of Object.entries(
-      resumeInfo.lastSeqBySession,
-    )) {
+    for (const [sessionId, lastSeq] of Object.entries(resumeInfo.lastSeqBySession)) {
       const buffer = this.eventBuffers.get(sessionId);
       if (!buffer) continue;
 
@@ -374,8 +370,6 @@ export class ConnectionManager {
    * Get all connections attached to a session.
    */
   getSessionConnections(sessionId: string): Connection[] {
-    return Array.from(this.connections.values()).filter((c) =>
-      c.isAttached(sessionId),
-    );
+    return Array.from(this.connections.values()).filter((c) => c.isAttached(sessionId));
   }
 }

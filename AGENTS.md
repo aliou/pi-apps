@@ -24,12 +24,13 @@ make test     # run tests
 make xcode    # open in xcode
 ```
 
-Server (TypeScript/Bun):
+Server (TypeScript/Node.js):
 ```bash
-cd apps/server && bun install
-bun run dev   # hot reload
-bun run build # standalone binary
-bun run lint  # biome
+cd apps/server && npm install
+npm run dev   # hot reload
+npm run build # production build
+npm run lint  # biome
+npm run test  # vitest
 ```
 
 ## Structure

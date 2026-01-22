@@ -66,18 +66,28 @@ export function parseArgs(args: string[]): ServerConfig {
     const arg = args[i];
 
     if (arg === "--port" || arg === "-p") {
-      port = parseInt(args[++i], 10);
+      const portArg = args[++i];
+      if (!portArg) throw new Error("Missing value for --port");
+      port = parseInt(portArg, 10);
       if (Number.isNaN(port)) {
-        throw new Error(`Invalid port: ${args[i]}`);
+        throw new Error(`Invalid port: ${portArg}`);
       }
     } else if (arg === "--host") {
-      host = args[++i];
+      const hostArg = args[++i];
+      if (!hostArg) throw new Error("Missing value for --host");
+      host = hostArg;
     } else if (arg === "--data-dir") {
-      dataDir = args[++i];
+      const dataDirArg = args[++i];
+      if (!dataDirArg) throw new Error("Missing value for --data-dir");
+      dataDir = dataDirArg;
     } else if (arg === "--tls-cert") {
-      tlsCert = args[++i];
+      const certArg = args[++i];
+      if (!certArg) throw new Error("Missing value for --tls-cert");
+      tlsCert = certArg;
     } else if (arg === "--tls-key") {
-      tlsKey = args[++i];
+      const keyArg = args[++i];
+      if (!keyArg) throw new Error("Missing value for --tls-key");
+      tlsKey = keyArg;
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);

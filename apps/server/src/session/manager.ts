@@ -4,10 +4,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type {
-  AgentSession,
-  AgentSessionEvent,
-} from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import {
   AuthStorage,
   createAgentSession,
@@ -16,16 +13,12 @@ import {
   SessionManager as PiSessionManager,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
-import { getGitHubToken, getRepoByFullName } from "../github.js";
-import { createNativeTools } from "../native/index.js";
-import { getRepo, upsertRepo } from "../repos.js";
-import type { ServerState, SessionInfo, SessionMode } from "../types.js";
-import type { Connection } from "../ws/connection.js";
-import {
-  buildAuthedCloneUrl,
-  deleteSessionRepo,
-  ensureSessionRepo,
-} from "./repo.js";
+import { getGitHubToken, getRepoByFullName } from "../github";
+import { createNativeTools } from "../native/index";
+import { getRepo, upsertRepo } from "../repos";
+import type { ServerState, SessionInfo, SessionMode } from "../types";
+import type { Connection } from "../ws/connection";
+import { buildAuthedCloneUrl, deleteSessionRepo, ensureSessionRepo } from "./repo";
 
 export interface ActiveSession {
   session: AgentSession;
@@ -34,10 +27,7 @@ export interface ActiveSession {
   unsubscribe: () => void;
 }
 
-export type SessionEventCallback = (
-  sessionId: string,
-  event: AgentSessionEvent,
-) => void;
+export type SessionEventCallback = (sessionId: string, event: AgentSessionEvent) => void;
 
 /**
  * Manages all active sessions and their persistence.
@@ -73,19 +63,14 @@ export class SessionManager {
     this.modelRegistry.refresh();
     const available = this.modelRegistry.getAvailable();
 
-    const preferredModel = this.modelRegistry.find(
-      preferred.provider,
-      preferred.modelId,
-    );
+    const preferredModel = this.modelRegistry.find(preferred.provider, preferred.modelId);
 
     if (!preferredModel) {
       return undefined;
     }
 
     const isAvailable = available.some(
-      (model) =>
-        model.provider === preferredModel.provider &&
-        model.id === preferredModel.id,
+      (model) => model.provider === preferredModel.provider && model.id === preferredModel.id,
     );
 
     if (!isAvailable) {
@@ -197,9 +182,7 @@ export class SessionManager {
 
     // Only resolve model explicitly if a preferred model is provided
     // Otherwise, let createAgentSession use settings.json defaults
-    const model = preferredModel
-      ? this.resolveModel(preferredModel)
-      : undefined;
+    const model = preferredModel ? this.resolveModel(preferredModel) : undefined;
 
     if (preferredModel && !model) {
       throw new Error(
@@ -310,8 +293,7 @@ export class SessionManager {
 
     if (mode === "code" && info.repoId) {
       const repo =
-        getRepo(this.dataDir, info.repoId, sessionId) ??
-        getRepo(this.dataDir, info.repoId);
+        getRepo(this.dataDir, info.repoId, sessionId) ?? getRepo(this.dataDir, info.repoId);
 
       workingPath = repo?.path ?? info.worktreePath;
       tools = createCodingTools(workingPath);
@@ -380,8 +362,7 @@ export class SessionManager {
       // For code sessions, try to get repo path
       if (info.repoId) {
         const repo =
-          getRepo(this.dataDir, info.repoId, sessionId) ??
-          getRepo(this.dataDir, info.repoId);
+          getRepo(this.dataDir, info.repoId, sessionId) ?? getRepo(this.dataDir, info.repoId);
         pathToDelete = repo?.path ?? info.worktreePath;
       }
 
@@ -406,10 +387,7 @@ export class SessionManager {
     }
   }
 
-  private handleSessionEvent(
-    sessionId: string,
-    event: AgentSessionEvent,
-  ): void {
+  private handleSessionEvent(sessionId: string, event: AgentSessionEvent): void {
     // Update activity
     this.touchSession(sessionId);
 

@@ -7,8 +7,8 @@
  */
 
 import type { TObject } from "@sinclair/typebox";
-import type { NativeToolDefinition } from "../types.js";
-import type { Connection } from "../ws/connection.js";
+import type { NativeToolDefinition } from "../types";
+import type { Connection } from "../ws/connection";
 
 export interface NativeTool {
   name: string;
@@ -19,10 +19,7 @@ export interface NativeTool {
     toolCallId: string,
     params: Record<string, unknown>,
     onUpdate:
-      | ((update: {
-          content: Array<{ type: "text"; text: string }>;
-          details: unknown;
-        }) => void)
+      | ((update: { content: Array<{ type: "text"; text: string }>; details: unknown }) => void)
       | undefined,
     ctx: unknown,
     signal?: AbortSignal,
@@ -39,10 +36,7 @@ export interface NativeTool {
  * @param sessionId - Session ID for event routing
  * @returns Array of tool definitions for createAgentSession
  */
-export function createNativeTools(
-  connection: Connection,
-  sessionId: string,
-): NativeTool[] {
+export function createNativeTools(connection: Connection, sessionId: string): NativeTool[] {
   const tools: NativeTool[] = [];
 
   for (const def of connection.getNativeTools()) {
@@ -73,8 +67,7 @@ function createNativeToolWrapper(
         );
 
         // Format result for LLM
-        const text =
-          typeof result === "string" ? result : JSON.stringify(result, null, 2);
+        const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
 
         return {
           content: [{ type: "text", text }],

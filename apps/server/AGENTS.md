@@ -1,25 +1,29 @@
 # Pi Server
 
-WebSocket server for remote pi access. Bun + Hono.
+WebSocket server for remote pi access. Node.js + Hono.
 
 ## Build
 
 ```bash
-bun install
-bun run dev       # hot reload
-bun run build     # standalone binary
-bun run typecheck # type check
-bun run lint      # biome
+npm install
+npm run dev       # hot reload (tsx)
+npm run build     # production bundle (esbuild)
+npm run typecheck # type check (tsgo)
+npm run lint      # biome
+npm run test      # vitest
 ```
 
 ## Key Files
 
-- `src/index.ts` - server entry, HTTP + WebSocket setup
+- `src/index.ts` - server entry, bootstrapping
+- `src/routes/health.ts` - HTTP endpoints (/, /health)
+- `src/routes/rpc.ts` - WebSocket endpoint setup
 - `src/ws/handler.ts` - WebSocket message routing
 - `src/ws/connection.ts` - connection state management
 - `src/session/` - pi session management
 - `src/github.ts` - GitHub API for repo listing
-- `src/config.ts` - CLI args, env vars
+- `src/config.ts` - CLI args, data dirs
+- `src/env.ts` - dotenv loading
 
 ## Protocol
 

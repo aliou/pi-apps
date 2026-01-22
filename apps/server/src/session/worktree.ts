@@ -4,7 +4,15 @@
 
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { $ } from "bun";
+import { execaCommand } from "execa";
+
+/**
+ * Run a git command and return stdout.
+ */
+async function git(cwd: string, args: string): Promise<string> {
+  const { stdout } = await execaCommand(`git -C ${cwd} ${args}`);
+  return stdout;
+}
 
 /**
  * Create a git worktree for a session.
@@ -24,17 +32,12 @@ export async function createWorktree(
   }
 
   try {
-    // Get current branch/HEAD
-    const headResult =
-      await $`git -C ${repoPath} rev-parse --abbrev-ref HEAD`.text();
-    const _branch = headResult.trim();
+    // Get current commit
+    const commit = (await git(repoPath, "rev-parse HEAD")).trim();
 
     // Create worktree with detached HEAD at current commit
     // This avoids branch conflicts
-    const commitResult = await $`git -C ${repoPath} rev-parse HEAD`.text();
-    const commit = commitResult.trim();
-
-    await $`git -C ${repoPath} worktree add --detach ${worktreePath} ${commit}`;
+    await git(repoPath, `worktree add --detach ${worktreePath} ${commit}`);
 
     return worktreePath;
   } catch (error) {
@@ -45,24 +48,21 @@ export async function createWorktree(
 /**
  * Delete a git worktree.
  */
-export async function deleteWorktree(
-  repoPath: string,
-  worktreePath: string,
-): Promise<void> {
+export async function deleteWorktree(repoPath: string, worktreePath: string): Promise<void> {
   if (!existsSync(worktreePath)) {
     return;
   }
 
   try {
     // Remove worktree from git
-    await $`git -C ${repoPath} worktree remove ${worktreePath} --force`;
+    await git(repoPath, `worktree remove ${worktreePath} --force`);
   } catch (error) {
     // If git worktree remove fails, try manual cleanup
     console.warn(`git worktree remove failed, cleaning up manually: ${error}`);
     try {
       rmSync(worktreePath, { recursive: true, force: true });
       // Prune worktree references
-      await $`git -C ${repoPath} worktree prune`;
+      await git(repoPath, "worktree prune");
     } catch (cleanupError) {
       console.error(`Manual cleanup failed: ${cleanupError}`);
     }
@@ -74,7 +74,7 @@ export async function deleteWorktree(
  */
 export async function listWorktrees(repoPath: string): Promise<string[]> {
   try {
-    const result = await $`git -C ${repoPath} worktree list --porcelain`.text();
+    const result = await git(repoPath, "worktree list --porcelain");
     const worktrees: string[] = [];
 
     for (const line of result.split("\n")) {

@@ -1,1 +1,1 @@
-export { createNativeTools, type NativeTool } from "./tools.js";
+export { createNativeTools, type NativeTool } from "./tools";

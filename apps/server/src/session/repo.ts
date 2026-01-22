@@ -4,7 +4,7 @@
 
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
-import { $ } from "bun";
+import { execaCommand } from "execa";
 
 export interface CloneOptions {
   repoPath: string;
@@ -21,10 +21,12 @@ export async function ensureSessionRepo(
 
   if (!existsSync(repoPath)) {
     mkdirSync(dirname(repoPath), { recursive: true });
-    await $`git clone --branch ${defaultBranch} --single-branch ${cloneUrl} ${repoPath}`;
+    await execaCommand(
+      `git clone --branch ${defaultBranch} --single-branch ${cloneUrl} ${repoPath}`,
+    );
   }
 
-  await $`git -C ${repoPath} checkout -B ${branchName}`;
+  await execaCommand(`git -C ${repoPath} checkout -B ${branchName}`);
 
   return { repoPath, branchName };
 }

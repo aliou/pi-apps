@@ -53,7 +53,7 @@
               swiftlintWrapper
               pkgs.xcodegen
               pkgs.gnumake
-              pkgs.bun
+              pkgs.nodejs_22
             ];
 
             shellHook = ''
@@ -72,10 +72,10 @@
               echo "  make xcode    - Open in Xcode"
               echo "  make build    - Build from command line"
               echo ""
-              echo "Server (TypeScript/Bun):"
-              echo "  cd apps/server && bun install"
-              echo "  bun run dev   - Run with hot reload"
-              echo "  bun run build - Build standalone binary"
+              echo "Server (TypeScript/Node.js):"
+              echo "  cd apps/server && npm install"
+              echo "  npm run dev   - Run with hot reload"
+              echo "  npm run build - Build for production"
               echo ""
             '';
           };

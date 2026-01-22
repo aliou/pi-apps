@@ -5,17 +5,30 @@ WebSocket server for the pi coding agent. Enables iOS and remote clients to use 
 ## Quick Start
 
 ```bash
-bun install
-bun run dev    # with hot reload
+npm install
+npm run dev    # with hot reload
+```
+
+## Development
+
+```bash
+npm run dev        # run with hot reload (tsx watch)
+npm run build      # production build (esbuild)
+npm run typecheck  # type check with tsgo
+npm run lint       # lint with biome
+npm run format     # format with biome
+npm run test       # run tests
 ```
 
 ## CLI Options
 
 ```bash
-pi-server [options]
+node dist/index.js [options]
   --port, -p <port>    Listen port (default: 3141)
-  --host <host>        Bind host (default: 0.0.0.0)
+  --host <host>        Bind host (default: ::)
   --data-dir <path>    Data directory
+  --tls-cert <path>    TLS certificate file
+  --tls-key <path>     TLS private key file
 ```
 
 ## Configuration
@@ -106,8 +119,8 @@ Connect to `ws://<host>:<port>/rpc`
 ## Build
 
 ```bash
-bun run build
-./dist/pi-server --port 3141 --data-dir /var/lib/pi-server
+npm run build
+node dist/index.js --port 3141 --data-dir /var/lib/pi-server
 ```
 
-Standalone binary, no runtime required.
+The build outputs a bundled JS file. `@mariozechner/pi-coding-agent` is externalized (must be in node_modules at runtime).

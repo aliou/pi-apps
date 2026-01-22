@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { RepoConfig, ReposConfig } from "./types.js";
+import type { RepoConfig, ReposConfig } from "./types";
 
 const DEFAULT_REPOS_CONFIG: ReposConfig = {
   repos: [],

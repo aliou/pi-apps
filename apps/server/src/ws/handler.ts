@@ -3,10 +3,10 @@
  * Routes incoming requests to appropriate handlers.
  */
 
-import { getGitHubToken, listAccessibleRepos } from "../github.js";
-import type { SessionManager } from "../session/manager.js";
-import type { HelloParams, WSIncomingMessage, WSResponse } from "../types.js";
-import type { Connection, ConnectionManager } from "./connection.js";
+import { getGitHubToken, listAccessibleRepos } from "../github";
+import type { SessionManager } from "../session/manager";
+import type { HelloParams, WSIncomingMessage, WSResponse } from "../types";
+import type { Connection, ConnectionManager } from "./connection";
 
 export interface HandlerContext {
   connection: Connection;
@@ -43,29 +43,20 @@ const methodHandlers: Record<string, MethodHandler> = {
 /**
  * Handle an incoming WebSocket message.
  */
-export async function handleMessage(
-  ctx: HandlerContext,
-  data: string,
-): Promise<void> {
+export async function handleMessage(ctx: HandlerContext, data: string): Promise<void> {
   let message: WSIncomingMessage;
 
   try {
     message = JSON.parse(data) as WSIncomingMessage;
   } catch (_error) {
-    ctx.connection.sendResponse(
-      makeErrorResponse("", "parse_error", "Invalid JSON"),
-    );
+    ctx.connection.sendResponse(makeErrorResponse("", "parse_error", "Invalid JSON"));
     return;
   }
 
   // Validate it's a request
   if (message.kind !== "request" || !message.method || !message.id) {
     ctx.connection.sendResponse(
-      makeErrorResponse(
-        message.id ?? "",
-        "invalid_request",
-        "Missing required fields",
-      ),
+      makeErrorResponse(message.id ?? "", "invalid_request", "Missing required fields"),
     );
     return;
   }
@@ -73,11 +64,7 @@ export async function handleMessage(
   const handler = methodHandlers[message.method];
   if (!handler) {
     ctx.connection.sendResponse(
-      makeErrorResponse(
-        message.id,
-        "unknown_method",
-        `Unknown method: ${message.method}`,
-      ),
+      makeErrorResponse(message.id, "unknown_method", `Unknown method: ${message.method}`),
     );
     return;
   }
@@ -94,17 +81,11 @@ export async function handleMessage(
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    ctx.connection.sendResponse(
-      makeErrorResponse(message.id, "handler_error", errorMessage),
-    );
+    ctx.connection.sendResponse(makeErrorResponse(message.id, "handler_error", errorMessage));
   }
 }
 
-function makeErrorResponse(
-  id: string,
-  code: string,
-  message: string,
-): WSResponse {
+function makeErrorResponse(id: string, code: string, message: string): WSResponse {
   return {
     v: 1,
     kind: "response",
@@ -171,8 +152,7 @@ async function handleSessionCreate(
 
   const provider = params?.provider as string | undefined;
   const modelId = params?.modelId as string | undefined;
-  const includeNativeToolsInCodeMode =
-    (params?.includeNativeTools as boolean) ?? false;
+  const includeNativeToolsInCodeMode = (params?.includeNativeTools as boolean) ?? false;
 
   const info = await ctx.sessionManager.createSession(
     mode,
@@ -276,10 +256,7 @@ async function handlePrompt(
     throw new Error(`Session not active: ${sessionId}`);
   }
 
-  const streamingBehavior = params?.streamingBehavior as
-    | "steer"
-    | "followUp"
-    | undefined;
+  const streamingBehavior = params?.streamingBehavior as "steer" | "followUp" | undefined;
 
   // Don't await - prompt runs async, events stream back
   active.session
@@ -407,10 +384,7 @@ async function handleGetDefaultModel(ctx: HandlerContext): Promise<unknown> {
   }
 
   // Resolve to full model info
-  const model = ctx.sessionManager.findAvailableModel(
-    defaultModel.provider,
-    defaultModel.modelId,
-  );
+  const model = ctx.sessionManager.findAvailableModel(defaultModel.provider, defaultModel.modelId);
 
   if (model) {
     return {
@@ -472,11 +446,7 @@ async function handleNativeToolResponse(
     throw new Error("Missing callId in native_tool_response");
   }
 
-  const handled = ctx.connection.handleNativeToolResponse(
-    callId,
-    result,
-    error,
-  );
+  const handled = ctx.connection.handleNativeToolResponse(callId, result, error);
   if (!handled) {
     // Call ID not found - might have been cancelled
     console.warn(`[Handler] Unknown native tool call ID: ${callId}`);
