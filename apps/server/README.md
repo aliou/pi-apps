@@ -124,3 +124,52 @@ node dist/index.js --port 31415 --data-dir /var/lib/pi-server
 ```
 
 The build outputs a bundled JS file. `@mariozechner/pi-coding-agent` is externalized (must be in node_modules at runtime).
+
+## Docker
+
+The server is published to GitHub Container Registry on every push to main.
+
+### Pull and Run
+
+```bash
+# Pull the image
+docker pull ghcr.io/aliou/pi-apps/server:main
+
+# Create data directory and .env
+mkdir -p ~/.local/share/pi-server
+cat > ~/.local/share/pi-server/.env <<EOF
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+PI_SERVER_GITHUB_TOKEN=ghp_...
+EOF
+
+# Run
+docker run -d \
+  --name pi-server \
+  -p 31415:31415 \
+  -v ~/.local/share/pi-server:/data \
+  ghcr.io/aliou/pi-apps/server:main
+```
+
+### TLS
+
+To enable HTTPS/WSS, mount your certificates and pass the paths:
+
+```bash
+# Place certificates in data directory
+mkdir -p ~/.local/share/pi-server/certs
+cp server.crt server.key ~/.local/share/pi-server/certs/
+
+# Run with TLS
+docker run -d \
+  --name pi-server \
+  -p 31415:31415 \
+  -v ~/.local/share/pi-server:/data \
+  ghcr.io/aliou/pi-apps/server:main \
+  node dist/index.js \
+    --host 0.0.0.0 \
+    --tls-cert /data/certs/server.crt \
+    --tls-key /data/certs/server.key
+```
+
+Both `--tls-cert` and `--tls-key` must be provided together. When TLS is enabled, the server listens on `https://` and WebSocket connections use `wss://`.
