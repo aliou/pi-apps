@@ -58,28 +58,16 @@ function createNativeToolWrapper(
     parameters: def.parameters as TObject,
 
     async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
-      try {
-        const result = await connection.callNativeTool(
-          sessionId,
-          def.name,
-          params,
-          signal, // Pass signal for cancellation
-        );
+      // Let errors propagate - pi-agent-core sets isError: true when execute() throws
+      const result = await connection.callNativeTool(sessionId, def.name, params, signal);
 
-        // Format result for LLM
-        const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+      // Format result for LLM
+      const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
 
-        return {
-          content: [{ type: "text", text }],
-          details: result,
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [{ type: "text", text: `Error: ${message}` }],
-          details: { error: message },
-        };
-      }
+      return {
+        content: [{ type: "text", text }],
+        details: result,
+      };
     },
   };
 }
