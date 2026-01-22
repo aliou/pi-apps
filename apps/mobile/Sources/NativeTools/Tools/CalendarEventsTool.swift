@@ -9,22 +9,34 @@
 import Foundation
 import PiCore
 
-/// Tool for retrieving calendar events for today or tomorrow.
+/// Tool for retrieving calendar events for a specific date or date range.
 public struct CalendarEventsTool: NativeToolExecutable {
 
     public static let definition = NativeToolDefinition(
         name: "get_calendar_events",
-        description: "Get calendar events for today or tomorrow",
+        description: """
+            Get calendar events for a specific date or date range. \
+            Use 'date' for a single day, or 'startDate' and 'endDate' for a range. \
+            Dates should be in YYYY-MM-DD format. \
+            Defaults to today if no date is specified.
+            """,
         parameters: [
             "type": AnyCodable("object"),
             "properties": AnyCodable([
-                "day": [
+                "date": [
                     "type": "string",
-                    "enum": ["today", "tomorrow"],
-                    "description": "Which day to fetch events for"
+                    "description": "Single date in YYYY-MM-DD format (e.g., '2026-01-22')"
+                ],
+                "startDate": [
+                    "type": "string",
+                    "description": "Start of date range in YYYY-MM-DD format"
+                ],
+                "endDate": [
+                    "type": "string",
+                    "description": "End of date range in YYYY-MM-DD format"
                 ]
-            ]),
-            "required": AnyCodable(["day"])
+            ])
+            // No required fields - defaults to today
         ]
     )
 
@@ -48,16 +60,76 @@ public struct CalendarEventsTool: NativeToolExecutable {
         args: [String: AnyCodable],
         onCancel: @escaping @Sendable () -> Void
     ) async throws -> [String: Any] {
-        // Validate arguments
-        guard let day = args["day"]?.value as? String,
-              ["today", "tomorrow"].contains(day) else {
-            throw NativeToolError.executionFailed("Invalid day parameter. Must be 'today' or 'tomorrow'.")
-        }
-
-        // Create event store for this request
         let eventStore = EKEventStore()
 
-        // Request permission if needed
+        // Request permission
+        try await requestCalendarAccess(eventStore: eventStore)
+
+        // Parse date parameters
+        let (startDate, endDate) = try parseDateParameters(args: args)
+
+        // Query events
+        let predicate = eventStore.predicateForEvents(
+            withStart: startDate,
+            end: endDate,
+            calendars: nil
+        )
+        let events = eventStore.events(matching: predicate)
+
+        // Format response
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH:mm"
+
+        let formattedEvents: [[String: Any]] = events.map { event in
+            var eventDict: [String: Any] = [
+                "title": event.title ?? "Untitled",
+                "date": dateFormatter.string(from: event.startDate),
+                "isAllDay": event.isAllDay
+            ]
+
+            if !event.isAllDay {
+                eventDict["startTime"] = timeFormatter.string(from: event.startDate)
+                eventDict["endTime"] = timeFormatter.string(from: event.endDate)
+            }
+
+            if let location = event.location, !location.isEmpty {
+                eventDict["location"] = location
+            }
+
+            if let notes = event.notes, !notes.isEmpty {
+                eventDict["notes"] = String(notes.prefix(200))  // Truncate long notes
+            }
+
+            return eventDict
+        }
+
+        // Determine response format based on query type
+        let calendar = Calendar.current
+        let isSingleDay = calendar.isDate(startDate, inSameDayAs: endDate) ||
+            calendar.date(byAdding: .day, value: 1, to: startDate) == endDate
+
+        var result: [String: Any] = [
+            "events": formattedEvents,
+            "count": formattedEvents.count
+        ]
+
+        if isSingleDay {
+            result["date"] = dateFormatter.string(from: startDate)
+        } else {
+            result["startDate"] = dateFormatter.string(from: startDate)
+            result["endDate"] = dateFormatter.string(
+                from: calendar.date(byAdding: .day, value: -1, to: endDate) ?? endDate)
+        }
+
+        return result
+    }
+
+    // MARK: - Private Helpers
+
+    private func requestCalendarAccess(eventStore: EKEventStore) async throws {
         let status = EKEventStore.authorizationStatus(for: .event)
         switch status {
         case .notDetermined:
@@ -76,60 +148,64 @@ public struct CalendarEventsTool: NativeToolExecutable {
         @unknown default:
             throw NativeToolError.executionFailed("Unknown calendar authorization status.")
         }
+    }
 
-        // Calculate date range
+    private func parseDateParameters(args: [String: AnyCodable]) throws -> (start: Date, end: Date) {
         let calendar = Calendar.current
-        let now = Date()
-
-        let targetDate: Date
-        if day == "today" {
-            targetDate = now
-        } else {
-            targetDate = calendar.date(byAdding: .day, value: 1, to: now) ?? now
-        }
-
-        let startOfDay = calendar.startOfDay(for: targetDate)
-        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else {
-            throw NativeToolError.executionFailed("Failed to calculate date range.")
-        }
-
-        // Query events
-        let predicate = eventStore.predicateForEvents(
-            withStart: startOfDay,
-            end: endOfDay,
-            calendars: nil
-        )
-        let events = eventStore.events(matching: predicate)
-
-        // Format response
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.timeZone = TimeZone.current
 
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
-
-        let formattedEvents: [[String: Any]] = events.map { event in
-            var eventDict: [String: Any] = [
-                "title": event.title ?? "Untitled",
-                "isAllDay": event.isAllDay
-            ]
-
-            if !event.isAllDay {
-                eventDict["startTime"] = timeFormatter.string(from: event.startDate)
-                eventDict["endTime"] = timeFormatter.string(from: event.endDate)
+        // Case 1: Single date provided
+        if let dateString = args["date"]?.value as? String {
+            guard let date = dateFormatter.date(from: dateString) else {
+                throw NativeToolError.executionFailed(
+                    "Invalid date format. Use YYYY-MM-DD (e.g., '2026-01-22')."
+                )
             }
-
-            if let location = event.location, !location.isEmpty {
-                eventDict["location"] = location
-            }
-
-            return eventDict
+            let startOfDay = calendar.startOfDay(for: date)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+            return (startOfDay, endOfDay)
         }
 
-        return [
-            "day": day,
-            "date": dateFormatter.string(from: targetDate),
-            "events": formattedEvents
-        ]
+        // Case 2: Date range provided
+        if let startString = args["startDate"]?.value as? String {
+            guard let start = dateFormatter.date(from: startString) else {
+                throw NativeToolError.executionFailed(
+                    "Invalid startDate format. Use YYYY-MM-DD."
+                )
+            }
+
+            let endDate: Date
+            if let endString = args["endDate"]?.value as? String {
+                guard let end = dateFormatter.date(from: endString) else {
+                    throw NativeToolError.executionFailed(
+                        "Invalid endDate format. Use YYYY-MM-DD."
+                    )
+                }
+                // End of the end date (next day at midnight)
+                endDate = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end))!
+            } else {
+                // No end date - use start date only
+                endDate = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: start))!
+            }
+
+            let startOfDay = calendar.startOfDay(for: start)
+
+            // Validate range not too large (max 31 days)
+            let daysDiff = calendar.dateComponents([.day], from: startOfDay, to: endDate).day ?? 0
+            if daysDiff > 31 {
+                throw NativeToolError.executionFailed(
+                    "Date range too large. Maximum 31 days allowed."
+                )
+            }
+
+            return (startOfDay, endDate)
+        }
+
+        // Case 3: No date provided - default to today
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
+        return (today, tomorrow)
     }
 }

@@ -27,7 +27,7 @@ public enum NativeTool: String, CaseIterable, Sendable {
     case getDeviceInfo = "get_device_info"
     case getCalendarEvents = "get_calendar_events"
     case getSleepDuration = "get_sleep_duration"
-    case getLatestRun = "get_latest_run"
+    case getWorkouts = "get_workouts"
     case displayChart = "display_chart"
 
     /// Get all tool definitions for hello handshake (deprecated, use availableDefinitions).
@@ -52,8 +52,8 @@ public enum NativeTool: String, CaseIterable, Sendable {
             return CalendarEventsTool.isAvailable()
         case .getSleepDuration:
             return SleepDurationTool.isAvailable()
-        case .getLatestRun:
-            return LatestRunTool.isAvailable()
+        case .getWorkouts:
+            return WorkoutsTool.isAvailable()
         case .displayChart:
             return DisplayChartTool.isAvailable()
         }
@@ -68,8 +68,8 @@ public enum NativeTool: String, CaseIterable, Sendable {
             return CalendarEventsTool.definition
         case .getSleepDuration:
             return SleepDurationTool.definition
-        case .getLatestRun:
-            return LatestRunTool.definition
+        case .getWorkouts:
+            return WorkoutsTool.definition
         case .displayChart:
             return DisplayChartTool.definition
         }
@@ -84,8 +84,8 @@ public enum NativeTool: String, CaseIterable, Sendable {
             return CalendarEventsTool()
         case .getSleepDuration:
             return SleepDurationTool()
-        case .getLatestRun:
-            return LatestRunTool()
+        case .getWorkouts:
+            return WorkoutsTool()
         case .displayChart:
             return DisplayChartTool()
         }
