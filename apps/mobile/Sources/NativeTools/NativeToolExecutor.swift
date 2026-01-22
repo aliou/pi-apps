@@ -89,4 +89,26 @@ public actor NativeToolExecutor {
             activeCalls.removeValue(forKey: callId)
         }
     }
+
+    /// Parse tool result and extract display content if present.
+    /// Returns tuple of (displayContent, summary) if _display field exists, nil otherwise.
+    public static func parseResult(_ data: Data) -> (displayContent: DisplayContent?, summary: String)? {
+        // Try to decode as display envelope
+        if let envelope = try? JSONDecoder().decode(DisplayEnvelope.self, from: data) {
+            return (envelope.display, envelope.summary)
+        }
+
+        // Fall back to checking for _display field manually
+        if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            // Check for _display field manually
+            if let displayDict = dict["_display"] as? [String: Any],
+               let displayData = try? JSONSerialization.data(withJSONObject: displayDict),
+               let display = try? JSONDecoder().decode(DisplayContent.self, from: displayData),
+               let summary = dict["summary"] as? String {
+                return (display, summary)
+            }
+        }
+
+        return nil
+    }
 }

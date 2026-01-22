@@ -8,6 +8,7 @@
 import Foundation
 import Observation
 import PiCore
+import PiUI
 
 // MARK: - Server-specific Types
 
@@ -482,6 +483,25 @@ public final class ServerConnection {
 
         do {
             let resultData = try await nativeToolExecutor.execute(request: request)
+
+            // Check if result contains _display field for rich content
+            if let parsed = NativeToolExecutor.parseResult(resultData) {
+                // If we have display content, broadcast it to UI
+                if let displayContent = parsed.displayContent {
+                    await MainActor.run {
+                        if let item = ConversationItem.rich(
+                            from: DisplayEnvelope(display: displayContent, summary: parsed.summary),
+                            id: request.callId
+                        ) {
+                            // This will be picked up by ConversationView subscribers
+                            // For now, we'll just log it - actual UI integration will happen
+                            // when we wire up the Engine to handle these items
+                            print("[ServerConnection] Rich content detected: \(displayContent)")
+                        }
+                    }
+                }
+            }
+
             // Convert JSON Data back to dictionary
             let result = try JSONSerialization.jsonObject(with: resultData) as? [String: Any]
             print("[ServerConnection] Native tool \(request.toolName) succeeded")

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PiCore
 
 /// System event types for inline display
 public enum SystemEventType: Sendable, Equatable {
@@ -18,6 +19,7 @@ public enum ConversationItem: Identifiable, Sendable, Equatable {
     case assistantText(id: String, text: String)
     case toolCall(id: String, name: String, args: String?, output: String?, status: ToolCallStatus)
     case systemEvent(id: String, event: SystemEventType)
+    case richContent(id: String, content: RichContentType, summary: String)
 
     public var id: String {
         switch self {
@@ -25,6 +27,7 @@ public enum ConversationItem: Identifiable, Sendable, Equatable {
         case .assistantText(let id, _): return id
         case .toolCall(let id, _, _, _, _): return id
         case .systemEvent(let id, _): return id
+        case .richContent(let id, _, _): return id
         }
     }
 
@@ -39,6 +42,8 @@ public enum ConversationItem: Identifiable, Sendable, Equatable {
             return id1 == id2 && name1 == name2 && args1 == args2 && output1 == output2 && status1 == status2
         case (.systemEvent(let id1, let event1), .systemEvent(let id2, let event2)):
             return id1 == id2 && event1 == event2
+        case (.richContent(let id1, let content1, let summary1), .richContent(let id2, let content2, let summary2)):
+            return id1 == id2 && content1 == content2 && summary1 == summary2
         default:
             return false
         }
@@ -65,5 +70,11 @@ extension ConversationItem {
     /// Create a model switch event with auto-generated ID
     public static func modelSwitch(from: String?, to: String) -> Self {
         .systemEvent(id: UUID().uuidString, event: .modelSwitch(fromModel: from, toModel: to))
+    }
+
+    /// Create rich content item from display envelope
+    public static func rich(from envelope: DisplayEnvelope, id: String = UUID().uuidString) -> Self? {
+        guard let display = envelope.display else { return nil }
+        return .richContent(id: id, content: RichContentType(from: display), summary: envelope.summary)
     }
 }

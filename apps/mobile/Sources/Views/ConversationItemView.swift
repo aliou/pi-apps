@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PiCore
 import PiUI
 
 struct ConversationItemView: View {
@@ -24,6 +25,9 @@ struct ConversationItemView: View {
 
         case .systemEvent(_, let event):
             systemEventView(event: event)
+
+        case .richContent(_, let content, let summary):
+            RichContentView(content: content, summary: summary)
         }
     }
 
@@ -119,6 +123,40 @@ struct ConversationItemView: View {
     VStack(spacing: 16) {
         ConversationItemView(item: .modelSwitch(from: nil, to: "Claude Sonnet 4.5"))
         ConversationItemView(item: .modelSwitch(from: "Claude Sonnet 4.5", to: "GPT-5.2"))
+    }
+    .padding()
+    .background(Theme.pageBg)
+}
+
+#Preview("Rich Content") {
+    VStack(spacing: 16) {
+        if let chartItem = ConversationItem.rich(
+            from: DisplayEnvelope(
+                display: .chart(ChartDisplayData(
+                    chartType: .bar,
+                    title: "Sleep Stages",
+                    data: [
+                        ChartDataPoint(label: "REM", value: 90),
+                        ChartDataPoint(label: "Deep", value: 45),
+                        ChartDataPoint(label: "Core", value: 180)
+                    ]
+                )),
+                summary: "Displayed bar chart showing sleep stages"
+            )
+        ) {
+            ConversationItemView(item: chartItem)
+        }
+
+        if let mapItem = ConversationItem.rich(
+            from: DisplayEnvelope(
+                display: .map(MapDisplayData(
+                    pins: [MapPin(coordinate: Coordinate(latitude: 37.7749, longitude: -122.4194), title: "San Francisco")]
+                )),
+                summary: "Showing 1 location on map"
+            )
+        ) {
+            ConversationItemView(item: mapItem)
+        }
     }
     .padding()
     .background(Theme.pageBg)

@@ -17,12 +17,14 @@ enum ConversationItem: Identifiable {
     case userMessage(id: String, text: String)
     case assistantText(id: String, text: String)
     case toolCall(id: String, name: String, args: String?, output: String?, status: ToolCallStatus, isExpanded: Bool)
+    case richContent(id: String, content: RichContentType, summary: String)
 
     var id: String {
         switch self {
         case .userMessage(let id, _): return id
         case .assistantText(let id, _): return id
         case .toolCall(let id, _, _, _, _, _): return id
+        case .richContent(let id, _, _): return id
         }
     }
 }
@@ -85,6 +87,8 @@ struct ConversationView: View {
             MessageBubbleView(role: .assistant, text: text)
         case .toolCall(let id, let name, let args, let output, let status, _):
             toolCallView(id: id, name: name, args: args, output: output, status: status)
+        case .richContent(_, let content, let summary):
+            RichContentView(content: content, summary: summary)
         }
     }
 
