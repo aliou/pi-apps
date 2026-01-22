@@ -363,6 +363,15 @@ struct ConversationView: View {
             .padding(.vertical, 12)
             .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .focused($isInputFocused)
+            .onSubmit {
+                let text = trimmedInputText
+                guard !text.isEmpty else { return }
+                inputText = ""
+                isInputFocused = false
+                autoScrollEnabled = true
+                Task { await sendMessage(text) }
+            }
+            .submitLabel(.send)
 
             Button {
                 let text = trimmedInputText
