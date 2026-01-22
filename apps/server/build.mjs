@@ -20,18 +20,11 @@ await esbuild.build({
   format: "esm",
   outfile: "dist/index.js",
   sourcemap: true,
-  // Externalize pi-coding-agent (has native deps) and other node builtins
+  // Externalize pi-coding-agent (has native deps)
   external: ["@mariozechner/pi-coding-agent"],
-  // Banner to handle __dirname in ESM
+  // Banner to provide require() for CJS dependencies (ws, etc.)
   banner: {
-    js: `
-import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-const require = createRequire(import.meta.url);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-`.trim(),
+    js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
   },
 });
 
