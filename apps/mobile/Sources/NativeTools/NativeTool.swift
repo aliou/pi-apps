@@ -29,6 +29,8 @@ public enum NativeTool: String, CaseIterable, Sendable {
     case getSleepDuration = "get_sleep_duration"
     case getWorkouts = "get_workouts"
     case displayChart = "display_chart"
+    case getReminders = "get_reminders"
+    case createReminder = "create_reminder"
 
     /// Get all tool definitions for hello handshake (deprecated, use availableDefinitions).
     public static var allDefinitions: [NativeToolDefinition] {
@@ -56,6 +58,10 @@ public enum NativeTool: String, CaseIterable, Sendable {
             return WorkoutsTool.isAvailable()
         case .displayChart:
             return DisplayChartTool.isAvailable()
+        case .getReminders:
+            return GetRemindersTool.isAvailable()
+        case .createReminder:
+            return CreateReminderTool.isAvailable()
         }
     }
 
@@ -72,6 +78,10 @@ public enum NativeTool: String, CaseIterable, Sendable {
             return WorkoutsTool.definition
         case .displayChart:
             return DisplayChartTool.definition
+        case .getReminders:
+            return GetRemindersTool.definition
+        case .createReminder:
+            return CreateReminderTool.definition
         }
     }
 
@@ -88,6 +98,10 @@ public enum NativeTool: String, CaseIterable, Sendable {
             return WorkoutsTool()
         case .displayChart:
             return DisplayChartTool()
+        case .getReminders:
+            return GetRemindersTool()
+        case .createReminder:
+            return CreateReminderTool()
         }
     }
 

@@ -31,6 +31,8 @@
     <string>Pi needs calendar access to read your events when you ask about your schedule.</string>
     <key>NSHealthShareUsageDescription</key>
     <string>Pi needs health access to read your sleep and workout data when you ask about them.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Pi needs access to your reminders to help you manage tasks and to-do items.</string>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
