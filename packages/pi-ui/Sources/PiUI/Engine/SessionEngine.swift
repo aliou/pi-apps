@@ -7,8 +7,11 @@
 //
 
 import Foundation
+import os.log
 import SwiftUI
 import PiCore
+
+private let perfLog = Logger(subsystem: "me.aliou.pi", category: "SessionEngine")
 
 /// Callbacks for platform-specific RPC operations
 public struct SessionEngineCallbacks: Sendable {
@@ -41,6 +44,16 @@ public final class SessionEngine {
     private var callbacks: SessionEngineCallbacks?
     private var lastGeneratedToolCallId: String?
 
+    // MARK: - Text Delta Throttling
+    private var pendingTextDelta = ""
+    private var textUpdateTask: Task<Void, Never>?
+    private let textUpdateInterval: UInt64 = 16_000_000  // 16ms (~60fps) in nanoseconds
+
+    // MARK: - Performance Measurement (temporary)
+    private var lastDeltaTime: Date?
+    private var deltaCount = 0
+    private var rapidDeltaCount = 0
+
     // MARK: - Initialization
 
     public init() {}
@@ -62,6 +75,11 @@ public final class SessionEngine {
 
     /// Clear all messages
     public func clearMessages() {
+        // Cancel any pending throttled updates
+        textUpdateTask?.cancel()
+        textUpdateTask = nil
+        pendingTextDelta = ""
+
         messages = []
         streamingText = ""
         streamingId = nil
@@ -101,6 +119,12 @@ public final class SessionEngine {
     public func abort() async {
         guard let callbacks else { return }
 
+        // Flush any pending throttled text before aborting
+        textUpdateTask?.cancel()
+        textUpdateTask = nil
+        flushPendingText()
+        flushStreamingText()
+
         do {
             try await callbacks.abort()
         } catch {
@@ -123,6 +147,11 @@ public final class SessionEngine {
     }
 
     public func handleAgentEnd(success: Bool, errorMessage: String?) {
+        // Flush any pending throttled text immediately
+        textUpdateTask?.cancel()
+        textUpdateTask = nil
+        flushPendingText()
+
         isProcessing = false
         flushStreamingText()
 
@@ -132,19 +161,58 @@ public final class SessionEngine {
     }
 
     public func handleMessageEnd() {
+        // Performance measurement summary (temporary)
+        if deltaCount > 0 {
+            perfLog.info("Message end: \(self.deltaCount) deltas total, \(self.rapidDeltaCount) rapid (<50ms)")
+            deltaCount = 0
+            rapidDeltaCount = 0
+            lastDeltaTime = nil
+        }
+
+        // Flush any pending throttled text immediately
+        textUpdateTask?.cancel()
+        textUpdateTask = nil
+        flushPendingText()
+
         flushStreamingText()
     }
 
     public func handleTextDelta(_ delta: String) {
+        guard !delta.isEmpty else { return }
+
+        // Performance measurement logging (temporary)
+        let now = Date()
+        deltaCount += 1
+        if let last = lastDeltaTime {
+            let interval = now.timeIntervalSince(last)
+            if interval < 0.05 {  // Less than 50ms
+                rapidDeltaCount += 1
+                perfLog.debug("Rapid delta #\(self.deltaCount): \(String(format: "%.1f", interval * 1000))ms, \(delta.count) chars")
+            }
+        }
+        lastDeltaTime = now
+
         if streamingId == nil {
             streamingId = UUID().uuidString
         }
 
-        streamingText += delta
-        updateStreamingMessage(id: streamingId, text: streamingText)
+        // Accumulate delta
+        pendingTextDelta += delta
+
+        // Cancel existing flush task and schedule new one
+        textUpdateTask?.cancel()
+        textUpdateTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: self?.textUpdateInterval ?? 50_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.flushPendingText()
+        }
     }
 
     public func handleToolUseStart(toolCallId: String, toolName: String) {
+        // Flush pending text before tool call
+        textUpdateTask?.cancel()
+        textUpdateTask = nil
+        flushPendingText()
         flushStreamingText()
 
         let resolvedId = toolCallId.isEmpty ? UUID().uuidString : toolCallId
@@ -173,6 +241,10 @@ public final class SessionEngine {
     }
 
     public func handleToolExecutionStart(toolCallId: String, toolName: String, argsString: String?) {
+        // Flush pending text before tool call
+        textUpdateTask?.cancel()
+        textUpdateTask = nil
+        flushPendingText()
         flushStreamingText()
 
         let resolvedId = toolCallId.isEmpty ? UUID().uuidString : toolCallId
@@ -214,6 +286,17 @@ public final class SessionEngine {
     }
 
     // MARK: - Private Helpers
+
+    /// Flush accumulated pending text deltas to streamingText and update UI
+    private func flushPendingText() {
+        guard !pendingTextDelta.isEmpty else { return }
+
+        let delta = pendingTextDelta
+        pendingTextDelta = ""
+
+        streamingText += delta
+        updateStreamingMessage(id: streamingId, text: streamingText)
+    }
 
     private func flushStreamingText() {
         guard !streamingText.isEmpty else {
