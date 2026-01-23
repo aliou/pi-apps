@@ -16,6 +16,28 @@ FROM node:22-slim
 
 WORKDIR /app
 
+# Install CLI tools for coding agent
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    jq \
+    make \
+    ripgrep \
+    fd-find \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# fd is installed as fd-find, symlink to fd
+RUN ln -s $(which fdfind) /usr/local/bin/fd
+
 # Copy package files and install prod deps only
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
