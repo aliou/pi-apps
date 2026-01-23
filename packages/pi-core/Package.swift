@@ -14,16 +14,8 @@ let package = Package(
             targets: ["PiCore"]
         )
     ],
-    dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-subprocess.git", from: "0.2.1")
-    ],
     targets: [
-        .target(
-            name: "PiCore",
-            dependencies: [
-                .product(name: "Subprocess", package: "swift-subprocess", condition: .when(platforms: [.macOS]))
-            ]
-        ),
+        .target(name: "PiCore"),
         .testTarget(
             name: "PiCoreTests",
             dependencies: ["PiCore"]
