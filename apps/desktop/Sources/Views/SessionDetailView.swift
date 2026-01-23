@@ -8,6 +8,7 @@
 import SwiftUI
 import PiCore
 import PiUI
+import Textual
 
 struct SessionDetailView: View {
     let session: DesktopSession
@@ -17,6 +18,7 @@ struct SessionDetailView: View {
 
     @State private var expandedToolCalls: Set<String> = []
     @State private var inputText = ""
+    @State private var showAuthSetup = false
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -43,6 +45,14 @@ struct SessionDetailView: View {
         }
         .navigationTitle(session.displayTitle)
         .navigationSubtitle(contextSubtitle)
+        .sheet(isPresented: $showAuthSetup) {
+            AuthSetupView {
+                showAuthSetup = false
+                // Retry connection after auth setup
+                Task { await sessionManager.selectSession(session.id) }
+            }
+            .interactiveDismissDisabled()
+        }
     }
 
     private var headerBar: some View {
@@ -69,20 +79,39 @@ struct SessionDetailView: View {
 
     private func errorView(error: String) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.largeTitle)
-                .foregroundStyle(.orange)
-            Text("Connection Failed")
-                .font(.headline)
-            Text(error)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            Button("Retry") {
-                Task { await sessionManager.selectSession(session.id) }
+            if sessionManager.needsAuthSetup {
+                // Auth setup UI
+                Image(systemName: "key")
+                    .font(.largeTitle)
+                    .foregroundStyle(.orange)
+                Text("API Keys Required")
+                    .font(.headline)
+                Text("Configure your API keys to start chatting.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                Button("Set Up API Keys") {
+                    showAuthSetup = true
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                // Generic error UI
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundStyle(.orange)
+                Text("Connection Failed")
+                    .font(.headline)
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                Button("Retry") {
+                    Task { await sessionManager.selectSession(session.id) }
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -200,10 +229,8 @@ struct SessionDetailView: View {
         guard !text.isEmpty else { return }
         inputText = ""
 
-        sessionManager.touchSession(session.id)
-
         Task {
-            await engine.send(text)
+            await sessionManager.sendMessage(for: session.id, text: text)
         }
     }
 
@@ -285,8 +312,19 @@ private struct AssistantTextView: View {
     let text: String
 
     var body: some View {
-        Text(text)
-            .textSelection(.enabled)
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(Theme.accent)
+                .frame(width: 8, height: 8)
+                .padding(.top, 6)
+
+            StructuredText(markdown: text)
+                .textual.structuredTextStyle(PiMarkdownStyle())
+                .textual.textSelection(.enabled)
+                .font(.body)
+
+            Spacer(minLength: 40)
+        }
     }
 }
 

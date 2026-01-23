@@ -24,6 +24,9 @@ final class SessionManager {
     private(set) var sessions: [DesktopSession] = []
     private(set) var activeSessionId: UUID?
 
+    /// Whether the active session needs auth setup (missing API keys)
+    private(set) var needsAuthSetup = false
+
     /// Debug store for logging RPC events
     weak var debugStore: DebugEventStore?
 
@@ -39,6 +42,9 @@ final class SessionManager {
 
     /// Event subscription tasks keyed by session ID
     private var eventTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// Sessions that have had their titles updated (to avoid overwriting)
+    private var titledSessions: Set<UUID> = []
 
     private let fileManager = FileManager.default
     private let encoder: JSONEncoder
@@ -228,6 +234,52 @@ final class SessionManager {
         saveSessions()
     }
 
+    /// Send initial prompt and update title
+    func sendInitialPrompt(for sessionId: UUID, prompt: String) async {
+        guard let engine = engines[sessionId] else { return }
+
+        // Update title from first prompt (if not already titled)
+        if !titledSessions.contains(sessionId) {
+            let title = deriveTitle(from: prompt)
+            updateTitle(for: sessionId, title: title)
+            titledSessions.insert(sessionId)
+        }
+
+        // Send the prompt
+        await engine.send(prompt)
+    }
+
+    /// Send message and optionally update title (for chat sessions)
+    func sendMessage(for sessionId: UUID, text: String) async {
+        guard let engine = engines[sessionId] else { return }
+
+        // Update title from first message if still default
+        if !titledSessions.contains(sessionId) {
+            if let session = sessions.first(where: { $0.id == sessionId }),
+               session.title == nil || session.title == "New Chat" || session.title == "New Session" {
+                let title = deriveTitle(from: text)
+                updateTitle(for: sessionId, title: title)
+            }
+            titledSessions.insert(sessionId)
+        }
+
+        touchSession(sessionId)
+        await engine.send(text)
+    }
+
+    /// Derive a title from a prompt (first line, max 50 chars)
+    private func deriveTitle(from prompt: String) -> String {
+        let firstLine = prompt.components(separatedBy: .newlines).first ?? prompt
+        let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "New Session"
+        }
+        if trimmed.count <= 50 {
+            return trimmed
+        }
+        return String(trimmed.prefix(47)) + "..."
+    }
+
     // MARK: - Connection Management
 
     private func ensureConnection(for session: DesktopSession) async {
@@ -313,14 +365,32 @@ final class SessionManager {
 
             // Connection succeeded
             connectionStates[session.id] = .connected
+            needsAuthSetup = false
             print("[SessionManager] Connection established")
 
         } catch {
-            // Connection failed
+            // Connection failed - check if it's an auth error
             let errorMessage = error.localizedDescription
-            connectionStates[session.id] = .failed(errorMessage)
-            print("[SessionManager] Connection failed: \(errorMessage)")
+            if isAuthError(error) {
+                needsAuthSetup = true
+                connectionStates[session.id] = .failed("No API keys configured")
+                print("[SessionManager] Connection failed: missing API keys")
+            } else {
+                needsAuthSetup = false
+                connectionStates[session.id] = .failed(errorMessage)
+                print("[SessionManager] Connection failed: \(errorMessage)")
+            }
         }
+    }
+
+    /// Check if an error indicates missing API keys
+    private func isAuthError(_ error: Error) -> Bool {
+        let message = error.localizedDescription.lowercased()
+        return message.contains("no models") ||
+               message.contains("no api key") ||
+               message.contains("authentication") ||
+               message.contains("api_key") ||
+               message.contains("unauthorized")
     }
 
     private func configureEngine(_ engine: SessionEngine, connection: LocalConnection, sessionId: UUID) {
