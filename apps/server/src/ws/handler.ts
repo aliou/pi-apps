@@ -370,7 +370,8 @@ async function handleSetModel(
     name: model.name,
     provider: model.provider,
   };
-  ctx.connectionManager.broadcastEvent(sessionId, "model_changed", {
+  ctx.connectionManager.broadcastEvent(sessionId, {
+    type: "model_changed",
     model: modelInfo,
   });
 

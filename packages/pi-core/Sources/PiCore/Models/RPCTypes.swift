@@ -765,6 +765,76 @@ public enum ContentBlockType: String, Codable, Sendable {
     case toolResult = "tool_result"
 }
 
+// MARK: - Event Payloads (matching pi-agent-core)
+// Note: The event `type` is on the WSEvent envelope, NOT in these payloads.
+
+/// Tool execution result content item (from pi-agent-core)
+public struct ToolResultContentItem: Decodable, Sendable {
+    public let type: String
+    public let text: String?
+}
+
+/// Tool execution result (from pi-agent-core)
+public struct ToolExecutionResultPayload: Decodable, Sendable {
+    public let content: [ToolResultContentItem]
+    public let details: AnyCodable?
+}
+
+/// tool_execution_start event payload
+public struct ToolExecutionStartPayload: Decodable, Sendable {
+    public let toolCallId: String
+    public let toolName: String
+    public let args: AnyCodable?
+}
+
+/// tool_execution_update event payload
+public struct ToolExecutionUpdatePayload: Decodable, Sendable {
+    public let toolCallId: String
+    public let toolName: String
+    public let args: AnyCodable?
+    public let partialResult: ToolExecutionResultPayload?
+}
+
+/// tool_execution_end event payload
+public struct ToolExecutionEndPayload: Decodable, Sendable {
+    public let toolCallId: String
+    public let toolName: String
+    public let result: ToolExecutionResultPayload?
+    public let isError: Bool
+}
+
+/// auto_retry_start event payload
+public struct AutoRetryStartPayload: Decodable, Sendable {
+    public let attempt: Int
+    public let maxAttempts: Int
+    public let delayMs: Int
+    public let errorMessage: String
+}
+
+/// auto_retry_end event payload
+public struct AutoRetryEndPayload: Decodable, Sendable {
+    public let success: Bool
+    public let attempt: Int
+    public let finalError: String?
+}
+
+/// model_changed event payload (server-specific)
+public struct ModelChangedPayload: Decodable, Sendable {
+    public let model: ModelInfo
+}
+
+/// native_tool_request event payload (server-specific)
+public struct NativeToolRequestPayload: Decodable, Sendable {
+    public let callId: String
+    public let toolName: String
+    public let args: [String: AnyCodable]?
+}
+
+/// native_tool_cancel event payload (server-specific)
+public struct NativeToolCancelPayload: Decodable, Sendable {
+    public let callId: String
+}
+
 // MARK: - RPC Events
 
 /// All possible RPC events from the server

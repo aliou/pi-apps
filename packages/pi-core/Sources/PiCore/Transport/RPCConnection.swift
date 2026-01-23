@@ -178,7 +178,23 @@ public actor RPCConnection {
     }
 
     /// Parse event payload into RPCEvent (new envelope format)
+    /// Uses Codable decoding for type safety - parse failures return .unknown instead of defaulting.
     private func parseEventPayload(type: String, payload: AnyCodable?) -> RPCEvent {
+        // Convert payload to JSON data for Codable decoding
+        guard let payloadValue = payload?.value,
+              let payloadData = try? JSONSerialization.data(withJSONObject: payloadValue) else {
+            // No payload - return appropriate event for payloadless types
+            switch type {
+            case "agent_start": return .agentStart
+            case "turn_start": return .turnStart
+            case "turn_end": return .turnEnd
+            case "auto_compaction_start": return .autoCompactionStart
+            case "auto_compaction_end": return .autoCompactionEnd
+            default: return .unknown(type: type, raw: Data())
+            }
+        }
+
+        // Helper for dict-based parsing (events not yet converted to Codable)
         let dict = payload?.value as? [String: Any] ?? [:]
 
         switch type {
@@ -186,6 +202,7 @@ public actor RPCConnection {
             return .agentStart
 
         case "agent_end":
+            // agent_end from pi-agent-core has messages array, but client tracks its own state
             let success = dict["success"] as? Bool ?? true
             var rpcError: RPCError?
             if let errorDict = dict["error"] as? [String: Any] {
@@ -216,33 +233,36 @@ public actor RPCConnection {
             return .messageUpdate(message: nil, event: event)
 
         case "tool_execution_start":
-            let toolCallId = dict["toolCallId"] as? String ?? ""
-            let toolName = dict["toolName"] as? String ?? ""
-            let args = dict["args"].map { AnyCodable($0) }
-            return .toolExecutionStart(toolCallId: toolCallId, toolName: toolName, args: args)
+            guard let parsed = try? JSONDecoder().decode(ToolExecutionStartPayload.self, from: payloadData) else {
+                print("[RPCConnection] Failed to decode tool_execution_start payload")
+                return .unknown(type: type, raw: payloadData)
+            }
+            return .toolExecutionStart(
+                toolCallId: parsed.toolCallId,
+                toolName: parsed.toolName,
+                args: parsed.args
+            )
 
         case "tool_execution_update":
-            let toolCallId = dict["toolCallId"] as? String ?? ""
-            // Extract output from partialResult.content array (pi-agent-core format)
-            var output: String = ""
-            if let partialResult = dict["partialResult"] as? [String: Any],
-               let content = partialResult["content"] as? [[String: Any]] {
-                output = content.compactMap { $0["text"] as? String }.joined()
+            guard let parsed = try? JSONDecoder().decode(ToolExecutionUpdatePayload.self, from: payloadData) else {
+                print("[RPCConnection] Failed to decode tool_execution_update payload")
+                return .unknown(type: type, raw: payloadData)
             }
-            return .toolExecutionUpdate(toolCallId: toolCallId, output: output)
+            let output = parsed.partialResult?.content
+                .compactMap { $0.text }
+                .joined() ?? ""
+            return .toolExecutionUpdate(toolCallId: parsed.toolCallId, output: output)
 
         case "tool_execution_end":
-            let toolCallId = dict["toolCallId"] as? String ?? ""
-            // Extract output from result.content array (pi-agent-core format)
-            var output: String?
-            if let result = dict["result"] as? [String: Any],
-               let content = result["content"] as? [[String: Any]] {
-                output = content.compactMap { $0["text"] as? String }.joined()
+            guard let parsed = try? JSONDecoder().decode(ToolExecutionEndPayload.self, from: payloadData) else {
+                print("[RPCConnection] Failed to decode tool_execution_end payload")
+                return .unknown(type: type, raw: payloadData)
             }
-            // Use isError boolean (pi-agent-core format)
-            let isError = dict["isError"] as? Bool ?? false
-            let status: ToolStatus = isError ? .error : .success
-            return .toolExecutionEnd(toolCallId: toolCallId, output: output, status: status)
+            let output = parsed.result?.content
+                .compactMap { $0.text }
+                .joined()
+            let status: ToolStatus = parsed.isError ? .error : .success
+            return .toolExecutionEnd(toolCallId: parsed.toolCallId, output: output, status: status)
 
         case "auto_compaction_start":
             return .autoCompactionStart
@@ -251,22 +271,27 @@ public actor RPCConnection {
             return .autoCompactionEnd
 
         case "auto_retry_start":
-            let attempt = dict["attempt"] as? Int ?? 0
-            let maxAttempts = dict["maxAttempts"] as? Int ?? 0
-            let delayMs = dict["delayMs"] as? Int ?? 0
-            let errorMessage = dict["errorMessage"] as? String ?? ""
+            guard let parsed = try? JSONDecoder().decode(AutoRetryStartPayload.self, from: payloadData) else {
+                print("[RPCConnection] Failed to decode auto_retry_start payload")
+                return .unknown(type: type, raw: payloadData)
+            }
             return .autoRetryStart(
-                attempt: attempt,
-                maxAttempts: maxAttempts,
-                delayMs: delayMs,
-                errorMessage: errorMessage
+                attempt: parsed.attempt,
+                maxAttempts: parsed.maxAttempts,
+                delayMs: parsed.delayMs,
+                errorMessage: parsed.errorMessage
             )
 
         case "auto_retry_end":
-            let success = dict["success"] as? Bool ?? true
-            let attempt = dict["attempt"] as? Int ?? 0
-            let finalError = dict["finalError"] as? String
-            return .autoRetryEnd(success: success, attempt: attempt, finalError: finalError)
+            guard let parsed = try? JSONDecoder().decode(AutoRetryEndPayload.self, from: payloadData) else {
+                print("[RPCConnection] Failed to decode auto_retry_end payload")
+                return .unknown(type: type, raw: payloadData)
+            }
+            return .autoRetryEnd(
+                success: parsed.success,
+                attempt: parsed.attempt,
+                finalError: parsed.finalError
+            )
 
         case "hook_error":
             let extensionPath = dict["extensionPath"] as? String
@@ -290,35 +315,33 @@ public actor RPCConnection {
             ))
 
         case "model_changed":
-            if let modelDict = dict["model"] as? [String: Any],
-               let id = modelDict["id"] as? String,
-               let name = modelDict["name"] as? String,
-               let provider = modelDict["provider"] as? String {
-                return .modelChanged(model: ModelInfo(id: id, name: name, provider: provider))
+            guard let parsed = try? JSONDecoder().decode(ModelChangedPayload.self, from: payloadData) else {
+                print("[RPCConnection] Failed to decode model_changed payload")
+                return .unknown(type: type, raw: payloadData)
             }
-            return .unknown(type: type, raw: Data())
+            return .modelChanged(model: parsed.model)
 
         case "native_tool_request":
-            guard let callId = dict["callId"] as? String,
-                  let toolName = dict["toolName"] as? String else {
-                return .unknown(type: type, raw: Data())
+            guard let parsed = try? JSONDecoder().decode(NativeToolRequestPayload.self, from: payloadData) else {
+                print("[RPCConnection] Failed to decode native_tool_request payload")
+                return .unknown(type: type, raw: payloadData)
             }
-            let argsDict = dict["args"] as? [String: Any] ?? [:]
-            let args = argsDict.mapValues { AnyCodable($0) }
+            let args = parsed.args ?? [:]
             return .nativeToolRequest(NativeToolRequest(
-                callId: callId,
-                toolName: toolName,
+                callId: parsed.callId,
+                toolName: parsed.toolName,
                 args: args
             ))
 
         case "native_tool_cancel":
-            guard let callId = dict["callId"] as? String else {
-                return .unknown(type: type, raw: Data())
+            guard let parsed = try? JSONDecoder().decode(NativeToolCancelPayload.self, from: payloadData) else {
+                print("[RPCConnection] Failed to decode native_tool_cancel payload")
+                return .unknown(type: type, raw: payloadData)
             }
-            return .nativeToolCancel(callId: callId)
+            return .nativeToolCancel(callId: parsed.callId)
 
         default:
-            return .unknown(type: type, raw: Data())
+            return .unknown(type: type, raw: payloadData)
         }
     }
 

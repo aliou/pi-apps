@@ -39,7 +39,7 @@ const sessionManager = new SessionManager(config.dataDir);
 
 // Set up session event forwarding
 sessionManager.onEvent((sessionId, event) => {
-  connectionManager.broadcastEvent(sessionId, event.type, event);
+  connectionManager.broadcastEvent(sessionId, event);
 });
 
 // Create Hono app with WebSocket support

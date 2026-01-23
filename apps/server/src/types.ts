@@ -3,7 +3,21 @@
  * WebSocket message envelopes for client-server communication.
  */
 
+import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+
 export const PROTOCOL_VERSION = 1;
+
+// Re-export for convenience
+export type { AgentSessionEvent };
+
+// Server-specific events (not from pi-agent-core)
+export type ServerEvent =
+  | { type: "model_changed"; model: ModelInfo }
+  | { type: "native_tool_request"; callId: string; toolName: string; args: Record<string, unknown> }
+  | { type: "native_tool_cancel"; callId: string };
+
+// Combined event type for WSEvent payload
+export type WSEventPayload = AgentSessionEvent | ServerEvent;
 
 // Message kinds
 export type WSMessageKind = "request" | "response" | "event";
@@ -36,7 +50,7 @@ export interface WSEvent {
   sessionId: string;
   seq: number;
   type: string;
-  payload?: unknown;
+  payload: WSEventPayload;
 }
 
 export interface RPCError {

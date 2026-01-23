@@ -9,6 +9,7 @@ import type {
   NativeToolDefinition,
   ResumeInfo,
   WSEvent,
+  WSEventPayload,
   WSResponse,
 } from "../types";
 
@@ -326,8 +327,10 @@ export class ConnectionManager {
 
   /**
    * Broadcast an event to all connections attached to a session.
+   * Event type is extracted from the payload's type field.
    */
-  broadcastEvent(sessionId: string, type: string, payload: unknown): void {
+  broadcastEvent(sessionId: string, payload: WSEventPayload): void {
+    const type = payload.type;
     for (const connection of this.connections.values()) {
       if (connection.isAttached(sessionId) && connection.isOpen) {
         const seq = connection.nextSeq(sessionId);
