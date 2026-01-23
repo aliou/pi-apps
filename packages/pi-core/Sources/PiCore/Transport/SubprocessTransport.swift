@@ -9,6 +9,8 @@
 #if os(macOS)
 
 import Foundation
+import Subprocess
+import System
 
 /// Type-erasing wrapper for Encodable values
 private struct AnyEncodable: Encodable {
@@ -25,7 +27,7 @@ private struct AnyEncodable: Encodable {
     }
 }
 
-/// Subprocess-based RPC transport for local pi agent
+/// Subprocess-based RPC transport for local pi agent using Swift Subprocess
 public actor SubprocessTransport: RPCTransport {
 
     // MARK: - Properties
@@ -33,14 +35,9 @@ public actor SubprocessTransport: RPCTransport {
     private let config: RPCTransportConfig
     private let connection: RPCConnection
 
-    private var process: Process?
-    private var stdinPipe: Pipe?
-    private var stdoutPipe: Pipe?
-    private var stderrPipe: Pipe?
-
-    private var readBuffer = Data()
     private var _isConnected = false
-    private var readerThread: Thread?
+    private var subprocessTask: Task<Void, Never>?
+    private var stdinContinuation: AsyncStream<Data>.Continuation?
 
     // MARK: - RPCTransport Protocol
 
@@ -78,75 +75,107 @@ public actor SubprocessTransport: RPCTransport {
             throw RPCTransportError.connectionFailed("Executable not found at \(executablePath)")
         }
 
-        // Create pipes
-        let stdinPipe = Pipe()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
+        // Create async stream for stdin writes
+        let (stdinStream, stdinContinuation) = AsyncStream<Data>.makeStream()
+        self.stdinContinuation = stdinContinuation
 
-        self.stdinPipe = stdinPipe
-        self.stdoutPipe = stdoutPipe
-        self.stderrPipe = stderrPipe
-
-        // Configure process
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = ["--mode", "rpc"]
-        process.standardInput = stdinPipe
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-        process.currentDirectoryPath = workingDirectory
-
-        // Set environment
-        var env = ProcessInfo.processInfo.environment
-        if let customEnv = config.environment {
+        // Build environment with custom PI_CODING_AGENT_DIR
+        let env: Environment
+        if let customEnv = config.environment, !customEnv.isEmpty {
+            var envUpdates: [Environment.Key: String?] = [:]
             for (key, value) in customEnv {
-                env[key] = value
+                envUpdates[Environment.Key(stringLiteral: key)] = value
             }
+            env = .inherit.updating(envUpdates)
+        } else {
+            env = .inherit
         }
-        process.environment = env
 
-        // Set termination handler
-        process.terminationHandler = { [weak self] proc in
-            Task { [weak self] in
-                await self?.handleProcessTermination(exitCode: proc.terminationStatus)
+        let execPath = executablePath
+        let workDir = workingDirectory
+
+        // Start subprocess in background task
+        subprocessTask = Task { [weak self] in
+            do {
+                _ = try await Subprocess.run(
+                    .path(FilePath(execPath)),
+                    arguments: ["--mode", "rpc"],
+                    environment: env,
+                    workingDirectory: FilePath(workDir)
+                ) { _, stdin, stdout, stderr in
+
+                    // Mark as connected
+                    await self?.setConnected(true)
+
+                    await withTaskGroup(of: Void.self) { group in
+                        // Task to write stdin from our stream
+                        group.addTask {
+                            for await data in stdinStream {
+                                do {
+                                    _ = try await stdin.write(Array(data))
+                                } catch {
+                                    break
+                                }
+                            }
+                            try? await stdin.finish()
+                        }
+
+                        // Task to read stdout lines
+                        group.addTask { [weak self] in
+                            do {
+                                for try await line in stdout.lines() {
+                                    await self?.processLine(line)
+                                }
+                            } catch {
+                                // Stream ended or error
+                            }
+                        }
+
+                        // Task to log stderr
+                        group.addTask {
+                            do {
+                                for try await line in stderr.lines() {
+                                    print("[SubprocessTransport] stderr: \(line)")
+                                }
+                            } catch {
+                                // Stream ended or error
+                            }
+                        }
+
+                        await group.waitForAll()
+                    }
+                }
+            } catch {
+                print("[SubprocessTransport] Subprocess error: \(error)")
             }
+
+            // Process terminated
+            await self?.handleProcessTermination()
         }
-
-        self.process = process
-
-        // Start reading stdout and stderr
-        startReadingStdout()
-        startReadingStderr()
-
-        // Launch process
-        do {
-            try process.run()
-        } catch {
-            cleanup()
-            throw RPCTransportError.connectionFailed("Failed to launch process: \(error.localizedDescription)")
-        }
-
-        _isConnected = true
 
         // Wait briefly to check for immediate crash
-        try await Task.sleep(nanoseconds: 200_000_000)
+        try await Task.sleep(for: .milliseconds(200))
 
-        if !process.isRunning {
-            _isConnected = false
-            cleanup()
-            throw RPCTransportError.connectionFailed("Process terminated immediately")
+        if !_isConnected {
+            throw RPCTransportError.connectionFailed("Process failed to start")
         }
+    }
+
+    private func setConnected(_ connected: Bool) {
+        _isConnected = connected
     }
 
     public func disconnect() async {
         _isConnected = false
 
-        if let process, process.isRunning {
-            process.terminate()
-            process.waitUntilExit()
-        }
+        // Close stdin stream to signal subprocess to exit
+        stdinContinuation?.finish()
+        stdinContinuation = nil
 
-        cleanup()
+        // Cancel the subprocess task
+        subprocessTask?.cancel()
+        subprocessTask = nil
+
         await connection.reset()
         await connection.finishEvents()
     }
@@ -188,7 +217,7 @@ public actor SubprocessTransport: RPCTransport {
         sessionId: String?,
         params: (any Encodable & Sendable)?
     ) async throws -> Data {
-        guard _isConnected, let stdinPipe else {
+        guard _isConnected, let stdinContinuation else {
             throw RPCTransportError.notConnected
         }
 
@@ -198,8 +227,6 @@ public actor SubprocessTransport: RPCTransport {
 
         if let params {
             let encoder = JSONEncoder()
-
-            // Encode the params directly (not wrapped in AnyCodable)
             let paramsData = try encoder.encode(AnyEncodable(params))
             if let paramsDict = try JSONSerialization.jsonObject(with: paramsData) as? [String: Any] {
                 for (key, value) in paramsDict where key != "type" {
@@ -222,109 +249,38 @@ public actor SubprocessTransport: RPCTransport {
                     continuation: continuation
                 )
 
-                // Then write to stdin
-                do {
-                    try self.stdinPipe?.fileHandleForWriting.write(contentsOf: lineData)
-                } catch {
-                    await self.connection.failRequest(
-                        id: method,
-                        error: RPCTransportError.connectionLost("Pipe broken")
-                    )
-                }
+                // Write to stdin via the stream
+                stdinContinuation.yield(lineData)
             }
         }
     }
 
     // MARK: - Reading
 
-    private func startReadingStdout() {
-        guard let stdoutPipe, let process else { return }
+    private func processLine(_ line: String) async {
+        // Strip ANSI/OSC escape sequences
+        let cleanedString = stripANSIEscapeCodes(line)
 
-        let handle = stdoutPipe.fileHandleForReading
-
-        // Use a dedicated thread for synchronous reading
-        // This properly drains the pipe buffer for large responses
-        // (readabilityHandler fails to drain pipes > 64KB)
-        let thread = Thread { [weak self] in
-            while true {
-                let data = handle.availableData
-
-                if data.isEmpty {
-                    // Check if process is still running
-                    if !process.isRunning {
-                        break
-                    }
-                    // Small sleep to avoid busy-waiting
-                    Thread.sleep(forTimeInterval: 0.001)
-                    continue
-                }
-
-                Task { [weak self] in
-                    await self?.processStdoutData(data)
-                }
-            }
+        guard let jsonStartIndex = cleanedString.firstIndex(of: "{") else {
+            return
         }
-        thread.name = "SubprocessTransport-stdout-reader"
-        thread.start()
-        readerThread = thread
-    }
 
-    private func startReadingStderr() {
-        guard let stderrPipe else { return }
-
-        let handle = stderrPipe.fileHandleForReading
-
-        handle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else {
-                return
-            }
-
-            if let str = String(data: data, encoding: .utf8) {
-                print("[SubprocessTransport] stderr: \(str)")
-            }
+        let jsonString = String(cleanedString[jsonStartIndex...])
+        guard let data = jsonString.data(using: .utf8) else {
+            return
         }
-    }
 
-    private func processStdoutData(_ data: Data) async {
-        readBuffer.append(data)
-
-        // Process complete lines
-        while let newlineIndex = readBuffer.firstIndex(of: 0x0A) {
-            let lineData = readBuffer.prefix(upTo: newlineIndex)
-            readBuffer = Data(readBuffer.suffix(from: readBuffer.index(after: newlineIndex)))
-
-            guard !lineData.isEmpty else { continue }
-
-            // Strip ANSI escape codes and find JSON start
-            guard let lineString = String(data: Data(lineData), encoding: .utf8) else {
-                continue
-            }
-
-            // Strip ANSI/OSC escape sequences (defensive measure for extensions that output them)
-            let cleanedString = stripANSIEscapeCodes(lineString)
-
-            guard let jsonStartIndex = cleanedString.firstIndex(of: "{") else {
-                continue
-            }
-
-            let jsonString = String(cleanedString[jsonStartIndex...])
-            guard let cleanedData = jsonString.data(using: .utf8) else {
-                continue
-            }
-
-            await connection.processIncoming(cleanedData)
-        }
+        await connection.processIncoming(data)
     }
 
     /// Strip ANSI escape codes from a string
-    private func stripANSIEscapeCodes(_ string: String) -> String {
+    private nonisolated func stripANSIEscapeCodes(_ string: String) -> String {
         // Match multiple types of escape sequences:
         // 1. CSI sequences: ESC[ followed by parameters and a command letter
         // 2. OSC sequences: ESC] followed by content ending with BEL (\u{07}) or ST (ESC\)
         let patterns = [
-            "\\x1b\\[[0-9;]*[a-zA-Z]",           // CSI sequences
-            "\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)?"   // OSC sequences (BEL or ST terminator)
+            "\\x1b\\[[0-9;]*[a-zA-Z]",
+            "\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)?"
         ]
         let combined = patterns.joined(separator: "|")
         guard let regex = try? NSRegularExpression(pattern: combined) else {
@@ -336,25 +292,13 @@ public actor SubprocessTransport: RPCTransport {
 
     // MARK: - Process Lifecycle
 
-    private func handleProcessTermination(exitCode: Int32) async {
+    private func handleProcessTermination() async {
         _isConnected = false
+        stdinContinuation?.finish()
+        stdinContinuation = nil
+        subprocessTask = nil
         await connection.reset()
         await connection.finishEvents()
-        cleanup()
-    }
-
-    private func cleanup() {
-        stdinPipe?.fileHandleForWriting.closeFile()
-        stderrPipe?.fileHandleForReading.readabilityHandler = nil
-
-        // Reader thread will exit when process terminates (checked in loop)
-        readerThread = nil
-
-        stdinPipe = nil
-        stdoutPipe = nil
-        stderrPipe = nil
-        process = nil
-        readBuffer = Data()
     }
 }
 

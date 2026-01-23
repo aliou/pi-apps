@@ -1,12 +1,12 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 
 import PackageDescription
 
 let package = Package(
     name: "PiCore",
     platforms: [
-        .macOS(.v14),
-        .iOS(.v17)
+        .macOS(.v26),
+        .iOS(.v26)
     ],
     products: [
         .library(
@@ -14,9 +14,15 @@ let package = Package(
             targets: ["PiCore"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-subprocess.git", from: "0.2.1")
+    ],
     targets: [
         .target(
-            name: "PiCore"
+            name: "PiCore",
+            dependencies: [
+                .product(name: "Subprocess", package: "swift-subprocess", condition: .when(platforms: [.macOS]))
+            ]
         ),
         .testTarget(
             name: "PiCoreTests",
