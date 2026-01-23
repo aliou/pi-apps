@@ -14,13 +14,17 @@ struct SettingsView: View {
                 GeneralSettingsView()
             }
 
+            Tab("Server", systemImage: "server.rack") {
+                ServerSettingsView()
+            }
+
             Tab("Advanced", systemImage: "gearshape.2") {
                 AdvancedSettingsView()
             }
         }
         .scenePadding()
         .frame(width: 450)
-        .frame(minHeight: 250)
+        .frame(minHeight: 300)
     }
 }
 
@@ -134,6 +138,92 @@ struct GeneralSettingsView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Server Settings
+
+struct ServerSettingsView: View {
+    @State private var serverConfig = ServerConfig.shared
+    @State private var serverURLText = ""
+    @State private var isValidating = false
+    @State private var validationError: String?
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Server URL", text: $serverURLText)
+                    .textFieldStyle(.roundedBorder)
+                    .onAppear {
+                        serverURLText = serverConfig.serverURL?.absoluteString ?? ""
+                    }
+
+                if let error = validationError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                HStack {
+                    if serverConfig.isConfigured {
+                        Button("Disconnect", role: .destructive) {
+                            serverConfig.clearServerURL()
+                            serverURLText = ""
+                        }
+                    }
+
+                    Spacer()
+
+                    Button("Connect") {
+                        connectToServer()
+                    }
+                    .disabled(serverURLText.isEmpty || isValidating)
+                }
+            } header: {
+                Text("Remote Server")
+            } footer: {
+                Text("Connect to a Pi server for remote code sessions. Local sessions do not require a server connection.")
+                    .foregroundStyle(.secondary)
+            }
+
+            if serverConfig.isConfigured {
+                Section {
+                    LabeledContent("Status") {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                            Text("Connected")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    LabeledContent("URL") {
+                        Text(serverConfig.serverURL?.absoluteString ?? "-")
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Connection")
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func connectToServer() {
+        guard let url = URL(string: serverURLText) else {
+            validationError = "Invalid URL"
+            return
+        }
+
+        // Basic URL validation
+        guard url.scheme == "ws" || url.scheme == "wss" || url.scheme == "http" || url.scheme == "https" else {
+            validationError = "URL must start with ws://, wss://, http://, or https://"
+            return
+        }
+
+        validationError = nil
+        serverConfig.setServerURL(url)
     }
 }
 

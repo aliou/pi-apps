@@ -2,6 +2,8 @@
 //  AppDelegate.swift
 //  pi
 //
+//  App delegate configuring window for macOS 26 Liquid Glass
+//
 
 import AppKit
 import SwiftUI
@@ -10,7 +12,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Create window with Ghostty-style "tabs" titlebar
         let styleMask: NSWindow.StyleMask = [
             .titled,
             .closable,
@@ -26,20 +27,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
 
-        // Configure transparent titlebar
+        // macOS 26 Liquid Glass configuration
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.title = ""
+        window.titleVisibility = .visible
+        window.toolbarStyle = .unified
         window.isMovableByWindowBackground = true
-        window.toolbar = nil
-        window.backgroundColor = NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0)
 
-        // Host SwiftUI content
+        // Let system handle background (enables glass effects)
+        // Don't set custom backgroundColor
+
         window.contentView = NSHostingView(rootView: MainView())
 
-        // Show window
         window.center()
         window.makeKeyAndOrderFront(nil)
+
+        // Set minimum window size
+        window.minSize = NSSize(width: 800, height: 500)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
