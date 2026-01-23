@@ -558,6 +558,36 @@ final class SessionManager {
         }
     }
 
+    /// Reset all in-memory state (called after app data is cleared)
+    func reset() {
+        // Cancel all event tasks
+        for task in eventTasks.values {
+            task.cancel()
+        }
+        eventTasks.removeAll()
+
+        // Disconnect all local connections (fire and forget)
+        let connections = localConnections.values
+        Task {
+            for connection in connections {
+                await connection.disconnect()
+            }
+        }
+        localConnections.removeAll()
+
+        // Clear engines
+        engines.removeAll()
+
+        // Clear state
+        connectionStates.removeAll()
+        titledSessions.removeAll()
+
+        // Clear sessions
+        sessions = []
+        activeSessionId = nil
+        needsAuthSetup = false
+    }
+
     private func sortSessions() {
         sessions.sort { $0.updatedAt > $1.updatedAt }
     }

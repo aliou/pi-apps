@@ -5,6 +5,7 @@
 //  Settings window content
 //
 
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -230,7 +231,10 @@ struct ServerSettingsView: View {
 // MARK: - Advanced Settings
 
 struct AdvancedSettingsView: View {
+    @Environment(\.appState) private var appState
     @AppStorage("showDebugPanel") private var showDebugPanel = false
+    @State private var showResetConfirmation = false
+    @State private var resetError: String?
 
     var body: some View {
         Form {
@@ -242,8 +246,48 @@ struct AdvancedSettingsView: View {
                 Text("Shows RPC events and debug information in a side panel.")
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Button("Reset All Data", role: .destructive) {
+                    showResetConfirmation = true
+                }
+
+                if let error = resetError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Text("Data")
+            } footer: {
+                Text("Deletes all app data including the pi binary, sessions, and settings. You will need to set up the app again.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            "Reset All Data?",
+            isPresented: $showResetConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Reset", role: .destructive) {
+                performReset()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will delete all app data including:\n• Pi binary\n• All sessions\n• Auth configuration\n• Worktrees\n\nThis action cannot be undone.")
+        }
+    }
+
+    private func performReset() {
+        do {
+            try appState.resetAllData()
+            resetError = nil
+            // Close settings window - the app will show SetupView
+            NSApp.keyWindow?.close()
+        } catch {
+            resetError = "Reset failed: \(error.localizedDescription)"
+        }
     }
 }
 

@@ -18,13 +18,12 @@ enum SidebarMode: String, CaseIterable, Identifiable {
 }
 
 struct MainView: View {
+    @Environment(\.appState) private var appState
     @State private var sessionManager = SessionManager()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var sidebarMode: SidebarMode = .chat
 
     // Binary/update state
-    @State private var binaryReady = false
-    @State private var authReady = false
     @State private var updateAvailable: String?
     @State private var showUpdateSheet = false
 
@@ -41,10 +40,9 @@ struct MainView: View {
 
     var body: some View {
         Group {
-            if !binaryReady {
+            if !appState.binaryReady {
                 SetupView {
-                    binaryReady = true
-                    checkAuth()
+                    appState.markBinaryReady()
                 }
             } else {
                 mainContent
@@ -58,7 +56,7 @@ struct MainView: View {
         }
         .sheet(isPresented: $showAuthSheet) {
             AuthSetupView {
-                checkAuth()
+                appState.checkAuth()
                 showAuthSheet = false
             }
             .interactiveDismissDisabled()
@@ -68,14 +66,19 @@ struct MainView: View {
                 createCodeSession(folderPath: folderPath)
             }
         }
-        .onChange(of: authReady) { _, newValue in
+        .onChange(of: appState.authReady) { _, newValue in
             // Show sheet when auth is not ready (and binary is ready)
-            showAuthSheet = !newValue && binaryReady
+            showAuthSheet = !newValue && appState.binaryReady
         }
-        .onChange(of: binaryReady) { _, newValue in
-            // When binary becomes ready, check if we need to show auth sheet
-            if newValue && !authReady {
-                showAuthSheet = true
+        .onChange(of: appState.binaryReady) { _, newValue in
+            if newValue {
+                // When binary becomes ready, check if we need to show auth sheet
+                if !appState.authReady {
+                    showAuthSheet = true
+                }
+            } else {
+                // Reset session manager when binary is no longer ready (data was cleared)
+                sessionManager.reset()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .newChatSession)) { _ in
@@ -173,11 +176,9 @@ struct MainView: View {
     // MARK: - Binary & Auth Checks
 
     private func checkBinaryAndUpdates() {
-        binaryReady = AppPaths.piExecutableExists
+        appState.checkState()
 
-        if binaryReady {
-            checkAuth()
-
+        if appState.binaryReady {
             Task {
                 let result = await BinaryUpdateService.shared.checkForUpdates()
                 await MainActor.run {
@@ -187,17 +188,6 @@ struct MainView: View {
                 }
             }
         }
-    }
-
-    private func checkAuth() {
-        let agentPath = AppPaths.agentDirectory
-        let authJson = agentPath.appendingPathComponent("auth.json")
-        let modelsJson = agentPath.appendingPathComponent("models.json")
-
-        let authExists = (try? FileManager.default.attributesOfItem(atPath: authJson.path)) != nil
-        let modelsExists = (try? FileManager.default.attributesOfItem(atPath: modelsJson.path)) != nil
-
-        authReady = authExists || modelsExists
     }
 }
 

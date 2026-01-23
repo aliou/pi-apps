@@ -8,10 +8,12 @@ import SwiftUI
 @main
 struct piApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    private var appState: AppState { AppState.shared }
 
     var body: some Scene {
         WindowGroup {
             MainView()
+                .environment(\.appState, appState)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -36,6 +38,7 @@ struct piApp: App {
 
         Settings {
             SettingsView()
+                .environment(\.appState, appState)
         }
     }
 }
