@@ -30,21 +30,38 @@ enum AppPaths {
         return appDir
     }
 
-    /// Directory for the pi binary
+    /// Directory for the pi binary versions
     static var binDirectory: URL {
         let dir = applicationSupport.appendingPathComponent("bin")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
 
-    /// Path to the pi executable
+    /// Directory containing all downloaded versions
+    static var versionsDirectory: URL {
+        let dir = binDirectory.appendingPathComponent("versions")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// Symlink to the currently active version
+    static var currentVersionLink: URL {
+        binDirectory.appendingPathComponent("current")
+    }
+
+    /// Path to the pi executable (through the current symlink)
     static var piExecutable: URL {
-        binDirectory.appendingPathComponent("pi")
+        currentVersionLink.appendingPathComponent("pi")
     }
 
     /// Path to the pi executable as a string (for Process)
     static var piExecutablePath: String {
         piExecutable.path
+    }
+
+    /// Get the directory for a specific version
+    static func versionDirectory(for version: String) -> URL {
+        versionsDirectory.appendingPathComponent(version)
     }
 
     /// Directory for pi agent data (PI_AGENT_DIR)
@@ -111,6 +128,7 @@ enum AppPaths {
     static func ensureDirectoryStructure() {
         _ = applicationSupport
         _ = binDirectory
+        _ = versionsDirectory
         _ = agentDirectory
         _ = worktreesDirectory
         _ = sessionsDirectory

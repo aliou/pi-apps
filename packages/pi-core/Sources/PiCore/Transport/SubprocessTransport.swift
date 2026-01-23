@@ -196,7 +196,7 @@ public actor SubprocessTransport: RPCTransport {
 
         if let params {
             let encoder = JSONEncoder()
-            encoder.keyEncodingStrategy = .convertToSnakeCase
+
             // Encode the params directly (not wrapped in AnyCodable)
             let paramsData = try encoder.encode(AnyEncodable(params))
             if let paramsDict = try JSONSerialization.jsonObject(with: paramsData) as? [String: Any] {
@@ -212,18 +212,19 @@ public actor SubprocessTransport: RPCTransport {
 
         return try await withCheckedThrowingContinuation { continuation in
             Task {
-                // Use method as request ID (legacy behavior)
-                await connection.registerRequest(
+                // Register request first (using method as ID for legacy format matching)
+                await self.connection.registerRequest(
                     id: method,
                     method: method,
                     sessionId: sessionId,
                     continuation: continuation
                 )
 
+                // Then write to stdin
                 do {
-                    try stdinPipe.fileHandleForWriting.write(contentsOf: lineData)
+                    try self.stdinPipe?.fileHandleForWriting.write(contentsOf: lineData)
                 } catch {
-                    await connection.failRequest(
+                    await self.connection.failRequest(
                         id: method,
                         error: RPCTransportError.connectionLost("Pipe broken")
                     )

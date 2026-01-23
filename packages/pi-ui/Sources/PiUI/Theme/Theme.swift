@@ -7,13 +7,7 @@
 //
 
 import SwiftUI
-
-/// Status of a tool call execution
-public enum ToolCallStatus: Sendable, Hashable {
-    case running
-    case success
-    case error
-}
+@_exported import enum PiCore.ToolCallStatus
 
 public enum Theme {
     // MARK: - Brand Accent

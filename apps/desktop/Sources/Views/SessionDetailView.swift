@@ -11,7 +11,8 @@ import PiUI
 
 struct SessionDetailView: View {
     let session: DesktopSession
-    let engine: SessionEngine
+    let engine: SessionEngine?
+    let connectionState: SessionConnectionState
     let sessionManager: SessionManager
 
     @State private var expandedToolCalls: Set<String> = []
@@ -20,25 +21,78 @@ struct SessionDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            conversationArea
+            // Header with connection status
+            headerBar
+
             Divider()
-            inputArea
+
+            switch connectionState {
+            case .idle, .connecting:
+                connectingView
+            case .connected:
+                if let engine {
+                    conversationArea(engine: engine)
+                    Divider()
+                    inputArea(engine: engine)
+                } else {
+                    connectingView
+                }
+            case .failed(let error):
+                errorView(error: error)
+            }
         }
         .navigationTitle(session.displayTitle)
         .navigationSubtitle(contextSubtitle)
-        .toolbar {
-            ToolbarItem(placement: .status) {
-                connectionStatusView
-            }
+    }
+
+    private var headerBar: some View {
+        HStack {
+            Spacer()
+            Circle()
+                .fill(connectionColor)
+                .frame(width: 8, height: 8)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Connection State Views
+
+    private var connectingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+            Text("Connecting...")
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func errorView(error: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundStyle(.orange)
+            Text("Connection Failed")
+                .font(.headline)
+            Text(error)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            Button("Retry") {
+                Task { await sessionManager.selectSession(session.id) }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Subviews
 
-    private var conversationArea: some View {
+    private func conversationArea(engine: SessionEngine) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                conversationContent
+                conversationContent(engine: engine)
                     .padding(16)
             }
             .onChange(of: engine.messages.count) { _, _ in
@@ -50,7 +104,7 @@ struct SessionDetailView: View {
         }
     }
 
-    private var conversationContent: some View {
+    private func conversationContent(engine: SessionEngine) -> some View {
         LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(engine.messages) { item in
                 SessionConversationItemView(
@@ -73,22 +127,22 @@ struct SessionDetailView: View {
         }
     }
 
-    private var inputArea: some View {
+    private func inputArea(engine: SessionEngine) -> some View {
         HStack(spacing: 12) {
             TextField("Message...", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .focused($isInputFocused)
                 .lineLimit(1...5)
-                .onSubmit { sendMessage() }
+                .onSubmit { sendMessage(engine: engine) }
 
-            sendOrAbortButton
+            sendOrAbortButton(engine: engine)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
 
     @ViewBuilder
-    private var sendOrAbortButton: some View {
+    private func sendOrAbortButton(engine: SessionEngine) -> some View {
         if engine.isProcessing {
             Button {
                 Task { await engine.abort() }
@@ -99,24 +153,13 @@ struct SessionDetailView: View {
             }
             .buttonStyle(.plain)
         } else {
-            Button { sendMessage() } label: {
+            Button { sendMessage(engine: engine) } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 20))
                     .foregroundColor(inputText.isEmpty ? .secondary : Theme.accent)
             }
             .buttonStyle(.plain)
             .disabled(inputText.isEmpty)
-        }
-    }
-
-    private var connectionStatusView: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(connectionColor)
-                .frame(width: 8, height: 8)
-            Text(connectionStatus)
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -142,13 +185,6 @@ struct SessionDetailView: View {
         return conn.isConnected ? Theme.success : Theme.error
     }
 
-    private var connectionStatus: String {
-        guard let conn = sessionManager.activeConnection else {
-            return "Disconnected"
-        }
-        return conn.isConnected ? "Connected" : "Disconnected"
-    }
-
     // MARK: - Actions
 
     private func toggleToolCall(_ id: String) {
@@ -159,7 +195,7 @@ struct SessionDetailView: View {
         }
     }
 
-    private func sendMessage() {
+    private func sendMessage(engine: SessionEngine) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         inputText = ""
@@ -256,6 +292,7 @@ private struct AssistantTextView: View {
 
 // MARK: - Tool Call Item View
 
+// TODO: Harmonize this component with iOS ExpandableToolCallView (apps/mobile/Sources/Views/ExpandableToolCallView.swift)
 private struct ToolCallItemView: View {
     let name: String
     let args: String?
@@ -265,42 +302,53 @@ private struct ToolCallItemView: View {
     var onToggle: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            headerButton
+        VStack(alignment: .leading, spacing: 0) {
+            // Header (tappable to expand/collapse)
+            headerRow
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onToggle?()
+                }
+
+            // Expanded content
             if isExpanded {
                 expandedContent
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
         .background(Theme.cardBg)
         .cornerRadius(8)
     }
 
-    private var headerButton: some View {
-        Button(action: { onToggle?() }) {
-            HStack(spacing: 8) {
-                statusIcon
-                    .frame(width: 16, height: 16)
+    private var headerRow: some View {
+        HStack(spacing: 8) {
+            statusIcon
+                .frame(width: 16, height: 16)
 
-                Text(name)
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
+            Text(name)
+                .font(.system(.body, design: .monospaced))
+                .fontWeight(.medium)
 
-                Spacer()
+            Spacer()
 
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
     }
 
     private var expandedContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+
             if let args {
-                DisclosureGroup("Arguments") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Arguments")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Text(args)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
@@ -312,7 +360,10 @@ private struct ToolCallItemView: View {
             }
 
             if let output {
-                DisclosureGroup("Output") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Output")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     ScrollView(.horizontal, showsIndicators: false) {
                         Text(output)
                             .font(.system(.caption, design: .monospaced))
@@ -325,8 +376,17 @@ private struct ToolCallItemView: View {
                     .cornerRadius(4)
                 }
             }
+
+            if status == .running && output == nil {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Running...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
-        .padding(.leading, 24)
     }
 
     @ViewBuilder
@@ -427,6 +487,7 @@ struct ProcessingIndicatorView: View {
     return SessionDetailView(
         session: session,
         engine: engine,
+        connectionState: .connected,
         sessionManager: SessionManager()
     )
     .frame(width: 600, height: 500)

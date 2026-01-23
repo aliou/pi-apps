@@ -13,6 +13,7 @@ struct VersionInfo: Codable {
     var currentVersion: String?
     var lastCheckDate: Date?
     var latestKnownVersion: String?
+    var installedVersions: [String] = []
 }
 
 struct GitHubRelease: Codable {
@@ -111,6 +112,11 @@ actor BinaryUpdateService {
         return latest != current
     }
 
+    /// List of all installed versions
+    var installedVersions: [String] {
+        versionInfo.installedVersions
+    }
+
     /// Download the latest pi binary (for first launch or manual update)
     func downloadLatestBinary(progress: @escaping (Double, String) -> Void) async throws {
         progress(0.0, "Fetching latest release...")
@@ -146,35 +152,43 @@ actor BinaryUpdateService {
 
         progress(0.9, "Installing...")
 
-        // Clear existing bin directory contents (except preserve any user config)
-        let binDir = AppPaths.binDirectory
         let fm = FileManager.default
 
-        // Remove old contents
-        if let contents = try? fm.contentsOfDirectory(at: binDir, includingPropertiesForKeys: nil) {
-            for item in contents {
-                try? fm.removeItem(at: item)
-            }
+        // Version directory: bin/versions/{version}/
+        let versionDir = AppPaths.versionDirectory(for: version)
+
+        // Remove existing version directory if it exists (re-download)
+        if fm.fileExists(atPath: versionDir.path) {
+            try fm.removeItem(at: versionDir)
         }
 
-        // Move all extracted files to bin directory
+        // Find the extracted pi directory (tarball extracts to pi/)
         let extractedContents = try fm.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil)
-        for item in extractedContents {
-            // Skip the tarball itself
-            if item.lastPathComponent == "pi.tar.gz" { continue }
-
-            let destination = binDir.appendingPathComponent(item.lastPathComponent)
-            try fm.moveItem(at: item, to: destination)
+        guard let piDir = extractedContents.first(where: { $0.lastPathComponent == "pi" }) else {
+            throw BinaryUpdateError.extractionFailed
         }
+
+        // Move extracted pi directory to versions/{version}/
+        try fm.moveItem(at: piDir, to: versionDir)
 
         // Make binary executable
-        let binaryPath = AppPaths.piExecutable
+        let binaryPath = versionDir.appendingPathComponent("pi")
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binaryPath.path)
+
+        // Update current symlink
+        let currentLink = AppPaths.currentVersionLink
+        if fm.fileExists(atPath: currentLink.path) {
+            try fm.removeItem(at: currentLink)
+        }
+        try fm.createSymbolicLink(at: currentLink, withDestinationURL: versionDir)
 
         // Update version info
         versionInfo.currentVersion = version
         versionInfo.latestKnownVersion = version
         versionInfo.lastCheckDate = Date()
+        if !versionInfo.installedVersions.contains(version) {
+            versionInfo.installedVersions.append(version)
+        }
         saveVersionInfo()
 
         progress(1.0, "Done!")

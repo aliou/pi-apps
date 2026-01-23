@@ -85,11 +85,11 @@ struct MainView: View {
                 }
             )
         } detail: {
-            if let session = sessionManager.activeSession,
-               let engine = sessionManager.activeEngine {
+            if let session = sessionManager.activeSession {
                 SessionDetailView(
                     session: session,
-                    engine: engine,
+                    engine: sessionManager.activeEngine,
+                    connectionState: sessionManager.activeConnectionState,
                     sessionManager: sessionManager
                 )
             } else {

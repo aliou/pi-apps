@@ -9,12 +9,23 @@ import Foundation
 import PiCore
 import PiUI
 
+/// Connection state for a session
+enum SessionConnectionState: Sendable, Equatable {
+    case idle
+    case connecting
+    case connected
+    case failed(String)
+}
+
 /// Manages multiple desktop sessions with their connections
 @MainActor
 @Observable
 final class SessionManager {
     private(set) var sessions: [DesktopSession] = []
     private(set) var activeSessionId: UUID?
+
+    /// Per-session connection state
+    private var connectionStates: [UUID: SessionConnectionState] = [:]
 
     /// Running local connections keyed by session ID
     /// These persist even when switching to another session
@@ -49,6 +60,11 @@ final class SessionManager {
     var activeConnection: LocalConnection? {
         guard let id = activeSessionId else { return nil }
         return localConnections[id]
+    }
+
+    var activeConnectionState: SessionConnectionState {
+        guard let id = activeSessionId else { return .idle }
+        return connectionStates[id] ?? .idle
     }
 
     var chatSessions: [DesktopSession] {
@@ -159,8 +175,9 @@ final class SessionManager {
             localConnections.removeValue(forKey: id)
         }
 
-        // Clean up engine
+        // Clean up engine and connection state
         engines.removeValue(forKey: id)
+        connectionStates.removeValue(forKey: id)
 
         // Delete worktree if requested (local code sessions)
         if deleteWorktree,
@@ -216,38 +233,90 @@ final class SessionManager {
             return
         }
 
+        print("[SessionManager] ensureConnection for session \(session.id), mode: \(session.mode)")
+
         // Check if connection already exists and is connected
         if let existingConn = localConnections[session.id], existingConn.isConnected {
+            print("[SessionManager] Reusing existing connection")
+            connectionStates[session.id] = .connected
+
+            // If engine has no messages but session has history, reload it
+            if let engine = engines[session.id], engine.messages.isEmpty, session.piSessionFile != nil {
+                print("[SessionManager] Engine empty, reloading history...")
+                await loadMessageHistory(from: existingConn, into: engine)
+            }
             return
+        }
+
+        // Set connecting state immediately
+        connectionStates[session.id] = .connecting
+
+        // Create engine BEFORE connection so UI can render
+        if engines[session.id] == nil {
+            let engine = SessionEngine()
+            engines[session.id] = engine
         }
 
         // Create working directory - use session's or fall back to agent path for chat
         let workDir = session.workingDirectory ?? AppPaths.agentPath
+        print("[SessionManager] Work dir: \(workDir)")
+
         let conn = LocalConnection(workingDirectory: workDir)
         localConnections[session.id] = conn
 
         do {
             try await conn.connect()
-            setupEngine(for: session, connection: conn)
 
-            // If session has existing pi session file, switch to it
+            // Configure engine with connection callbacks
+            if let engine = engines[session.id] {
+                configureEngine(engine, connection: conn, sessionId: session.id)
+            }
+
+            // Handle pi session file (Phase 3: Session Isolation)
             if let piSessionFile = session.piSessionFile {
+                // Switch to existing pi session
+                print("[SessionManager] Switching to existing pi session: \(piSessionFile)")
                 _ = try? await conn.switchSession(sessionPath: piSessionFile)
+
+                // Load message history
+                if let engine = engines[session.id] {
+                    await loadMessageHistory(from: conn, into: engine)
+                }
             } else {
-                // Get state to capture session file
-                let state = try await conn.getState()
-                if let sessionFile = state.sessionFile {
-                    updatePiSessionFile(for: session.id, piSessionFile: sessionFile)
+                // Create NEW pi session for this DesktopSession
+                print("[SessionManager] Creating new pi session...")
+                do {
+                    _ = try await conn.newSession()
+                    // Get state to capture the new session file
+                    let state = try await conn.getState()
+                    if let sessionFile = state.sessionFile {
+                        print("[SessionManager] Captured new session file: \(sessionFile)")
+                        updatePiSessionFile(for: session.id, piSessionFile: sessionFile)
+                    }
+                } catch {
+                    print("[SessionManager] Failed to create new session: \(error)")
+                    // Fall back to capturing current state
+                    let state = try await conn.getState()
+                    if let sessionFile = state.sessionFile {
+                        print("[SessionManager] Captured fallback session file: \(sessionFile)")
+                        updatePiSessionFile(for: session.id, piSessionFile: sessionFile)
+                    }
                 }
             }
+
+            // Connection succeeded
+            connectionStates[session.id] = .connected
+            print("[SessionManager] Connection established")
+
         } catch {
-            // Connection failed - engine won't be set up
-            print("Connection failed: \(error.localizedDescription)")
+            // Connection failed
+            let errorMessage = error.localizedDescription
+            connectionStates[session.id] = .failed(errorMessage)
+            print("[SessionManager] Connection failed: \(errorMessage)")
         }
     }
 
-    private func setupEngine(for session: DesktopSession, connection: LocalConnection) {
-        let engine = SessionEngine()
+    private func configureEngine(_ engine: SessionEngine, connection: LocalConnection, sessionId: UUID) {
         engine.configure(callbacks: SessionEngineCallbacks(
             sendPrompt: { [weak connection] text, behavior in
                 guard let connection else { return }
@@ -258,18 +327,27 @@ final class SessionManager {
                 try await connection.abort()
             }
         ))
-        engines[session.id] = engine
 
         // Cancel existing event task
-        eventTasks[session.id]?.cancel()
+        eventTasks[sessionId]?.cancel()
 
         // Start event subscription
         let eventStream = connection.subscribe()
-        eventTasks[session.id] = Task { [weak self, weak engine] in
+        eventTasks[sessionId] = Task { [weak self, weak engine] in
             for await event in eventStream {
                 guard let self, let engine, !Task.isCancelled else { break }
-                await self.handleEvent(event, engine: engine, sessionId: session.id)
+                await self.handleEvent(event, engine: engine, sessionId: sessionId)
             }
+        }
+    }
+
+    private func loadMessageHistory(from connection: LocalConnection, into engine: SessionEngine) async {
+        do {
+            let response = try await connection.getMessages()
+            let items = response.messages.toConversationItems()
+            engine.setMessages(items)
+        } catch {
+            print("[SessionManager] Failed to load message history: \(error)")
         }
     }
 

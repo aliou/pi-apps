@@ -26,6 +26,22 @@ final class LocalConnection: PiConnection, @unchecked Sendable {
     func connect() async throws {
         guard !isConnected else { return }
 
+        // Diagnostic logging for permission issues
+        let fm = FileManager.default
+        print("[LocalConnection] Starting connection")
+        print("[LocalConnection] Working directory: \(workingDirectory)")
+        print("[LocalConnection] Work dir exists: \(fm.fileExists(atPath: workingDirectory))")
+        print("[LocalConnection] Executable path: \(AppPaths.piExecutablePath)")
+        print("[LocalConnection] Executable exists: \(fm.fileExists(atPath: AppPaths.piExecutablePath))")
+        print("[LocalConnection] Executable is executable: \(fm.isExecutableFile(atPath: AppPaths.piExecutablePath))")
+
+        // Ensure working directory exists (create for chat sessions)
+        if !fm.fileExists(atPath: workingDirectory) {
+            print("[LocalConnection] Creating working directory...")
+            try? fm.createDirectory(atPath: workingDirectory, withIntermediateDirectories: true)
+            print("[LocalConnection] Work dir created: \(fm.fileExists(atPath: workingDirectory))")
+        }
+
         // Build environment with PI_CODING_AGENT_DIR
         let env = ["PI_CODING_AGENT_DIR": AppPaths.agentPath]
 
@@ -38,8 +54,14 @@ final class LocalConnection: PiConnection, @unchecked Sendable {
         let newTransport = SubprocessTransport(config: config)
         transport = newTransport
 
-        try await newTransport.connect()
-        isConnected = await newTransport.isConnected
+        do {
+            try await newTransport.connect()
+            isConnected = await newTransport.isConnected
+            print("[LocalConnection] Connection result: isConnected=\(isConnected)")
+        } catch {
+            print("[LocalConnection] Connection error: \(error)")
+            throw error
+        }
 
         if !isConnected {
             transport = nil
@@ -148,6 +170,15 @@ final class LocalConnection: PiConnection, @unchecked Sendable {
         }
 
         let command = SwitchSessionCommand(sessionPath: sessionPath)
+        return try await transport.send(method: command.type, sessionId: nil, params: command)
+    }
+
+    func getMessages() async throws -> GetMessagesResponse {
+        guard isConnected, let transport else {
+            throw LocalConnectionError.notConnected
+        }
+
+        let command = GetMessagesCommand()
         return try await transport.send(method: command.type, sessionId: nil, params: command)
     }
 

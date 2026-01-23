@@ -90,6 +90,24 @@ public actor RPCConnection {
         }
     }
 
+    /// Retry matching a response to a pending request (handles race condition)
+    private func retryResponseMatching(command: String, data: Data, attempts: Int) async {
+        // Give registration a chance to complete
+        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+
+        if let pending = pendingRequests.removeValue(forKey: command) {
+            pending.continuation.resume(returning: data)
+            return
+        }
+
+        // Retry a few times
+        if attempts < 5 {
+            await retryResponseMatching(command: command, data: data, attempts: attempts + 1)
+        } else {
+            print("[RPCConnection] Warning: No pending request found for response command: \(command)")
+        }
+    }
+
     /// Process incoming raw JSON data
     public func processIncoming(_ data: Data) {
         let decoder = JSONDecoder()
@@ -123,9 +141,16 @@ public actor RPCConnection {
 
         if rawMessage.type == "response" {
             // Legacy response handling - use command as ID
-            if let command = rawMessage.command,
-               let pending = pendingRequests.removeValue(forKey: command) {
-                pending.continuation.resume(returning: data)
+            if let command = rawMessage.command {
+                if let pending = pendingRequests.removeValue(forKey: command) {
+                    pending.continuation.resume(returning: data)
+                } else {
+                    // Race condition: response arrived before request was registered
+                    // Queue for retry
+                    Task {
+                        await self.retryResponseMatching(command: command, data: data, attempts: 0)
+                    }
+                }
             }
         } else {
             // Legacy event handling - convert to TransportEvent

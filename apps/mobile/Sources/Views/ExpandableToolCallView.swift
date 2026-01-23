@@ -9,6 +9,7 @@ import SwiftUI
 import PiCore
 import PiUI
 
+// TODO: Harmonize this component with macOS ToolCallItemView (apps/desktop/Sources/Views/SessionDetailView.swift)
 struct ExpandableToolCallView: View {
     let name: String
     let args: String?

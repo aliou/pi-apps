@@ -585,8 +585,7 @@ extension ConversationView {
             startEventSubscription()
 
             let history = try await connection.getMessages()
-            let items = convertMessagesToItems(history.messages)
-            engine.setMessages(items)
+            engine.setMessages(history.messages.toConversationItems())
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -766,104 +765,6 @@ extension ConversationView {
 }
 
 // MARK: - Message Conversion
-
-extension ConversationView {
-    private func convertMessagesToItems(_ messages: [Message]) -> [ConversationItem] {
-        var items: [ConversationItem] = []
-        var toolResults: [String: String] = [:]
-
-        for message in messages where message.role == .tool || message.role == .toolResult {
-            if let toolCallId = message.toolCallId, let content = message.content {
-                let output = extractText(from: content)
-                if !output.isEmpty {
-                    toolResults[toolCallId] = output
-                }
-            }
-        }
-
-        for message in messages {
-            switch message.role {
-            case .user:
-                if let content = message.content {
-                    let text = extractText(from: content)
-                    if !text.isEmpty {
-                        items.append(.userMessage(id: message.id, text: text, queuedBehavior: nil))
-                    }
-                }
-
-            case .assistant:
-                if let content = message.content {
-                    switch content {
-                    case .text(let text):
-                        if !text.isEmpty {
-                            items.append(.assistantText(id: message.id, text: text))
-                        }
-
-                    case .structured(let blocks):
-                        var textParts: [String] = []
-                        var blockIndex = 0
-
-                        for block in blocks {
-                            switch block.type {
-                            case .text:
-                                if let text = block.text, !text.isEmpty {
-                                    textParts.append(text)
-                                }
-
-                            case .toolUse, .toolCall:
-                                if !textParts.isEmpty {
-                                    let combinedText = textParts.joined(separator: "\n")
-                                    let textId = "\(message.id)-text-\(blockIndex)"
-                                    items.append(.assistantText(id: textId, text: combinedText))
-                                    textParts = []
-                                }
-
-                                if let toolCallId = block.toolCallId, let toolName = block.toolName {
-                                    let argsString = block.input?.jsonString
-                                    let output = toolResults[toolCallId]
-                                    items.append(.toolCall(
-                                        id: toolCallId,
-                                        name: toolName,
-                                        args: argsString,
-                                        output: output,
-                                        status: .success
-                                    ))
-                                }
-
-                            case .thinking, .toolResult:
-                                break
-                            }
-                            blockIndex += 1
-                        }
-
-                        if !textParts.isEmpty {
-                            let combinedText = textParts.joined(separator: "\n")
-                            let textId = "\(message.id)-text-final"
-                            items.append(.assistantText(id: textId, text: combinedText))
-                        }
-                    }
-                }
-
-            case .system, .tool, .toolResult:
-                break
-            }
-        }
-
-        return items
-    }
-
-    private func extractText(from content: MessageContent) -> String {
-        switch content {
-        case .text(let text):
-            return text
-        case .structured(let blocks):
-            return blocks
-                .filter { $0.type == .text }
-                .compactMap(\.text)
-                .joined(separator: "\n")
-        }
-    }
-}
 
 // MARK: - Helpers
 
