@@ -24,6 +24,9 @@ final class SessionManager {
     private(set) var sessions: [DesktopSession] = []
     private(set) var activeSessionId: UUID?
 
+    /// Debug store for logging RPC events
+    weak var debugStore: DebugEventStore?
+
     /// Per-session connection state
     private var connectionStates: [UUID: SessionConnectionState] = [:]
 
@@ -276,7 +279,11 @@ final class SessionManager {
             if let piSessionFile = session.piSessionFile {
                 // Switch to existing pi session
                 print("[SessionManager] Switching to existing pi session: \(piSessionFile)")
-                _ = try? await conn.switchSession(sessionPath: piSessionFile)
+                do {
+                    _ = try await conn.switchSession(sessionPath: piSessionFile)
+                } catch {
+                    print("[SessionManager] switchSession failed: \(error)")
+                }
 
                 // Load message history
                 if let engine = engines[session.id] {
@@ -318,11 +325,21 @@ final class SessionManager {
 
     private func configureEngine(_ engine: SessionEngine, connection: LocalConnection, sessionId: UUID) {
         engine.configure(callbacks: SessionEngineCallbacks(
-            sendPrompt: { [weak connection] text, behavior in
+            sendPrompt: { [weak self, weak connection] text, behavior in
+                // Log prompt send to debug store
+                await MainActor.run {
+                    self?.debugStore?.addSent(command: "prompt", details: "text: \(text.prefix(100))")
+                }
+
                 guard let connection else { return }
                 try await connection.prompt(text, streamingBehavior: behavior)
             },
-            abort: { [weak connection] in
+            abort: { [weak self, weak connection] in
+                // Log abort to debug store
+                await MainActor.run {
+                    self?.debugStore?.addSent(command: "abort")
+                }
+
                 guard let connection else { return }
                 try await connection.abort()
             }
@@ -342,16 +359,36 @@ final class SessionManager {
     }
 
     private func loadMessageHistory(from connection: LocalConnection, into engine: SessionEngine) async {
+        // First try to load via RPC
         do {
             let response = try await connection.getMessages()
             let items = response.messages.toConversationItems()
             engine.setMessages(items)
+            debugStore?.addReceived(type: "history", summary: "Loaded \(items.count) items via RPC")
         } catch {
-            print("[SessionManager] Failed to load message history: \(error)")
+            print("[SessionManager] Failed to load message history via RPC: \(error)")
+            // Fallback to file-based loading
+            await loadHistoryFromFile(into: engine, for: activeSession)
+        }
+    }
+
+    private func loadHistoryFromFile(into engine: SessionEngine, for session: DesktopSession?) async {
+        guard let session,
+              let piSessionFile = session.piSessionFile else {
+            return
+        }
+
+        let items = SessionFileParser.parse(fileAt: piSessionFile)
+        if !items.isEmpty {
+            engine.setMessages(items)
+            debugStore?.addReceived(type: "history", summary: "Loaded \(items.count) items from file")
         }
     }
 
     private func handleEvent(_ event: RPCEvent, engine: SessionEngine, sessionId: UUID) async {
+        // Log to debug store
+        debugStore?.addReceived(type: event.typeName, summary: event.summary)
+
         switch event {
         case .agentStart:
             engine.handleAgentStart()
@@ -453,6 +490,121 @@ final class SessionManager {
 
     private func sortSessions() {
         sessions.sort { $0.updatedAt > $1.updatedAt }
+    }
+}
+
+// MARK: - RPCEvent Helpers
+
+extension RPCEvent {
+    var typeName: String {
+        switch self {
+        case .agentStart:
+            return "agent_start"
+        case .agentEnd:
+            return "agent_end"
+        case .turnStart:
+            return "turn_start"
+        case .turnEnd:
+            return "turn_end"
+        case .messageStart:
+            return "message_start"
+        case .messageEnd:
+            return "message_end"
+        case .messageUpdate:
+            return "message_update"
+        case .toolExecutionStart:
+            return "tool_execution_start"
+        case .toolExecutionUpdate:
+            return "tool_execution_update"
+        case .toolExecutionEnd:
+            return "tool_execution_end"
+        case .autoCompactionStart:
+            return "auto_compaction_start"
+        case .autoCompactionEnd:
+            return "auto_compaction_end"
+        case .autoRetryStart:
+            return "auto_retry_start"
+        case .autoRetryEnd:
+            return "auto_retry_end"
+        case .hookError:
+            return "hook_error"
+        case .stateUpdate:
+            return "state_update"
+        case .modelChanged:
+            return "model_changed"
+        case .nativeToolRequest:
+            return "native_tool_request"
+        case .nativeToolCancel:
+            return "native_tool_cancel"
+        case .unknown(let type, _):
+            return type
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .agentStart:
+            return ""
+        case .agentEnd(let success, let error):
+            return success ? "success" : (error?.message ?? "failed")
+        case .turnStart:
+            return ""
+        case .turnEnd:
+            return ""
+        case .messageStart:
+            return ""
+        case .messageEnd:
+            return ""
+        case .messageUpdate(_, let event):
+            switch event {
+            case .textDelta(let delta):
+                return "text_delta: \(String(delta.prefix(20)))"
+            case .thinkingDelta(let delta):
+                return "thinking_delta: \(String(delta.prefix(20)))"
+            case .toolUseStart(_, let name):
+                return "tool_use_start: \(name)"
+            case .toolUseInputDelta(let id, _):
+                return "tool_use_input_delta"
+            case .toolUseEnd(let id):
+                return "tool_use_end"
+            case .messageStart(let id):
+                return "message_start: \(id)"
+            case .messageEnd(let reason):
+                return "message_end: \(reason ?? "none")"
+            case .contentBlockStart(let index, let type):
+                return "content_block_start: \(index) \(type)"
+            case .contentBlockEnd(let index):
+                return "content_block_end: \(index)"
+            case .unknown(let type):
+                return type
+            }
+        case .toolExecutionStart(_, let name, _):
+            return "\(name)"
+        case .toolExecutionUpdate(let id, let output):
+            return "\(id): \(String(output.prefix(20)))"
+        case .toolExecutionEnd(let id, _, let status):
+            return "\(id): \(status.rawValue)"
+        case .autoCompactionStart:
+            return ""
+        case .autoCompactionEnd:
+            return ""
+        case .autoRetryStart(_, let attempt, _, _):
+            return "attempt \(attempt)"
+        case .autoRetryEnd(let success, _, _):
+            return success ? "success" : "failed"
+        case .hookError(_, let event, let error):
+            return "\(event ?? "?"): \(error)"
+        case .stateUpdate:
+            return ""
+        case .modelChanged(let model):
+            return model.name
+        case .nativeToolRequest:
+            return "tool request"
+        case .nativeToolCancel(let id):
+            return id
+        case .unknown(let type, _):
+            return type
+        }
     }
 }
 

@@ -40,6 +40,7 @@ public actor SubprocessTransport: RPCTransport {
 
     private var readBuffer = Data()
     private var _isConnected = false
+    private var readerThread: Thread?
 
     // MARK: - RPCTransport Protocol
 
@@ -113,8 +114,9 @@ public actor SubprocessTransport: RPCTransport {
 
         self.process = process
 
-        // Start reading stdout
+        // Start reading stdout and stderr
         startReadingStdout()
+        startReadingStderr()
 
         // Launch process
         do {
@@ -236,19 +238,50 @@ public actor SubprocessTransport: RPCTransport {
     // MARK: - Reading
 
     private func startReadingStdout() {
-        guard let stdoutPipe else { return }
+        guard let stdoutPipe, let process else { return }
 
         let handle = stdoutPipe.fileHandleForReading
 
-        handle.readabilityHandler = { [weak self] handle in
+        // Use a dedicated thread for synchronous reading
+        // This properly drains the pipe buffer for large responses
+        // (readabilityHandler fails to drain pipes > 64KB)
+        let thread = Thread { [weak self] in
+            while true {
+                let data = handle.availableData
+
+                if data.isEmpty {
+                    // Check if process is still running
+                    if !process.isRunning {
+                        break
+                    }
+                    // Small sleep to avoid busy-waiting
+                    Thread.sleep(forTimeInterval: 0.001)
+                    continue
+                }
+
+                Task { [weak self] in
+                    await self?.processStdoutData(data)
+                }
+            }
+        }
+        thread.name = "SubprocessTransport-stdout-reader"
+        thread.start()
+        readerThread = thread
+    }
+
+    private func startReadingStderr() {
+        guard let stderrPipe else { return }
+
+        let handle = stderrPipe.fileHandleForReading
+
+        handle.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty else {
-                handle.readabilityHandler = nil
                 return
             }
 
-            Task { [weak self] in
-                await self?.processStdoutData(data)
+            if let str = String(data: data, encoding: .utf8) {
+                print("[SubprocessTransport] stderr: \(str)")
             }
         }
     }
@@ -312,8 +345,10 @@ public actor SubprocessTransport: RPCTransport {
 
     private func cleanup() {
         stdinPipe?.fileHandleForWriting.closeFile()
-        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
+
+        // Reader thread will exit when process terminates (checked in loop)
+        readerThread = nil
 
         stdinPipe = nil
         stdoutPipe = nil
