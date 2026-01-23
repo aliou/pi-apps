@@ -30,6 +30,11 @@ struct MainView: View {
 
     // Sheets
     @State private var showFolderPicker = false
+    @State private var showAuthSheet = false
+
+    // Debug panel
+    @State private var showDebugPanel = false
+    @StateObject private var debugStore = DebugEventStore()
 
     // Initial prompt for new sessions
     @State private var pendingPrompt: String?
@@ -51,15 +56,26 @@ struct MainView: View {
         .sheet(isPresented: $showUpdateSheet) {
             UpdateSheet()
         }
-        .sheet(isPresented: .constant(!authReady && binaryReady)) {
+        .sheet(isPresented: $showAuthSheet) {
             AuthSetupView {
                 checkAuth()
+                showAuthSheet = false
             }
             .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showFolderPicker) {
             FolderPickerView { folderPath in
                 createCodeSession(folderPath: folderPath)
+            }
+        }
+        .onChange(of: authReady) { _, newValue in
+            // Show sheet when auth is not ready (and binary is ready)
+            showAuthSheet = !newValue && binaryReady
+        }
+        .onChange(of: binaryReady) { _, newValue in
+            // When binary becomes ready, check if we need to show auth sheet
+            if newValue && !authReady {
+                showAuthSheet = true
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .newChatSession)) { _ in
@@ -70,37 +86,64 @@ struct MainView: View {
             sidebarMode = .code
             showFolderPicker = true
         }
+        .onAppear {
+            // Pass debug store to session manager
+            sessionManager.debugStore = debugStore
+        }
     }
 
     @ViewBuilder
     private var mainContent: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SessionSidebarView(
-                sessionManager: sessionManager,
-                sidebarMode: $sidebarMode,
-                onNewChat: { createChatSession() },
-                onNewCodeSession: { showFolderPicker = true },
-                onDeleteSession: { id, deleteWorktree in
-                    Task { await sessionManager.deleteSession(id, deleteWorktree: deleteWorktree) }
-                }
-            )
-        } detail: {
-            if let session = sessionManager.activeSession {
-                SessionDetailView(
-                    session: session,
-                    engine: sessionManager.activeEngine,
-                    connectionState: sessionManager.activeConnectionState,
-                    sessionManager: sessionManager
-                )
-            } else {
-                WelcomeView(
-                    mode: sidebarMode,
+        HStack(spacing: 0) {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SessionSidebarView(
+                    sessionManager: sessionManager,
+                    sidebarMode: $sidebarMode,
                     onNewChat: { createChatSession() },
-                    onNewCodeSession: { showFolderPicker = true }
+                    onNewCodeSession: { showFolderPicker = true },
+                    onDeleteSession: { id, deleteWorktree in
+                        Task { await sessionManager.deleteSession(id, deleteWorktree: deleteWorktree) }
+                    }
                 )
+            } detail: {
+                if let session = sessionManager.activeSession {
+                    SessionDetailView(
+                        session: session,
+                        engine: sessionManager.activeEngine,
+                        connectionState: sessionManager.activeConnectionState,
+                        sessionManager: sessionManager
+                    )
+                } else {
+                    WelcomeView(
+                        mode: sidebarMode,
+                        onNewChat: { createChatSession() },
+                        onNewCodeSession: { showFolderPicker = true }
+                    )
+                }
+            }
+            .navigationSplitViewStyle(.balanced)
+
+            // Debug panel (outside NavigationSplitView)
+            if showDebugPanel {
+                Divider()
+                DebugPanelView(store: debugStore)
+                    .frame(width: 320)
             }
         }
-        .navigationSplitViewStyle(.balanced)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    withAnimation { showDebugPanel.toggle() }
+                } label: {
+                    Image(systemName: "ladybug")
+                }
+                .help("Toggle Debug Panel")
+            }
+        }
+        .focusedSceneValue(\.debugPanelVisible, $showDebugPanel)
+        .onReceive(NotificationCenter.default.publisher(for: .toggleDebugPanel)) { _ in
+            withAnimation { showDebugPanel.toggle() }
+        }
     }
 
     // MARK: - Actions

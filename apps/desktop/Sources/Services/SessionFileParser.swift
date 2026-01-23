@@ -9,13 +9,13 @@ import Foundation
 import PiCore
 
 struct SessionFileParser {
-    static func parse(fileAt path: String) -> [ConversationItem] {
+    static func parse(fileAt path: String) -> [PiCore.ConversationItem] {
         guard let data = FileManager.default.contents(atPath: path),
               let content = String(data: data, encoding: .utf8) else {
             return []
         }
 
-        var items: [ConversationItem] = []
+        var items: [PiCore.ConversationItem] = []
         var toolCallIndex: [String: Int] = [:]  // toolCallId -> index in items
 
         let lines = content.components(separatedBy: .newlines)
@@ -38,7 +38,7 @@ struct SessionFileParser {
 
     private static func parseMessage(
         _ message: [String: Any],
-        into items: inout [ConversationItem],
+        into items: inout [PiCore.ConversationItem],
         toolCallIndex: inout [String: Int]
     ) {
         guard let role = message["role"] as? String else { return }
@@ -46,7 +46,7 @@ struct SessionFileParser {
         switch role {
         case "user":
             if let text = extractUserText(from: message), !text.isEmpty {
-                items.append(.userMessage(id: UUID().uuidString, text: text))
+                items.append(.userMessage(id: UUID().uuidString, text: text, queuedBehavior: nil))
             }
 
         case "assistant":
@@ -68,8 +68,7 @@ struct SessionFileParser {
                                 name: toolName,
                                 args: args,
                                 output: nil,
-                                status: .running,
-                                isExpanded: false
+                                status: .running
                             ))
                             toolCallIndex[toolId] = items.count - 1
                         }
@@ -82,7 +81,7 @@ struct SessionFileParser {
         case "toolResult":
             if let toolCallId = message["toolCallId"] as? String,
                let index = toolCallIndex[toolCallId],
-               case .toolCall(let id, let name, let args, _, _, let isExpanded) = items[index] {
+               case .toolCall(let id, let name, let args, _, _) = items[index] {
                 let output = extractToolResultContent(message["content"])
                 let isError = message["isError"] as? Bool ?? false
                 items[index] = .toolCall(
@@ -90,8 +89,7 @@ struct SessionFileParser {
                     name: name,
                     args: args,
                     output: output,
-                    status: isError ? .error : .success,
-                    isExpanded: isExpanded
+                    status: isError ? .error : .success
                 )
             }
 

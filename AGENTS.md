@@ -62,3 +62,24 @@ The mobile app exposes native iOS capabilities as tools the LLM can invoke. Tool
 **Swift:** Swift 6, SwiftLint enforced. Use `Theme.*` colors from PiUI. Types should be `Sendable`. Use `Self` in static refs.
 
 **TypeScript:** Biome for lint/format.
+
+## Desktop App Paths
+
+**IMPORTANT:** The desktop app does NOT use `~/.pi/agent/`. It uses Application Support:
+
+```
+~/Library/Application Support/me.aliou.pi-desktop/
+├── agent/          # PI_CODING_AGENT_DIR (auth.json, models.json, sessions/)
+├── bin/            # pi binary versions
+├── worktrees/      # git worktrees for code sessions
+├── sessions/       # desktop session metadata
+└── logs/           # app logs
+```
+
+See `apps/desktop/Sources/Services/AppPaths.swift` for all paths.
+
+**To test auth flow:** Remove files from Application Support, not ~/.pi:
+```bash
+rm -f ~/Library/Application\ Support/me.aliou.pi-desktop/agent/auth.json
+rm -f ~/Library/Application\ Support/me.aliou.pi-desktop/agent/models.json
+```

@@ -25,6 +25,13 @@ struct piApp: App {
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
+
+            CommandMenu("Debug") {
+                Button("Toggle Debug Panel") {
+                    NotificationCenter.default.post(name: .toggleDebugPanel, object: nil)
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+            }
         }
 
         Settings {
@@ -38,4 +45,18 @@ struct piApp: App {
 extension Notification.Name {
     static let newChatSession = Notification.Name("newChatSession")
     static let newCodeSession = Notification.Name("newCodeSession")
+    static let toggleDebugPanel = Notification.Name("toggleDebugPanel")
+}
+
+// MARK: - Focused Scene Values
+
+struct DebugPanelVisibleKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+extension FocusedValues {
+    var debugPanelVisible: Binding<Bool>? {
+        get { self[DebugPanelVisibleKey.self] }
+        set { self[DebugPanelVisibleKey.self] = newValue }
+    }
 }
