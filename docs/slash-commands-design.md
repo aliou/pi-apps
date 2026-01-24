@@ -6,6 +6,69 @@ Cross-platform slash command system for macOS and iOS Pi apps.
 
 When the user types `/` at the start of their message, a fuzzy-filtered command list appears above the input. Arrow keys navigate, Tab/Enter selects (without submitting), Escape dismisses.
 
+## Pi RPC Command Discovery
+
+### Current State
+
+**Pi's RPC protocol does not currently expose a `get_commands` endpoint.** The available RPC commands are defined in `rpc-types.ts` but there's no way to discover registered slash commands at runtime.
+
+Pi's slash command system (in interactive/TUI mode) includes:
+- `/model` - Switch models (with autocomplete)
+- `/settings` - Open settings menu  
+- `/session` - Show session info
+- `/tree` - Navigate session tree
+- `/fork` - Create new conversation fork
+- `/resume` - Switch sessions
+- `/export` - Export session to HTML
+- `/compact` - Manually compact conversation
+- `/reload` - Reload extensions, skills, prompts, themes
+
+Plus extension-registered commands via `pi.registerCommand()`.
+
+### Proposed: Add `get_commands` RPC
+
+We should request adding a new RPC command to Pi:
+
+```typescript
+// Request
+{ "type": "get_commands" }
+
+// Response
+{
+  "type": "response",
+  "command": "get_commands", 
+  "success": true,
+  "data": {
+    "commands": [
+      {
+        "name": "model",
+        "description": "Switch to a different AI model",
+        "hasAutocomplete": true,
+        "category": "model"
+      },
+      {
+        "name": "compact",
+        "description": "Manually compact conversation history",
+        "hasAutocomplete": false,
+        "category": "session"
+      },
+      // ... extension-registered commands too
+    ]
+  }
+}
+```
+
+**Until this is available**, we have two options:
+
+1. **Hardcode known commands** - Mirror Pi's built-in commands in the client
+2. **Skip slash commands** - Wait for RPC support before implementing
+
+### Recommendation
+
+Start with **hardcoded commands** that map to existing RPC functionality, then migrate to dynamic discovery when `get_commands` is added.
+
+---
+
 ## Architecture
 
 ```
@@ -15,6 +78,10 @@ When the user types `/` at the start of their message, a fuzzy-filtered command 
 │  │  SlashCommand   │  │  SlashCommandMatcher            │   │
 │  │  (model)        │  │  (fuzzy matching, ranking)      │   │
 │  └─────────────────┘  └─────────────────────────────────┘   │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  GetCommandsCommand / GetCommandsResponse (future)    │   │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -24,11 +91,6 @@ When the user types `/` at the start of their message, a fuzzy-filtered command 
 │  │ SlashCommand    │  │  SlashCommandListView           │   │
 │  │ State           │  │  (renders filtered commands)    │   │
 │  └─────────────────┘  └─────────────────────────────────┘   │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  SlashCommandPresenter                                │   │
-│  │  (wraps input, manages overlay, handles keys)         │   │
-│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
@@ -36,8 +98,6 @@ When the user types `/` at the start of their message, a fuzzy-filtered command 
 ┌─────────────────────────┐    ┌─────────────────────────┐
 │    Desktop App          │    │    Mobile App           │
 │    ConversationView     │    │    ConversationView     │
-│    (wraps input with    │    │    (wraps input with    │
-│     SlashCommandPresenter)   │     SlashCommandPresenter)
 └─────────────────────────┘    └─────────────────────────┘
 ```
 
@@ -48,34 +108,115 @@ When the user types `/` at the start of their message, a fuzzy-filtered command 
 ```swift
 // packages/pi-core/Sources/PiCore/Models/SlashCommand.swift
 
-/// A slash command that can be invoked from the input
-public struct SlashCommand: Identifiable, Sendable, Hashable {
-    public let id: String
-    public let name: String           // e.g., "clear"
-    public let description: String    // e.g., "Clear conversation history"
-    public let icon: String?          // SF Symbol name
-    public let modes: Set<SessionMode> // which modes support this command
-    public let insertText: String?    // text to insert (nil = action only)
+/// A slash command from Pi
+public struct SlashCommand: Identifiable, Codable, Sendable, Hashable {
+    public let name: String
+    public let description: String?
+    public let hasAutocomplete: Bool
+    public let category: String?
+    
+    public var id: String { name }
     
     public init(
-        id: String? = nil,
         name: String,
-        description: String,
-        icon: String? = nil,
-        modes: Set<SessionMode> = [.chat, .code],
-        insertText: String? = nil
+        description: String? = nil,
+        hasAutocomplete: Bool = false,
+        category: String? = nil
     ) {
-        self.id = id ?? name
         self.name = name
         self.description = description
-        self.icon = icon
-        self.modes = modes
-        self.insertText = insertText
+        self.hasAutocomplete = hasAutocomplete
+        self.category = category
     }
+}
+
+/// Response for get_commands (future RPC)
+public struct GetCommandsResponse: Decodable, Sendable {
+    public let commands: [SlashCommand]
 }
 ```
 
-### 2. SlashCommandMatcher (PiCore)
+### 2. Hardcoded Commands (Temporary)
+
+Until Pi exposes `get_commands`, we mirror known commands:
+
+```swift
+// packages/pi-core/Sources/PiCore/Models/SlashCommand.swift
+
+extension SlashCommand {
+    /// Known Pi slash commands (hardcoded until get_commands RPC exists)
+    /// These map to existing RPC commands or Pi TUI functionality
+    public static let knownCommands: [SlashCommand] = [
+        // Model commands (maps to set_model, cycle_model, get_available_models)
+        SlashCommand(
+            name: "model",
+            description: "Switch to a different AI model",
+            hasAutocomplete: true,
+            category: "model"
+        ),
+        
+        // Session commands (maps to new_session, switch_session, fork)
+        SlashCommand(
+            name: "new",
+            description: "Start a new session",
+            category: "session"
+        ),
+        SlashCommand(
+            name: "fork",
+            description: "Fork conversation from a previous message",
+            hasAutocomplete: true,
+            category: "session"
+        ),
+        SlashCommand(
+            name: "resume",
+            description: "Switch to a different session",
+            hasAutocomplete: true,
+            category: "session"
+        ),
+        SlashCommand(
+            name: "export",
+            description: "Export session to HTML",
+            category: "session"
+        ),
+        
+        // Context management (maps to compact, get_session_stats)
+        SlashCommand(
+            name: "compact",
+            description: "Compact conversation history",
+            category: "context"
+        ),
+        SlashCommand(
+            name: "stats",
+            description: "Show token usage and costs",
+            category: "context"
+        ),
+        
+        // Thinking level (maps to set_thinking_level, cycle_thinking_level)
+        SlashCommand(
+            name: "thinking",
+            description: "Set reasoning/thinking level",
+            hasAutocomplete: true,
+            category: "model"
+        ),
+        
+        // Abort (maps to abort)
+        SlashCommand(
+            name: "abort",
+            description: "Abort current operation",
+            category: "control"
+        ),
+        
+        // Help
+        SlashCommand(
+            name: "help",
+            description: "Show available commands",
+            category: "help"
+        ),
+    ]
+}
+```
+
+### 3. SlashCommandMatcher (PiCore)
 
 ```swift
 // packages/pi-core/Sources/PiCore/Models/SlashCommandMatcher.swift
@@ -84,28 +225,23 @@ public enum SlashCommandMatcher {
     /// Returns commands matching the query, ranked by relevance
     public static func match(
         query: String,
-        in commands: [SlashCommand],
-        mode: SessionMode
+        in commands: [SlashCommand]
     ) -> [SlashCommand] {
-        let modeFiltered = commands.filter { $0.modes.contains(mode) }
-        
         guard !query.isEmpty else {
-            return modeFiltered
+            return commands
         }
         
         let lowercaseQuery = query.lowercased()
-        
-        // Score each command
         var scored: [(command: SlashCommand, score: Int)] = []
         
-        for command in modeFiltered {
+        for command in commands {
             let name = command.name.lowercased()
             
             // Exact prefix match = highest score
             if name.hasPrefix(lowercaseQuery) {
                 scored.append((command, 100 - name.count))
             }
-            // Contains match = lower score
+            // Contains match
             else if name.contains(lowercaseQuery) {
                 scored.append((command, 50 - name.count))
             }
@@ -133,107 +269,6 @@ public enum SlashCommandMatcher {
 }
 ```
 
-### 3. Default Commands
-
-```swift
-// packages/pi-core/Sources/PiCore/Models/SlashCommands.swift
-
-extension SlashCommand {
-    /// Built-in slash commands
-    public static let builtIn: [SlashCommand] = [
-        // Universal commands
-        SlashCommand(
-            name: "clear",
-            description: "Clear conversation history",
-            icon: "trash",
-            modes: [.chat, .code]
-        ),
-        SlashCommand(
-            name: "help",
-            description: "Show available commands",
-            icon: "questionmark.circle",
-            modes: [.chat, .code]
-        ),
-        SlashCommand(
-            name: "model",
-            description: "Switch AI model",
-            icon: "cpu",
-            modes: [.chat, .code]
-        ),
-        
-        // Chat-only commands
-        SlashCommand(
-            name: "new",
-            description: "Start a new conversation",
-            icon: "plus.bubble",
-            modes: [.chat]
-        ),
-        SlashCommand(
-            name: "system",
-            description: "Set system prompt",
-            icon: "gearshape",
-            modes: [.chat],
-            insertText: "/system "
-        ),
-        
-        // Code-only commands
-        SlashCommand(
-            name: "repo",
-            description: "Switch repository",
-            icon: "folder",
-            modes: [.code]
-        ),
-        SlashCommand(
-            name: "branch",
-            description: "Switch branch",
-            icon: "arrow.triangle.branch",
-            modes: [.code]
-        ),
-        SlashCommand(
-            name: "diff",
-            description: "Show uncommitted changes",
-            icon: "plus.forwardslash.minus",
-            modes: [.code]
-        ),
-        SlashCommand(
-            name: "commit",
-            description: "Commit current changes",
-            icon: "checkmark.circle",
-            modes: [.code]
-        ),
-        SlashCommand(
-            name: "compact",
-            description: "Compact conversation history",
-            icon: "arrow.down.right.and.arrow.up.left",
-            modes: [.code]
-        ),
-        
-        // Prompt templates (insert text)
-        SlashCommand(
-            name: "review",
-            description: "Request code review",
-            icon: "eye",
-            modes: [.code],
-            insertText: "Review the recent changes and suggest improvements"
-        ),
-        SlashCommand(
-            name: "test",
-            description: "Write tests for recent changes",
-            icon: "checkmark.diamond",
-            modes: [.code],
-            insertText: "Write tests for the code I just changed"
-        ),
-        SlashCommand(
-            name: "explain",
-            description: "Explain how code works",
-            icon: "text.book.closed",
-            modes: [.chat, .code],
-            insertText: "Explain how "
-        ),
-    ]
-}
-```
-
 ### 4. SlashCommandState (PiUI)
 
 ```swift
@@ -249,20 +284,26 @@ public final class SlashCommandState {
     public var highlightedIndex = 0
     public var filteredCommands: [SlashCommand] = []
     
-    private let commands: [SlashCommand]
-    private let mode: SessionMode
+    private var commands: [SlashCommand]
     
-    public init(commands: [SlashCommand] = SlashCommand.builtIn, mode: SessionMode) {
+    public init(commands: [SlashCommand] = SlashCommand.knownCommands) {
         self.commands = commands
-        self.mode = mode
+    }
+    
+    /// Update available commands (e.g., from get_commands RPC)
+    public func setCommands(_ commands: [SlashCommand]) {
+        self.commands = commands
+        if isShowing {
+            filteredCommands = SlashCommandMatcher.match(query: query, in: commands)
+            highlightedIndex = min(highlightedIndex, max(0, filteredCommands.count - 1))
+        }
     }
     
     /// Call when text changes to update slash command state
     public func update(text: String) {
-        // Only trigger when text starts with "/"
         if text.hasPrefix("/") {
             query = String(text.dropFirst())
-            filteredCommands = SlashCommandMatcher.match(query: query, in: commands, mode: mode)
+            filteredCommands = SlashCommandMatcher.match(query: query, in: commands)
             isShowing = !filteredCommands.isEmpty
             highlightedIndex = 0
         } else {
@@ -290,15 +331,6 @@ public final class SlashCommandState {
         query = ""
         highlightedIndex = 0
         filteredCommands = []
-    }
-    
-    public func updateMode(_ mode: SessionMode) {
-        // Re-filter when mode changes
-        if isShowing {
-            filteredCommands = SlashCommandMatcher.match(query: query, in: commands, mode: mode)
-            highlightedIndex = min(highlightedIndex, max(0, filteredCommands.count - 1))
-            isShowing = !filteredCommands.isEmpty
-        }
     }
 }
 ```
@@ -339,11 +371,6 @@ public struct SlashCommandListView: View {
                         .onTapGesture {
                             onSelect(command)
                         }
-                        #if os(macOS)
-                        .onHover { hovering in
-                            // Optional: highlight on hover for macOS
-                        }
-                        #endif
                     }
                 }
                 .padding(8)
@@ -370,24 +397,35 @@ struct SlashCommandRow: View {
     let command: SlashCommand
     let isHighlighted: Bool
     
+    private var icon: String {
+        switch command.category {
+        case "model": return "cpu"
+        case "session": return "bubble.left.and.bubble.right"
+        case "context": return "arrow.triangle.2.circlepath"
+        case "control": return "stop.circle"
+        case "help": return "questionmark.circle"
+        default: return "command"
+        }
+    }
+    
     var body: some View {
         HStack(spacing: 12) {
-            if let icon = command.icon {
-                Image(systemName: icon)
-                    .font(.system(size: 14))
-                    .foregroundStyle(isHighlighted ? Theme.accent : Theme.textSecondary)
-                    .frame(width: 20)
-            }
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(isHighlighted ? Theme.accent : Theme.textSecondary)
+                .frame(width: 20)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text("/\(command.name)")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(isHighlighted ? Theme.text : Theme.text)
+                    .foregroundStyle(Theme.text)
                 
-                Text(command.description)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
+                if let description = command.description {
+                    Text(description)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                }
             }
             
             Spacer()
@@ -407,210 +445,108 @@ struct SlashCommandRow: View {
 }
 ```
 
-### 6. Input Integration
+### 6. Command Execution
 
-#### Desktop ConversationView
+When a command is selected, map it to the appropriate RPC call:
 
 ```swift
-// apps/desktop/Sources/Views/ConversationView.swift (inputArea modification)
+// In ConversationView or a dedicated handler
 
-@State private var slashState = SlashCommandState(mode: .chat)
-
-private var inputArea: some View {
-    ZStack(alignment: .bottom) {
-        // Slash command overlay (appears above input)
-        if slashState.isShowing {
-            SlashCommandListView(
-                commands: slashState.filteredCommands,
-                highlightedIndex: slashState.highlightedIndex,
-                onSelect: { command in
-                    handleSlashCommand(command)
-                }
-            )
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .offset(y: -60) // Position above input bar
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-        
-        // Existing input bar
-        HStack(spacing: 12) {
-            TextField("Message...", text: $inputText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .focused($isInputFocused)
-                .lineLimit(1...5)
-                .onChange(of: inputText) { _, newValue in
-                    slashState.update(text: newValue)
-                }
-                .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape]) { press in
-                    handleKeyPress(press)
-                }
-                .onSubmit {
-                    if !slashState.isShowing {
-                        sendMessage()
-                    }
-                }
-            
-            // Send/abort button...
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Theme.inputBg)
-    }
-    .animation(.easeOut(duration: 0.15), value: slashState.isShowing)
-}
-
-private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
-    guard slashState.isShowing else { return .ignored }
-    
-    switch press.key {
-    case .upArrow:
-        slashState.moveUp()
-        return .handled
-        
-    case .downArrow:
-        slashState.moveDown()
-        return .handled
-        
-    case .return, .tab:
-        if let command = slashState.selectedCommand() {
-            handleSlashCommand(command)
-            return .handled
-        }
-        return .ignored
-        
-    case .escape:
-        slashState.dismiss()
-        inputText = ""
-        return .handled
-        
-    default:
-        return .ignored
-    }
-}
-
-private func handleSlashCommand(_ command: SlashCommand) {
-    slashState.dismiss()
-    
-    if let insertText = command.insertText {
-        // Insert text template
-        inputText = insertText
-    } else {
-        // Execute action
-        inputText = ""
-        executeCommand(command)
-    }
-}
-
-private func executeCommand(_ command: SlashCommand) {
+private func executeSlashCommand(_ command: SlashCommand) async {
     switch command.name {
-    case "clear":
-        // Clear conversation
-        break
     case "model":
-        // Show model selector
-        break
-    case "help":
-        // Show help
-        break
-    // ... handle other commands
-    default:
-        break
-    }
-}
-```
-
-#### Mobile ConversationView
-
-Same pattern, but with slight differences for iOS touch:
-
-```swift
-// apps/mobile/Sources/Views/ConversationView.swift (inputBar modification)
-
-@State private var slashState = SlashCommandState(mode: .chat)
-
-private var inputBar: some View {
-    ZStack(alignment: .bottom) {
-        // Slash command overlay
-        if slashState.isShowing {
-            SlashCommandListView(
-                commands: slashState.filteredCommands,
-                highlightedIndex: slashState.highlightedIndex,
-                onSelect: { command in
-                    handleSlashCommand(command)
-                }
-            )
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal)
-            .offset(y: -70) // Position above input
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+        // Show model selector sheet
+        showModelSelector = true
+        
+    case "new":
+        // Call new_session RPC
+        await startNewSession()
+        
+    case "compact":
+        // Call compact RPC
+        try? await connection.compact()
+        
+    case "stats":
+        // Call get_session_stats RPC
+        if let stats = try? await connection.getSessionStats() {
+            showStats(stats)
         }
         
-        HStack(alignment: .bottom, spacing: 12) {
-            // Plus button...
-            
-            TextField(
-                currentMode == .chat ? "Ask anything..." : "Code anything...",
-                text: $inputText,
-                axis: .vertical
-            )
-            .textFieldStyle(.plain)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 24))
-            .focused($isInputFocused)
-            .onChange(of: inputText) { _, newValue in
-                withAnimation(.easeOut(duration: 0.15)) {
-                    slashState.update(text: newValue)
-                }
-            }
-            // iOS hardware keyboard support
-            .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab, .escape]) { press in
-                handleKeyPress(press)
-            }
-            .onSubmit {
-                if slashState.isShowing {
-                    if let command = slashState.selectedCommand() {
-                        handleSlashCommand(command)
-                    }
-                } else {
-                    let text = trimmedInputText
-                    guard !text.isEmpty else { return }
-                    inputText = ""
-                    isInputFocused = false
-                    autoScrollEnabled = true
-                    Task { await sendMessage(text) }
-                }
-            }
-            .submitLabel(.send)
-            
-            // Send button...
+    case "abort":
+        // Call abort RPC
+        try? await connection.abort()
+        
+    case "fork":
+        // Show fork message selector
+        showForkSelector = true
+        
+    case "resume":
+        // Show session history
+        showSessionHistory = true
+        
+    case "export":
+        // Call export_html RPC
+        if let html = try? await connection.exportHTML() {
+            shareHTML(html)
         }
+        
+    case "thinking":
+        // Show thinking level selector or cycle
+        try? await connection.cycleThinkingLevel()
+        
+    case "help":
+        // Show help sheet with all commands
+        showHelp = true
+        
+    default:
+        // Unknown command - could be extension command
+        // For now, insert as text: "/command "
+        inputText = "/\(command.name) "
     }
-    .animation(.easeOut(duration: 0.15), value: slashState.isShowing)
 }
 ```
+
+---
 
 ## Interaction Summary
 
 | Platform | Trigger | Navigate | Select | Dismiss |
 |----------|---------|----------|--------|---------|
 | macOS | Type `/` | ↑/↓ arrows | Tab or Enter | Escape or delete `/` |
-| iOS | Type `/` | ↑/↓ (hw keyboard) or tap | Tap or Enter (hw keyboard) | Escape or delete `/` |
+| iOS | Type `/` | ↑/↓ (hw keyboard) or tap | Tap or Enter | Escape or delete `/` |
 
 ## Key Behaviors
 
 1. **Trigger**: Only when text starts with `/`
 2. **Filter**: Real-time fuzzy matching as user types after `/`
-3. **Selection**: Tab/Enter inserts command (if `insertText`) or executes action
+3. **Selection**: Tab/Enter executes command action
 4. **No Submit**: Selecting a command does NOT submit the message
-5. **Mode-aware**: Commands filtered by current session mode (chat/code)
+5. **Commands from Pi**: Eventually fetched via `get_commands` RPC
 
-## Future Enhancements
+---
 
-- Cursor-aware slash commands (trigger `/` anywhere, not just start)
-- Command arguments (e.g., `/model sonnet`)
-- Recently used commands section
-- Custom user-defined commands
-- Keyboard shortcut hints in list
+## Migration Path
+
+### Phase 1: Hardcoded Commands (Now)
+- Use `SlashCommand.knownCommands` 
+- Map to existing RPC calls
+- Works without Pi changes
+
+### Phase 2: Dynamic Discovery (After Pi Update)
+- Add `GetCommandsCommand` / `GetCommandsResponse` to PiCore
+- Fetch commands on session attach
+- Support extension-registered commands
+- Handle commands with autocomplete (secondary RPC call)
+
+### Phase 3: Full Autocomplete
+- For commands with `hasAutocomplete: true`, fetch suggestions
+- E.g., `/model` shows available models from `get_available_models`
+- E.g., `/fork` shows fork points from `get_fork_messages`
+
+---
+
+## Open Questions
+
+1. **Should we request `get_commands` be added to Pi RPC?** - Yes, file an issue
+2. **How to handle extension commands?** - Wait for `get_commands` or allow custom registration
+3. **Autocomplete for command arguments?** - Phase 3, needs additional RPC support
