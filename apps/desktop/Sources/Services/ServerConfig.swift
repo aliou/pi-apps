@@ -17,6 +17,7 @@ final class ServerConfig {
     private let serverURLKey = "serverURL"
     private let selectedModelProviderKey = "selectedModelProvider"
     private let selectedModelIdKey = "selectedModelId"
+    private let recentRepoIdsKey = "recentRepoIds"
 
     var serverURL: URL? {
         guard let string = defaults.string(forKey: serverURLKey) else { return nil }
@@ -35,6 +36,10 @@ final class ServerConfig {
         defaults.string(forKey: selectedModelIdKey)
     }
 
+    var recentRepoIds: [String] {
+        defaults.stringArray(forKey: recentRepoIdsKey) ?? []
+    }
+
     func setServerURL(_ url: URL) {
         defaults.set(url.absoluteString, forKey: serverURLKey)
     }
@@ -46,6 +51,16 @@ final class ServerConfig {
     func setSelectedModel(provider: String, modelId: String) {
         defaults.set(provider, forKey: selectedModelProviderKey)
         defaults.set(modelId, forKey: selectedModelIdKey)
+    }
+
+    func addRecentRepo(_ repoId: String) {
+        var ids = recentRepoIds
+        ids.removeAll { $0 == repoId }
+        ids.insert(repoId, at: 0)
+        if ids.count > 10 {
+            ids = Array(ids.prefix(10))
+        }
+        defaults.set(ids, forKey: recentRepoIdsKey)
     }
 
     private init() {}

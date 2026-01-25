@@ -2,18 +2,41 @@
 //  NativeToolExecutor.swift
 //  pi
 //
-//  Executes native tool requests
+//  Dispatches native tool requests to tool implementations
 //
 
 import Foundation
 import PiCore
 
-/// Executes native tool requests
-actor NativeToolExecutor {
-    private var runningTasks: [String: Task<Void, Never>] = [:]
+/// Thread-safe cancellation flag
+private final class CancellationFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _isCancelled = false
 
-    func execute(request: NativeToolRequest) async throws -> Data {
-        guard let tool = NativeTool(rawValue: request.toolName) else {
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isCancelled
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        _isCancelled = true
+    }
+}
+
+/// Dispatches native tool requests to the appropriate tool implementation.
+public actor NativeToolExecutor {
+    /// Active tool executions that can be cancelled.
+    private var activeCalls: [String: CancellationFlag] = [:]
+
+    public init() {}
+
+    /// Execute a native tool request.
+    /// Returns result as JSON Data for safe crossing of actor boundaries.
+    public func execute(request: NativeToolRequest) async throws -> Data {
+        guard let tool = NativeTool.find(request.toolName) else {
             throw NativeToolError.unknownTool(request.toolName)
         }
 
@@ -21,19 +44,57 @@ actor NativeToolExecutor {
             throw NativeToolError.executionFailed("Tool not available on this device")
         }
 
-        let executor = tool.makeExecutor()
-
-        // Convert args to [String: Any]
-        var input: [String: Any] = [:]
-        for (key, value) in request.args {
-            input[key] = value.value
+        let cancellationFlag = CancellationFlag()
+        let onCancel: @Sendable () -> Void = { [cancellationFlag] in
+            cancellationFlag.cancel()
         }
 
-        return try await executor.execute(input: input)
+        // Track this call for potential cancellation
+        activeCalls[request.callId] = cancellationFlag
+
+        defer {
+            activeCalls.removeValue(forKey: request.callId)
+        }
+
+        // Execute the tool
+        let executor = tool.makeExecutor()
+        let result = try await executor.execute(args: request.args, onCancel: onCancel)
+
+        if cancellationFlag.isCancelled {
+            throw NativeToolError.cancelled
+        }
+
+        // Serialize to JSON for safe actor boundary crossing
+        return try JSONSerialization.data(withJSONObject: result)
     }
 
-    func cancel(callId: String) {
-        runningTasks[callId]?.cancel()
-        runningTasks.removeValue(forKey: callId)
+    /// Cancel a pending tool execution.
+    public func cancel(callId: String) {
+        if let flag = activeCalls[callId] {
+            flag.cancel()
+            activeCalls.removeValue(forKey: callId)
+        }
+    }
+
+    /// Parse tool result and extract display content if present.
+    /// Returns tuple of (displayContent, summary) if _display field exists, nil otherwise.
+    public static func parseResult(_ data: Data) -> (displayContent: DisplayContent?, summary: String)? {
+        // Try to decode as display envelope
+        if let envelope = try? JSONDecoder().decode(DisplayEnvelope.self, from: data) {
+            return (envelope.display, envelope.summary)
+        }
+
+        // Fall back to checking for _display field manually
+        if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            // Check for _display field manually
+            if let displayDict = dict["_display"] as? [String: Any],
+               let displayData = try? JSONSerialization.data(withJSONObject: displayDict),
+               let display = try? JSONDecoder().decode(DisplayContent.self, from: displayData),
+               let summary = dict["summary"] as? String {
+                return (display, summary)
+            }
+        }
+
+        return nil
     }
 }

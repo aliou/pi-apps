@@ -120,7 +120,9 @@ struct MainView: View {
                     WelcomeView(
                         mode: sidebarMode,
                         onNewChat: { createChatSession() },
-                        onNewCodeSession: { showFolderPicker = true }
+                        onNewCodeSession: { showFolderPicker = true },
+                        onNewRemoteChat: { createRemoteChatSession() },
+                        onNewRemoteCodeSession: { repo in createRemoteCodeSession(repo: repo) }
                     )
                 }
             }
@@ -169,6 +171,35 @@ struct MainView: View {
                 await sessionManager.selectSession(session.id)
             } catch {
                 print("Failed to create code session: \(error)")
+            }
+        }
+    }
+
+    private func createRemoteChatSession() {
+        guard let serverURL = ServerConfig.shared.serverURL else { return }
+        Task {
+            do {
+                let session = try await sessionManager.createRemoteChatSession(serverURL: serverURL)
+                await sessionManager.selectSession(session.id)
+            } catch {
+                print("Failed to create remote chat session: \(error)")
+            }
+        }
+    }
+
+    private func createRemoteCodeSession(repo: RepoInfo) {
+        guard let serverURL = ServerConfig.shared.serverURL else { return }
+        ServerConfig.shared.addRecentRepo(repo.id)
+        Task {
+            do {
+                let session = try await sessionManager.createRemoteCodeSession(
+                    serverURL: serverURL,
+                    repoId: repo.id,
+                    repoName: repo.name
+                )
+                await sessionManager.selectSession(session.id)
+            } catch {
+                print("Failed to create remote code session: \(error)")
             }
         }
     }

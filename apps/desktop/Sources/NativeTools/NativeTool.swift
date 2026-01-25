@@ -40,19 +40,25 @@ enum NativeTool: String, CaseIterable, Sendable {
     static var availableDefinitions: [NativeToolDefinition] {
         allCases.filter(\.isAvailable).map(\.definition)
     }
+
+    /// Find a tool by name
+    static func find(_ name: String) -> Self? {
+        allCases.first { $0.rawValue == name }
+    }
 }
 
-/// Protocol for native tool implementations
+/// Protocol for native tool implementations (matches mobile signature)
 protocol NativeToolExecutable: Sendable {
     static var definition: NativeToolDefinition { get }
-    func execute(input: [String: Any]) async throws -> Data
+    func execute(args: [String: AnyCodable], onCancel: @escaping @Sendable () -> Void) async throws -> [String: Any]
 }
 
 /// Errors from native tool execution
-enum NativeToolError: Error, LocalizedError {
+enum NativeToolError: Error, LocalizedError, Sendable {
     case unknownTool(String)
     case executionFailed(String)
     case invalidInput(String)
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -62,6 +68,8 @@ enum NativeToolError: Error, LocalizedError {
             return "Tool execution failed: \(reason)"
         case .invalidInput(let reason):
             return "Invalid input: \(reason)"
+        case .cancelled:
+            return "Tool execution was cancelled"
         }
     }
 }

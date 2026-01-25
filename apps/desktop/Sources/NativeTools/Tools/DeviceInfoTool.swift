@@ -20,10 +20,10 @@ struct DeviceInfoTool: NativeToolExecutable {
         ]
     )
 
-    func execute(input: [String: Any]) async throws -> Data {
+    func execute(args: [String: AnyCodable], onCancel: @escaping @Sendable () -> Void) async throws -> [String: Any] {
         let processInfo = ProcessInfo.processInfo
 
-        let info: [String: Any] = [
+        return [
             "platform": "macOS",
             "osVersion": processInfo.operatingSystemVersionString,
             "model": getMacModel(),
@@ -33,8 +33,6 @@ struct DeviceInfoTool: NativeToolExecutable {
             "hostname": Host.current().localizedName ?? "Unknown",
             "uptime": processInfo.systemUptime
         ]
-
-        return try JSONSerialization.data(withJSONObject: info, options: .prettyPrinted)
     }
 
     private func getMacModel() -> String {

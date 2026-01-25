@@ -34,6 +34,7 @@ struct DesktopSession: Identifiable, Codable, Sendable, Equatable {
     var serverSessionId: String?
     var repoId: String?
     var repoName: String?
+    var serverURL: String?
 
     /// Display name for the session
     var displayTitle: String {
@@ -110,6 +111,7 @@ struct DesktopSession: Identifiable, Codable, Sendable, Equatable {
     static func remote(
         mode: SessionMode,
         serverSessionId: String,
+        serverURL: String,
         repoId: String? = nil,
         repoName: String? = nil
     ) -> Self {
@@ -122,7 +124,8 @@ struct DesktopSession: Identifiable, Codable, Sendable, Equatable {
             title: mode == .chat ? "New Chat" : "New Session",
             serverSessionId: serverSessionId,
             repoId: repoId,
-            repoName: repoName
+            repoName: repoName,
+            serverURL: serverURL
         )
     }
 }

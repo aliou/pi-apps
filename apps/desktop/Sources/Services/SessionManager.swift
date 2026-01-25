@@ -37,6 +37,9 @@ final class SessionManager {
     /// These persist even when switching to another session
     private var localConnections: [UUID: LocalConnection] = [:]
 
+    /// Running remote connections keyed by session ID
+    private var remoteConnections: [UUID: ServerConnection] = [:]
+
     /// Session engines keyed by session ID
     private var engines: [UUID: SessionEngine] = [:]
 
@@ -159,6 +162,36 @@ final class SessionManager {
         return session
     }
 
+    /// Create a remote chat session
+    func createRemoteChatSession(serverURL: URL) async throws -> DesktopSession {
+        let session = DesktopSession.remote(
+            mode: .chat,
+            serverSessionId: "", // Will be set during connection
+            serverURL: serverURL.absoluteString
+        )
+
+        sessions.insert(session, at: 0)
+        saveSessions()
+
+        return session
+    }
+
+    /// Create a remote code session
+    func createRemoteCodeSession(serverURL: URL, repoId: String, repoName: String) async throws -> DesktopSession {
+        let session = DesktopSession.remote(
+            mode: .code,
+            serverSessionId: "", // Will be set during connection
+            serverURL: serverURL.absoluteString,
+            repoId: repoId,
+            repoName: repoName
+        )
+
+        sessions.insert(session, at: 0)
+        saveSessions()
+
+        return session
+    }
+
     /// Select a session (doesn't kill other running processes)
     func selectSession(_ id: UUID) async {
         guard sessions.contains(where: { $0.id == id }) else { return }
@@ -178,10 +211,16 @@ final class SessionManager {
         eventTasks[id]?.cancel()
         eventTasks.removeValue(forKey: id)
 
-        // Clean up connection if exists
+        // Clean up local connection if exists
         if let conn = localConnections[id] {
             await conn.disconnect()
             localConnections.removeValue(forKey: id)
+        }
+
+        // Clean up remote connection if exists
+        if let conn = remoteConnections[id] {
+            await conn.disconnect()
+            remoteConnections.removeValue(forKey: id)
         }
 
         // Clean up engine and connection state
@@ -283,12 +322,16 @@ final class SessionManager {
     // MARK: - Connection Management
 
     private func ensureConnection(for session: DesktopSession) async {
-        guard session.connectionType == .local else {
-            // Remote connections not yet implemented
-            return
+        switch session.connectionType {
+        case .local:
+            await ensureLocalConnection(for: session)
+        case .remote:
+            await ensureRemoteConnection(for: session)
         }
+    }
 
-        print("[SessionManager] ensureConnection for session \(session.id), mode: \(session.mode)")
+    private func ensureLocalConnection(for session: DesktopSession) async {
+        print("[SessionManager] ensureLocalConnection for session \(session.id), mode: \(session.mode)")
 
         // Check if connection already exists and is connected
         if let existingConn = localConnections[session.id], existingConn.isConnected {
@@ -381,6 +424,136 @@ final class SessionManager {
                 print("[SessionManager] Connection failed: \(errorMessage)")
             }
         }
+    }
+
+    private func ensureRemoteConnection(for session: DesktopSession) async {
+        print("[SessionManager] ensureRemoteConnection for session \(session.id), mode: \(session.mode)")
+
+        guard let serverURLString = session.serverURL,
+              let serverURL = URL(string: serverURLString) else {
+            connectionStates[session.id] = .failed("No server URL")
+            return
+        }
+
+        // Check if connection already exists and is connected
+        if let existingConn = remoteConnections[session.id], existingConn.isConnected {
+            print("[SessionManager] Reusing existing remote connection")
+            connectionStates[session.id] = .connected
+
+            // If engine has no messages but session has server ID, reload history
+            if let engine = engines[session.id], engine.messages.isEmpty, session.serverSessionId != nil {
+                print("[SessionManager] Engine empty, reloading remote history...")
+                await loadRemoteMessageHistory(from: existingConn, into: engine)
+            }
+            return
+        }
+
+        // Set connecting state immediately
+        connectionStates[session.id] = .connecting
+
+        // Create engine BEFORE connection so UI can render
+        if engines[session.id] == nil {
+            let engine = SessionEngine()
+            engines[session.id] = engine
+        }
+
+        let conn = ServerConnection(serverURL: serverURL)
+        remoteConnections[session.id] = conn
+
+        do {
+            try await conn.connect()
+
+            // Attach or create session on server
+            if let serverSessionId = session.serverSessionId, !serverSessionId.isEmpty {
+                // Attach to existing server session
+                print("[SessionManager] Attaching to server session: \(serverSessionId)")
+                _ = try await conn.attachSession(sessionId: serverSessionId)
+            } else {
+                // Create new session on server
+                print("[SessionManager] Creating new server session...")
+                let result: SessionCreateResult
+                if session.mode == .chat {
+                    result = try await conn.createChatSession()
+                } else if let repoId = session.repoId {
+                    result = try await conn.createCodeSession(repoId: repoId)
+                } else {
+                    throw SessionManagerError.invalidConfiguration
+                }
+
+                // Update local session with server ID
+                updateServerSessionId(for: session.id, serverSessionId: result.sessionId)
+
+                // Attach to the newly created session
+                _ = try await conn.attachSession(sessionId: result.sessionId)
+            }
+
+            // Configure engine with remote connection callbacks
+            if let engine = engines[session.id] {
+                configureRemoteEngine(engine, connection: conn, sessionId: session.id)
+            }
+
+            // Load message history
+            if let engine = engines[session.id] {
+                await loadRemoteMessageHistory(from: conn, into: engine)
+            }
+
+            connectionStates[session.id] = .connected
+            print("[SessionManager] Remote connection established")
+
+        } catch {
+            connectionStates[session.id] = .failed(error.localizedDescription)
+            print("[SessionManager] Remote connection failed: \(error)")
+        }
+    }
+
+    private func configureRemoteEngine(_ engine: SessionEngine, connection: ServerConnection, sessionId: UUID) {
+        engine.configure(callbacks: SessionEngineCallbacks(
+            sendPrompt: { [weak self, weak connection] text, behavior in
+                await MainActor.run {
+                    self?.debugStore?.addSent(command: "prompt", details: "text: \(text.prefix(100))")
+                }
+
+                guard let connection else { return }
+                try await connection.prompt(text, streamingBehavior: behavior)
+            },
+            abort: { [weak self, weak connection] in
+                await MainActor.run {
+                    self?.debugStore?.addSent(command: "abort")
+                }
+
+                guard let connection else { return }
+                try await connection.abort()
+            }
+        ))
+
+        // Cancel existing event task
+        eventTasks[sessionId]?.cancel()
+
+        // Start event subscription
+        let eventStream = connection.subscribe()
+        eventTasks[sessionId] = Task { [weak self, weak engine] in
+            for await event in eventStream {
+                guard let self, let engine, !Task.isCancelled else { break }
+                await self.handleEvent(event, engine: engine, sessionId: sessionId)
+            }
+        }
+    }
+
+    private func loadRemoteMessageHistory(from connection: ServerConnection, into engine: SessionEngine) async {
+        do {
+            let response = try await connection.getMessages()
+            let items = response.messages.toConversationItems()
+            engine.setMessages(items)
+            debugStore?.addReceived(type: "history", summary: "Loaded \(items.count) items from remote")
+        } catch {
+            print("[SessionManager] Failed to load remote message history: \(error)")
+        }
+    }
+
+    private func updateServerSessionId(for sessionId: UUID, serverSessionId: String) {
+        guard let index = sessions.firstIndex(where: { $0.id == sessionId }) else { return }
+        sessions[index].serverSessionId = serverSessionId
+        saveSessions()
     }
 
     /// Check if an error indicates missing API keys
@@ -567,13 +740,22 @@ final class SessionManager {
         eventTasks.removeAll()
 
         // Disconnect all local connections (fire and forget)
-        let connections = localConnections.values
+        let localConns = localConnections.values
         Task {
-            for connection in connections {
+            for connection in localConns {
                 await connection.disconnect()
             }
         }
         localConnections.removeAll()
+
+        // Disconnect all remote connections (fire and forget)
+        let remoteConns = remoteConnections.values
+        Task {
+            for connection in remoteConns {
+                await connection.disconnect()
+            }
+        }
+        remoteConnections.removeAll()
 
         // Clear engines
         engines.removeAll()
