@@ -2,14 +2,14 @@
 //  WelcomeView.swift
 //  pi
 //
-//  Empty state view when no session is selected, with environment picker
+//  Claude Desktop-style welcome view with dropdowns and input field
 //
 
 import SwiftUI
 import PiUI
 
 /// Environment selection for session creation
-enum SessionEnvironment: String, CaseIterable, Identifiable {
+enum SessionEnvironment: String, CaseIterable, Identifiable, Sendable {
     case local = "Local"
     case remote = "Remote"
 
@@ -18,13 +18,17 @@ enum SessionEnvironment: String, CaseIterable, Identifiable {
 
 struct WelcomeView: View {
     let mode: SidebarMode
-    let onNewChat: () -> Void
-    let onNewCodeSession: () -> Void
-    let onNewRemoteChat: () -> Void
-    let onNewRemoteCodeSession: (RepoInfo) -> Void
+    let onCreateSession: (SessionCreationRequest) -> Void
 
     @State private var serverConfig = ServerConfig.shared
     @State private var selectedEnvironment: SessionEnvironment = .local
+
+    // Context selection
+    @State private var selectedFolderPath: String?
+    @State private var selectedRepo: RepoInfo?
+
+    // Input
+    @State private var promptText = ""
 
     // Remote state
     @State private var repos: [RepoInfo] = []
@@ -32,190 +36,155 @@ struct WelcomeView: View {
     @State private var repoError: String?
     @State private var tempConnection: ServerConnection?
 
+    // Folder picker sheet
+    @State private var showFolderPicker = false
+
     var body: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: 24) {
             Spacer()
 
-            // Icon and title
-            VStack(spacing: 16) {
-                Image(systemName: mode == .chat ? "bubble.left.and.bubble.right" : "chevron.left.forwardslash.chevron.right")
+            if mode == .chat {
+                // Chat mode: Greeting with sparkle
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.orange)
+                    Text(greeting)
+                        .font(.system(size: 32, weight: .regular))
+                        .foregroundStyle(.primary)
+                }
+            } else {
+                // Code mode: Icon
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: 48))
                     .foregroundStyle(.secondary)
 
-                Text(mode == .chat ? "Start a Conversation" : "Start Coding")
-                    .font(.title)
-                    .fontWeight(.semibold)
+                // Two dropdowns row - adjacent, centered, matching Claude proportions
+                HStack(spacing: 12) {
+                    // Left: Context picker (wider ~60%)
+                    ContextPickerDropdown(
+                        mode: mode,
+                        environment: selectedEnvironment,
+                        recentFolders: recentFolders,
+                        onSelectFolder: { path in
+                            selectedFolderPath = path
+                            ServerConfig.shared.addRecentFolder(path)
+                        },
+                        onChooseDifferentFolder: {
+                            showFolderPicker = true
+                        },
+                        repos: repos,
+                        recentRepoIds: serverConfig.recentRepoIds,
+                        isLoadingRepos: isLoadingRepos,
+                        repoError: repoError,
+                        onSelectRepo: { repo in
+                            selectedRepo = repo
+                        },
+                        onRefreshRepos: { Task { await loadRepos() } },
+                        selectedFolderPath: $selectedFolderPath,
+                        selectedRepo: $selectedRepo
+                    )
+                    .frame(width: 320)
 
-                Text(environmentDescription)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                    // Right: Environment picker (~40%)
+                    EnvironmentPickerDropdown(
+                        selectedEnvironment: $selectedEnvironment,
+                        serverConfig: serverConfig
+                    )
+                    .frame(width: 220)
+                }
             }
 
-            // Environment picker
-            HStack(spacing: 12) {
-                environmentPicker
-            }
+            // Input field (always visible)
+            PromptInputField(
+                text: $promptText,
+                placeholder: mode == .chat
+                    ? "How can I help you today?"
+                    : "What would you like to do?",
+                canSubmit: canSubmit
+            ) { createSession() }
+            .frame(maxWidth: 560)
             .padding(.horizontal, 40)
 
-            // Content area based on environment
-            if selectedEnvironment == .local {
-                localContent
-            } else {
-                remoteContent
-            }
-
             Spacer()
-
-            keyboardHint
-                .padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showFolderPicker) {
+            FolderPickerView { path in
+                selectedFolderPath = path
+                ServerConfig.shared.addRecentFolder(path)
+            }
+        }
         .onChange(of: selectedEnvironment) { _, newValue in
+            // Clear selection when switching environments
+            selectedFolderPath = nil
+            selectedRepo = nil
+
             if newValue == .remote {
                 Task { await loadRepos() }
             }
         }
     }
 
-    // MARK: - Environment Description
+    // MARK: - Computed Properties
 
-    private var environmentDescription: String {
+    private var canSubmit: Bool {
+        // Always need some text
+        guard !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+
+        if mode == .chat {
+            return true
+        }
+
+        // Code mode: also needs context selected
         if selectedEnvironment == .local {
-            return mode == .chat
-                ? "Chat with Pi about anything"
-                : "Open a local project folder to work with Pi"
+            return selectedFolderPath != nil
         }
-        return mode == .chat
-            ? "Chat with Pi on a remote server"
-            : "Select a GitHub repository from the server"
+
+        return selectedRepo != nil
     }
 
-    // MARK: - Environment Picker
-
-    @ViewBuilder
-    private var environmentPicker: some View {
-        Menu {
-            ForEach(SessionEnvironment.allCases) { env in
-                Button {
-                    selectedEnvironment = env
-                } label: {
-                    HStack {
-                        Label(env.rawValue, systemImage: env == .local ? "desktopcomputer" : "cloud")
-                        if selectedEnvironment == env {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-                .disabled(env == .remote && !serverConfig.isConfigured)
-            }
-        } label: {
-            HStack {
-                Image(systemName: selectedEnvironment == .local ? "desktopcomputer" : "cloud")
-                Text(selectedEnvironment.rawValue)
-                Spacer()
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(8)
-        }
-        .menuStyle(.borderlessButton)
-        .frame(width: 160)
-        .help(serverConfig.isConfigured ? "Select environment" : "Configure server in Settings to enable Remote")
+    private var recentFolders: [String] {
+        ServerConfig.shared.recentFolders
     }
 
-    // MARK: - Local Content
+    private static let greetings = [
+        "What's on your mind?",
+        "How can I help?",
+        "What shall we explore?",
+        "Ready when you are",
+        "Let's figure it out",
+        "What's the plan?",
+        "How can I assist?",
+        "What are we working on?"
+    ]
 
-    @ViewBuilder
-    private var localContent: some View {
-        Button {
-            if mode == .chat {
-                onNewChat()
+    @State private var greeting: String = Self.greetings.randomElement() ?? "How can I help?"
+
+    // MARK: - Actions
+
+    private func createSession() {
+        let request: SessionCreationRequest
+
+        if mode == .chat {
+            if selectedEnvironment == .local {
+                request = .localChat(initialPrompt: promptText.isEmpty ? nil : promptText)
             } else {
-                onNewCodeSession()
+                request = .remoteChat(initialPrompt: promptText.isEmpty ? nil : promptText)
             }
-        } label: {
-            Label(
-                mode == .chat ? "New Chat" : "Open Project",
-                systemImage: mode == .chat ? "plus.bubble" : "folder.badge.plus"
-            )
-            .frame(minWidth: 120)
-        }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-    }
-
-    // MARK: - Remote Content
-
-    @ViewBuilder
-    private var remoteContent: some View {
-        if !serverConfig.isConfigured {
-            VStack(spacing: 12) {
-                Image(systemName: "server.rack")
-                    .font(.title)
-                    .foregroundStyle(.secondary)
-                Text("Server not configured")
-                    .font(.headline)
-                Text("Configure a server URL in Settings to use remote mode")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding()
-        } else if mode == .chat {
-            // Remote chat - just a button
-            Button {
-                onNewRemoteChat()
-            } label: {
-                Label("New Remote Chat", systemImage: "plus.bubble")
-                    .frame(minWidth: 120)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
         } else {
-            // Remote code - show repo picker
-            VStack(spacing: 16) {
-                Text("Select a repository")
-                    .font(.headline)
-
-                RepoPickerView(
-                    repos: repos,
-                    recentRepoIds: serverConfig.recentRepoIds,
-                    isLoading: isLoadingRepos,
-                    error: repoError,
-                    onSelect: { repo in
-                        onNewRemoteCodeSession(repo)
-                    },
-                    onRefresh: {
-                        Task { await loadRepos() }
-                    }
-                )
-                .frame(width: 350, height: 300)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
+            if selectedEnvironment == .local {
+                guard let path = selectedFolderPath else { return }
+                request = .localCode(folderPath: path, initialPrompt: promptText.isEmpty ? nil : promptText)
+            } else {
+                guard let repo = selectedRepo else { return }
+                request = .remoteCode(repo: repo, initialPrompt: promptText.isEmpty ? nil : promptText)
             }
         }
-    }
 
-    // MARK: - Keyboard Hint
-
-    @ViewBuilder
-    private var keyboardHint: some View {
-        if selectedEnvironment == .local {
-            Text(mode == .chat
-                ? "Press Cmd+N to start a new chat"
-                : "Press Cmd+Shift+N to open a project")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        } else {
-            Text("Select an environment and context above")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
+        onCreateSession(request)
     }
 
     // MARK: - Repo Loading
@@ -262,23 +231,11 @@ struct WelcomeView: View {
 // MARK: - Preview
 
 #Preview("Chat Mode - Local") {
-    WelcomeView(
-        mode: .chat,
-        onNewChat: {},
-        onNewCodeSession: {},
-        onNewRemoteChat: {},
-        onNewRemoteCodeSession: { _ in }
-    )
-    .frame(width: 600, height: 500)
+    WelcomeView(mode: .chat) { _ in }
+        .frame(width: 600, height: 500)
 }
 
 #Preview("Code Mode - Local") {
-    WelcomeView(
-        mode: .code,
-        onNewChat: {},
-        onNewCodeSession: {},
-        onNewRemoteChat: {},
-        onNewRemoteCodeSession: { _ in }
-    )
-    .frame(width: 600, height: 500)
+    WelcomeView(mode: .code) { _ in }
+        .frame(width: 600, height: 500)
 }

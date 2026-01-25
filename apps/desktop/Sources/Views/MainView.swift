@@ -117,13 +117,9 @@ struct MainView: View {
                         sessionManager: sessionManager
                     )
                 } else {
-                    WelcomeView(
-                        mode: sidebarMode,
-                        onNewChat: { createChatSession() },
-                        onNewCodeSession: { showFolderPicker = true },
-                        onNewRemoteChat: { createRemoteChatSession() },
-                        onNewRemoteCodeSession: { repo in createRemoteCodeSession(repo: repo) }
-                    )
+                    WelcomeView(mode: sidebarMode) { request in
+                        handleSessionCreation(request)
+                    }
                 }
             }
             .navigationSplitViewStyle(.balanced)
@@ -153,55 +149,52 @@ struct MainView: View {
 
     // MARK: - Actions
 
-    private func createChatSession() {
+    private func handleSessionCreation(_ request: SessionCreationRequest) {
         Task {
             do {
-                let session = try await sessionManager.createLocalChatSession()
+                let session: DesktopSession
+                switch request {
+                case .localChat(let initialPrompt):
+                    session = try await sessionManager.createLocalChatSession()
+                    // TODO: Send initial prompt if provided
+                    _ = initialPrompt
+
+                case .localCode(let folderPath, let initialPrompt):
+                    session = try await sessionManager.createLocalCodeSession(selectedPath: folderPath)
+                    // TODO: Send initial prompt if provided
+                    _ = initialPrompt
+
+                case .remoteChat(let initialPrompt):
+                    guard let serverURL = ServerConfig.shared.serverURL else { return }
+                    session = try await sessionManager.createRemoteChatSession(serverURL: serverURL)
+                    // TODO: Send initial prompt if provided
+                    _ = initialPrompt
+
+                case .remoteCode(let repo, let initialPrompt):
+                    guard let serverURL = ServerConfig.shared.serverURL else { return }
+                    ServerConfig.shared.addRecentRepo(repo.id)
+                    session = try await sessionManager.createRemoteCodeSession(
+                        serverURL: serverURL,
+                        repoId: repo.id,
+                        repoName: repo.name
+                    )
+                    // TODO: Send initial prompt if provided
+                    _ = initialPrompt
+                }
+
                 await sessionManager.selectSession(session.id)
             } catch {
-                print("Failed to create chat session: \(error)")
+                print("Failed to create session: \(error)")
             }
         }
+    }
+
+    private func createChatSession() {
+        handleSessionCreation(.localChat(initialPrompt: nil))
     }
 
     private func createCodeSession(folderPath: String) {
-        Task {
-            do {
-                let session = try await sessionManager.createLocalCodeSession(selectedPath: folderPath)
-                await sessionManager.selectSession(session.id)
-            } catch {
-                print("Failed to create code session: \(error)")
-            }
-        }
-    }
-
-    private func createRemoteChatSession() {
-        guard let serverURL = ServerConfig.shared.serverURL else { return }
-        Task {
-            do {
-                let session = try await sessionManager.createRemoteChatSession(serverURL: serverURL)
-                await sessionManager.selectSession(session.id)
-            } catch {
-                print("Failed to create remote chat session: \(error)")
-            }
-        }
-    }
-
-    private func createRemoteCodeSession(repo: RepoInfo) {
-        guard let serverURL = ServerConfig.shared.serverURL else { return }
-        ServerConfig.shared.addRecentRepo(repo.id)
-        Task {
-            do {
-                let session = try await sessionManager.createRemoteCodeSession(
-                    serverURL: serverURL,
-                    repoId: repo.id,
-                    repoName: repo.name
-                )
-                await sessionManager.selectSession(session.id)
-            } catch {
-                print("Failed to create remote code session: \(error)")
-            }
-        }
+        handleSessionCreation(.localCode(folderPath: folderPath, initialPrompt: nil))
     }
 
     // MARK: - Binary & Auth Checks

@@ -14,7 +14,6 @@ struct FolderPickerView: View {
 
     @State private var selectedPath: String = ""
     @State private var validationError: String?
-    @State private var recentFolders: [String] = []
 
     var body: some View {
         VStack(spacing: 20) {
@@ -69,7 +68,8 @@ struct FolderPickerView: View {
             }
 
             // Recent folders
-            if !recentFolders.isEmpty && selectedPath.isEmpty {
+            if !ServerConfig.shared.recentFolders.isEmpty && selectedPath.isEmpty {
+                let recentFolders = ServerConfig.shared.recentFolders
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Recent")
                         .font(.caption)
@@ -126,9 +126,6 @@ struct FolderPickerView: View {
         }
         .padding(24)
         .frame(width: 500, height: 400)
-        .onAppear {
-            loadRecentFolders()
-        }
     }
 
     private func showFolderPicker() {
@@ -157,28 +154,11 @@ struct FolderPickerView: View {
     private func confirmSelection() {
         guard validationError == nil else { return }
 
-        // Save to recent folders
-        saveToRecentFolders(selectedPath)
+        // Save to recent folders via ServerConfig
+        ServerConfig.shared.addRecentFolder(selectedPath)
 
         onSelect(selectedPath)
         dismiss()
-    }
-
-    private func loadRecentFolders() {
-        if let folders = UserDefaults.standard.stringArray(forKey: "recentFolders") {
-            // Filter to only existing folders
-            recentFolders = folders.filter { FileManager.default.fileExists(atPath: $0) }
-        }
-    }
-
-    private func saveToRecentFolders(_ path: String) {
-        var folders = UserDefaults.standard.stringArray(forKey: "recentFolders") ?? []
-        folders.removeAll { $0 == path }
-        folders.insert(path, at: 0)
-        if folders.count > 5 {
-            folders = Array(folders.prefix(5))
-        }
-        UserDefaults.standard.set(folders, forKey: "recentFolders")
     }
 }
 

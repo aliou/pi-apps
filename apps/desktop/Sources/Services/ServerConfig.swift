@@ -18,6 +18,7 @@ final class ServerConfig {
     private let selectedModelProviderKey = "selectedModelProvider"
     private let selectedModelIdKey = "selectedModelId"
     private let recentRepoIdsKey = "recentRepoIds"
+    private let recentFoldersKey = "serverConfig.recentFolders"
 
     var serverURL: URL? {
         guard let string = defaults.string(forKey: serverURLKey) else { return nil }
@@ -38,6 +39,12 @@ final class ServerConfig {
 
     var recentRepoIds: [String] {
         defaults.stringArray(forKey: recentRepoIdsKey) ?? []
+    }
+
+    var recentFolders: [String] {
+        let folders = defaults.stringArray(forKey: recentFoldersKey) ?? []
+        // Filter to only existing folders
+        return folders.filter { FileManager.default.fileExists(atPath: $0) }
     }
 
     func setServerURL(_ url: URL) {
@@ -61,6 +68,16 @@ final class ServerConfig {
             ids = Array(ids.prefix(10))
         }
         defaults.set(ids, forKey: recentRepoIdsKey)
+    }
+
+    func addRecentFolder(_ path: String) {
+        var folders = defaults.stringArray(forKey: recentFoldersKey) ?? []
+        folders.removeAll { $0 == path }
+        folders.insert(path, at: 0)
+        if folders.count > 10 {
+            folders = Array(folders.prefix(10))
+        }
+        defaults.set(folders, forKey: recentFoldersKey)
     }
 
     private init() {}
