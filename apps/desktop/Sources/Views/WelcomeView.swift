@@ -43,22 +43,17 @@ struct WelcomeView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            if mode == .chat {
-                // Chat mode: Greeting with sparkle
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkle")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.orange)
-                    Text(greeting)
-                        .font(.system(size: 32, weight: .regular))
-                        .foregroundStyle(.primary)
-                }
-            } else {
-                // Code mode: Icon
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.secondary)
+            // Greeting with icon
+            HStack(spacing: 10) {
+                Image(systemName: mode == .chat ? "sparkle" : "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 28))
+                    .foregroundStyle(mode == .chat ? Theme.accent : Theme.accent)
+                Text(greeting)
+                    .font(.system(size: 28, weight: .regular))
+                    .foregroundStyle(.primary)
+            }
 
+            if mode == .code {
                 // Two dropdowns row - adjacent, centered, matching Claude proportions
                 HStack(spacing: 12) {
                     // Left: Context picker (wider ~60%)
@@ -150,18 +145,54 @@ struct WelcomeView: View {
         ServerConfig.shared.recentFolders
     }
 
-    private static let greetings = [
+    private static let chatGreetings = [
         "What's on your mind?",
         "How can I help?",
         "What shall we explore?",
         "Ready when you are",
         "Let's figure it out",
-        "What's the plan?",
-        "How can I assist?",
-        "What are we working on?"
+        "Curious about something?",
+        "What's the question?",
+        "Let's think through this",
+        "What would you like to know?",
+        "I'm all ears",
+        "Fire away",
+        "What's up?",
+        "Talk to me",
+        "Thinking cap on",
+        "Let's chat",
+        "Ask me anything",
+        "What's brewing?",
+        "Penny for your thoughts?"
     ]
 
-    @State private var greeting: String = Self.greetings.randomElement() ?? "How can I help?"
+    private static let codeGreetings = [
+        "What are we building?",
+        "Ready to code",
+        "Let's ship it",
+        "What needs fixing?",
+        "Time to build",
+        "What's the task?",
+        "Show me the code",
+        "Let's hack on this",
+        "What's broken?",
+        "Feature or bug?",
+        "Let's refactor",
+        "Ready to deploy?",
+        "What's next?",
+        "Let's debug this",
+        "Merge time?",
+        "What's the PR?",
+        "Tests passing?",
+        "Ship ship ship"
+    ]
+
+    @State private var chatGreeting: String = Self.chatGreetings.randomElement() ?? "How can I help?"
+    @State private var codeGreeting: String = Self.codeGreetings.randomElement() ?? "What are we building?"
+
+    private var greeting: String {
+        mode == .chat ? chatGreeting : codeGreeting
+    }
 
     // MARK: - Actions
 

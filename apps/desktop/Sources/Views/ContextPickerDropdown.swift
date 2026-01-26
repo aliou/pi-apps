@@ -29,286 +29,201 @@ struct ContextPickerDropdown: View {
     @Binding var selectedFolderPath: String?
     @Binding var selectedRepo: RepoInfo?
 
-    @State private var searchText = ""
-    @State private var showRepoPopover = false
+    @State private var isExpanded = false
 
     var body: some View {
-        dropdownContainer {
-            if environment == .local {
-                // Local: Use Menu (no search needed)
-                Menu {
-                    localFolderContent
-                } label: {
-                    dropdownLabelContent
+        if environment == .local {
+            localFolderDropdown
+        } else {
+            remoteRepoDropdown
+        }
+    }
+
+    // MARK: - Local Folder Dropdown
+
+    private var localFolderDropdown: some View {
+        FloatingDropdown(
+            icon: "folder",
+            title: localTitle,
+            isPlaceholder: selectedFolderPath == nil,
+            isExpanded: $isExpanded
+        ) {
+            VStack(spacing: 0) {
+                if !recentFolders.isEmpty {
+                    DropdownSection("Recent") {
+                        ForEach(recentFolders.prefix(5), id: \.self) { folder in
+                            DropdownRow(
+                                folderDisplayName(folder),
+                                subtitle: folder,
+                                icon: "folder",
+                                isSelected: selectedFolderPath == folder
+                            ) {
+                                selectedFolderPath = folder
+                                onSelectFolder(folder)
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    isExpanded = false
+                                }
+                            }
+                        }
+                    }
+
+                    DropdownDivider()
                 }
-                .menuStyle(.borderlessButton)
-            } else {
-                // Remote: Use Button + Popover (for search support)
-                Button {
-                    showRepoPopover = true
-                } label: {
-                    dropdownLabelContent
+
+                DropdownRow("Choose a different folder", icon: "folder.badge.plus") {
+                    isExpanded = false
+                    onChooseDifferentFolder()
                 }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showRepoPopover, arrowEdge: .bottom) {
-                    repoPopoverContent
-                        .frame(width: 350, height: 400)
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    // MARK: - Remote Repo Dropdown
+
+    private var remoteRepoDropdown: some View {
+        FloatingDropdown(
+            icon: "chevron.left.forwardslash.chevron.right",
+            title: remoteTitle,
+            isPlaceholder: selectedRepo == nil,
+            isExpanded: $isExpanded
+        ) {
+            VStack(spacing: 0) {
+                if isLoadingRepos && repos.isEmpty {
+                    loadingView
+                } else if let error = repoError {
+                    errorView(error)
+                } else if repos.isEmpty {
+                    emptyView
+                } else {
+                    repoListContent
                 }
             }
         }
     }
 
-    // MARK: - Dropdown Container
+    // MARK: - Repo Content Views
 
-    @ViewBuilder
-    private func dropdownContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
-            )
-    }
-
-    // MARK: - Dropdown Label Content
-
-    @ViewBuilder
-    private var dropdownLabelContent: some View {
+    private var loadingView: some View {
         HStack {
-            Image(systemName: environment == .local ? "folder" : "chevron.left.forwardslash.chevron.right.circle")
-
-            if environment == .local {
-                if let path = selectedFolderPath {
-                    Text(URL(fileURLWithPath: path).lastPathComponent)
-                } else {
-                    Text("Select folder")
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                if let repo = selectedRepo {
-                    Text(repo.name)
-                } else {
-                    Text("Select repository")
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             Spacer()
-            Image(systemName: "chevron.up.chevron.down")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Local Folder Content
-
-    @ViewBuilder
-    private var localFolderContent: some View {
-        if !recentFolders.isEmpty {
-            Section("Recent") {
-                ForEach(recentFolders.prefix(5), id: \.self) { folder in
-                    Button {
-                        selectedFolderPath = folder
-                        onSelectFolder(folder)
-                    } label: {
-                        HStack {
-                            Image(systemName: GitService.isInsideGitRepo(folder) ? "arrow.triangle.branch" : "folder")
-                            VStack(alignment: .leading) {
-                                Text(folderDisplayName(folder))
-                                Text(folder)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Divider()
-        }
-
-        Button {
-            onChooseDifferentFolder()
-        } label: {
-            Label("Choose a different folder", systemImage: "plus")
-        }
-    }
-
-    // MARK: - Repo Popover Content
-
-    @ViewBuilder
-    private var repoPopoverContent: some View {
-        VStack(spacing: 0) {
-            // Search field at top
-            HStack {
-                Image(systemName: "magnifyingglass")
+            VStack(spacing: 12) {
+                ProgressView()
+                Text("Loading repositories...")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("Search repositories", text: $searchText)
-                    .textFieldStyle(.plain)
-
-                if isLoadingRepos {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Button {
-                        onRefreshRepos()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Refresh repositories")
-                }
             }
-            .padding(10)
-            .background(Color(NSColor.textBackgroundColor))
-
-            Divider()
-
-            // Content
-            if isLoadingRepos && repos.isEmpty {
-                Spacer()
-                VStack(spacing: 12) {
-                    ProgressView()
-                    Text("Loading repositories...")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            } else if let error = repoError {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text(error)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("Retry") {
-                        onRefreshRepos()
-                    }
-                    .buttonStyle(.bordered)
-                }
-                Spacer()
-            } else if filteredRepos.isEmpty && !searchText.isEmpty {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("No repositories matching \"\(searchText)\"")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            } else if repos.isEmpty {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "folder")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("No repositories available")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            } else {
-                List {
-                    // Recently Used
-                    if !recentRepos.isEmpty && searchText.isEmpty {
-                        Section("Recently Used") {
-                            ForEach(recentRepos, id: \.id) { repo in
-                                repoRow(repo)
-                            }
-                        }
-                    }
-
-                    // All Repositories (grouped by org)
-                    ForEach(groupedRepos, id: \.0) { org, orgRepos in
-                        Section(org) {
-                            ForEach(orgRepos, id: \.id) { repo in
-                                repoRow(repo)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.plain)
-            }
+            .padding(.vertical, 24)
+            Spacer()
         }
     }
 
-    // MARK: - Repo Row
+    private func errorView(_ error: String) -> some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Retry") {
+                    onRefreshRepos()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.vertical, 24)
+            .padding(.horizontal, 14)
+            Spacer()
+        }
+    }
+
+    private var emptyView: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 12) {
+                Image(systemName: "folder")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                Text("No repositories available")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 24)
+            Spacer()
+        }
+    }
+
+    private var repoListContent: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                // Recently Used
+                if !recentRepos.isEmpty {
+                    DropdownSection("Recently Used") {
+                        ForEach(recentRepos, id: \.id) { repo in
+                            repoRow(repo)
+                        }
+                    }
+
+                    DropdownDivider()
+                }
+
+                // All Repositories
+                DropdownSection("All Repositories") {
+                    ForEach(repos.sorted { $0.name.lowercased() < $1.name.lowercased() }, id: \.id) { repo in
+                        repoRow(repo)
+                    }
+                }
+
+                DropdownFooter(
+                    "Repo missing? Install the GitHub app to access private repos.",
+                    buttonTitle: "Install GitHub App",
+                    buttonIcon: "arrow.up.right"
+                ) {
+                    // TODO: Open GitHub app install URL
+                }
+            }
+        }
+        .frame(maxHeight: 280)
+    }
 
     private func repoRow(_ repo: RepoInfo) -> some View {
-        Button {
+        DropdownRow(
+            repo.name,
+            subtitle: repo.owner,
+            isSelected: selectedRepo?.id == repo.id
+        ) {
             selectedRepo = repo
             onSelectRepo(repo)
-            showRepoPopover = false
-        } label: {
-            HStack {
-                Image(systemName: "arrow.triangle.branch")
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(repo.name)
-                        .foregroundStyle(.primary)
-                    if let owner = repo.owner {
-                        Text(owner)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isExpanded = false
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Computed Properties
+
+    private var localTitle: String {
+        if let path = selectedFolderPath {
+            return URL(fileURLWithPath: path).lastPathComponent
+        }
+        return "Select folder"
+    }
+
+    private var remoteTitle: String {
+        if let repo = selectedRepo {
+            return repo.name
+        }
+        return "Select repository"
+    }
 
     private var recentRepos: [RepoInfo] {
         recentRepoIds.prefix(5).compactMap { id in
             repos.first { $0.id == id }
         }
-    }
-
-    private var filteredRepos: [RepoInfo] {
-        if searchText.isEmpty {
-            return repos
-        }
-        return repos.filter {
-            repoDisplayName($0).localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
-    private var groupedRepos: [(String, [RepoInfo])] {
-        let grouped = Dictionary(grouping: filteredRepos) { repoOrgName($0) }
-        return grouped.keys.sorted().map { org in
-            let orgRepos = grouped[org]?.sorted { repoDisplayName($0) < repoDisplayName($1) } ?? []
-            return (org, orgRepos)
-        }
-    }
-
-    private func repoOrgName(_ repo: RepoInfo) -> String {
-        if let owner = repo.owner, !owner.isEmpty {
-            return owner
-        }
-        if let fullName = repo.fullName,
-           let slashIndex = fullName.firstIndex(of: "/") {
-            return String(fullName[..<slashIndex])
-        }
-        return "Other"
-    }
-
-    private func repoDisplayName(_ repo: RepoInfo) -> String {
-        if let fullName = repo.fullName, !fullName.isEmpty {
-            return fullName
-        }
-        return repo.name
     }
 
     private func folderDisplayName(_ path: String) -> String {
@@ -337,7 +252,7 @@ struct ContextPickerDropdown: View {
         selectedFolderPath: .constant(nil),
         selectedRepo: .constant(nil)
     )
-    .frame(width: 300)
+    .frame(width: 320)
     .padding()
 }
 
@@ -345,7 +260,10 @@ struct ContextPickerDropdown: View {
     ContextPickerDropdown(
         mode: .code,
         environment: .local,
-        recentFolders: [],
+        recentFolders: [
+            "/Users/dev/projects/my-app",
+            "/Users/dev/projects/another-project"
+        ],
         onSelectFolder: { _ in },
         onChooseDifferentFolder: {},
         repos: [],
@@ -357,11 +275,52 @@ struct ContextPickerDropdown: View {
         selectedFolderPath: .constant("/Users/dev/projects/my-app"),
         selectedRepo: .constant(nil)
     )
-    .frame(width: 300)
+    .frame(width: 320)
     .padding()
 }
 
-#Preview("Remote - No Selection") {
+#Preview("Remote - With Repos") {
+    ContextPickerDropdown(
+        mode: .code,
+        environment: .remote,
+        recentFolders: [],
+        onSelectFolder: { _ in },
+        onChooseDifferentFolder: {},
+        repos: [
+            RepoInfo(
+                id: "1", name: "pi-apps", fullName: "aliou/pi-apps", owner: "aliou",
+                private: false, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil,
+                defaultBranch: "main", path: nil
+            ),
+            RepoInfo(
+                id: "2", name: "canvas", fullName: "378labs/canvas", owner: "378labs",
+                private: false, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil,
+                defaultBranch: "main", path: nil
+            ),
+            RepoInfo(
+                id: "3", name: "catchup", fullName: "378labs/catchup", owner: "378labs",
+                private: false, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil,
+                defaultBranch: "main", path: nil
+            ),
+            RepoInfo(
+                id: "4", name: "dotfiles", fullName: "aliou/dotfiles", owner: "aliou",
+                private: false, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil,
+                defaultBranch: "main", path: nil
+            )
+        ],
+        recentRepoIds: ["1", "2"],
+        isLoadingRepos: false,
+        repoError: nil,
+        onSelectRepo: { _ in },
+        onRefreshRepos: {},
+        selectedFolderPath: .constant(nil),
+        selectedRepo: .constant(nil)
+    )
+    .frame(width: 320)
+    .padding()
+}
+
+#Preview("Remote - Loading") {
     ContextPickerDropdown(
         mode: .code,
         environment: .remote,
@@ -370,13 +329,13 @@ struct ContextPickerDropdown: View {
         onChooseDifferentFolder: {},
         repos: [],
         recentRepoIds: [],
-        isLoadingRepos: false,
+        isLoadingRepos: true,
         repoError: nil,
         onSelectRepo: { _ in },
         onRefreshRepos: {},
         selectedFolderPath: .constant(nil),
         selectedRepo: .constant(nil)
     )
-    .frame(width: 300)
+    .frame(width: 320)
     .padding()
 }

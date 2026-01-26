@@ -11,66 +11,42 @@ struct EnvironmentPickerDropdown: View {
     @Binding var selectedEnvironment: SessionEnvironment
     let serverConfig: ServerConfig
 
+    @State private var isExpanded = false
+
     var body: some View {
-        dropdownContainer {
-            Menu {
-                // Local option
-                Button {
-                    selectedEnvironment = .local
-                } label: {
-                    HStack {
-                        Label("Local", systemImage: "desktopcomputer")
-                        if selectedEnvironment == .local {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
+        FloatingDropdown(
+            icon: selectedEnvironment == .local ? "desktopcomputer" : "cloud",
+            title: selectedEnvironment.rawValue,
+            isPlaceholder: false,
+            isExpanded: $isExpanded
+        ) {
+            // Local option
+            DropdownRow(
+                "Local",
+                icon: "desktopcomputer",
+                isSelected: selectedEnvironment == .local
+            ) {
+                selectedEnvironment = .local
+                isExpanded = false
+            }
 
-                Divider()
+            DropdownDivider()
 
-                // Remote option (disabled if not configured)
-                Button {
+            // Remote option
+            DropdownRow(
+                "Remote",
+                icon: "cloud",
+                isSelected: selectedEnvironment == .remote
+            ) {
+                if serverConfig.isConfigured {
                     selectedEnvironment = .remote
-                } label: {
-                    HStack {
-                        Label("Remote", systemImage: "cloud")
-                        if selectedEnvironment == .remote {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-                .disabled(!serverConfig.isConfigured)
-            } label: {
-                HStack {
-                    Image(systemName: selectedEnvironment == .local ? "desktopcomputer" : "cloud")
-                    Text(selectedEnvironment.rawValue)
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    isExpanded = false
                 }
             }
-            .menuStyle(.borderlessButton)
+            .opacity(serverConfig.isConfigured ? 1 : 0.5)
+            .padding(.bottom, 8)
         }
         .help(serverConfig.isConfigured ? "Select environment" : "Configure server in Settings to enable Remote")
-    }
-
-    // MARK: - Dropdown Container
-
-    @ViewBuilder
-    private func dropdownContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
-            )
     }
 }
 
