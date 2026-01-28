@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand palette */
+  --color-midnight: #0f172a;
+  --color-slate: #1e293b;
+  --color-steel: #334155;
+  --color-ash: #64748b;
+  --color-silver: #94a3b8;
+  --color-pearl: #e2e8f0;
+  --color-snow: #f8fafc;
+
+  /* Accent */
+  --color-coral: #f97316;
+  --color-coral-muted: #fb923c;
+
+  /* Status colors */
+  --color-success: #22c55e;
+  --color-warning: #eab308;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  /* Semantic tokens - light mode defaults */
+  --color-background: var(--color-snow);
+  --color-foreground: var(--color-midnight);
+  --color-muted: var(--color-pearl);
+  --color-muted-foreground: var(--color-ash);
+  --color-card: white;
+  --color-card-foreground: var(--color-midnight);
+  --color-border: var(--color-pearl);
+  --color-accent: var(--color-coral);
+  --color-accent-foreground: white;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --color-background: var(--color-midnight);
+      --color-foreground: var(--color-snow);
+      --color-muted: var(--color-slate);
+      --color-muted-foreground: var(--color-silver);
+      --color-card: var(--color-slate);
+      --color-card-foreground: var(--color-snow);
+      --color-border: var(--color-steel);
+    }
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family:
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+  }
+}

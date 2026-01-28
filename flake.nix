@@ -54,6 +54,7 @@
               pkgs.xcodegen
               pkgs.gnumake
               pkgs.nodejs_22
+              pkgs.pnpm
             ];
 
             shellHook = ''
@@ -62,6 +63,13 @@
               export DYLD_FRAMEWORK_PATH="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib"
               export LD=/usr/bin/clang
               ${config.pre-commit.installationScript}
+
+              # Local dev directories (isolated from system XDG)
+              # This prevents dev from polluting ~/.local/share, ~/.config, etc.
+              export PI_RELAY_DATA_DIR="$PWD/.dev/relay/data"
+              export PI_RELAY_CONFIG_DIR="$PWD/.dev/relay/config"
+              export PI_RELAY_CACHE_DIR="$PWD/.dev/relay/cache"
+              export PI_RELAY_STATE_DIR="$PWD/.dev/relay/state"
               
               echo ""
               echo "Pi Apps Development Environment"
@@ -73,9 +81,13 @@
               echo "  make build    - Build from command line"
               echo ""
               echo "Server (TypeScript/Node.js):"
-              echo "  cd apps/server && npm install"
-              echo "  npm run dev   - Run with hot reload"
-              echo "  npm run build - Build for production"
+              echo "  cd apps/server && pnpm install"
+              echo "  pnpm run dev   - Run with hot reload"
+              echo "  pnpm run build - Build for production"
+              echo ""
+              echo "Relay (dev dirs at .dev/relay/):"
+              echo "  cd apps/relay && pnpm install"
+              echo "  pnpm run dev   - Run with hot reload"
               echo ""
             '';
           };

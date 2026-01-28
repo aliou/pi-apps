@@ -9,6 +9,7 @@ pi-apps/
 ├── apps/
 │   ├── desktop/       # macOS app (local subprocess)
 │   ├── mobile/        # iOS app (connects to server)
+│   ├── relay/         # Relay server (Node.js/Hono) - WIP replacement for server
 │   └── server/        # WebSocket server (Bun/Hono)
 └── packages/
     ├── pi-core/       # RPC types, transport protocols
@@ -52,6 +53,17 @@ cd apps/server
 bun install
 bun run dev       # dev with hot reload
 bun run build     # standalone binary
+```
+
+### Relay (WIP)
+
+Next-gen relay server. SQLite persistence, Drizzle ORM, admin UI. Will replace `apps/server/`.
+
+```bash
+cd apps/relay
+pnpm install
+pnpm run dev      # dev with hot reload
+pnpm test         # run tests
 ```
 
 ## Configuration

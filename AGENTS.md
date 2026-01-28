@@ -26,17 +26,26 @@ make xcode    # open in xcode
 
 Server (TypeScript/Node.js):
 ```bash
-cd apps/server && npm install
-npm run dev   # hot reload
-npm run build # production build
-npm run lint  # biome
-npm run test  # vitest
+cd apps/server && pnpm install
+pnpm run dev   # hot reload
+pnpm run build # production build
+pnpm run lint  # biome
+pnpm run test  # vitest
+```
+
+Relay (WIP - will replace server):
+```bash
+cd apps/relay && pnpm install
+pnpm run dev   # hot reload
+pnpm test      # vitest
+pnpm run lint  # biome
 ```
 
 ## Structure
 
 - `apps/desktop/` - macOS app, XcodeGen project.yml
 - `apps/mobile/` - iOS app, connects to server via WebSocket
+- `apps/relay/` - Relay server (Node.js/Hono/SQLite) - WIP replacement for server
 - `apps/server/` - WebSocket server (Bun/Hono)
 - `packages/pi-core/` - RPC types, transport layer (Foundation only)
 - `packages/pi-ui/` - Shared UI components (SwiftUI)
