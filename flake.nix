@@ -35,6 +35,22 @@
             export PATH="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
             exec ${pkgs.swiftlint}/bin/swiftlint "$@"
           '';
+          # Wrapper to run biome from apps/relay
+          biomeWrapper = pkgs.writeShellScriptBin "biome-relay" ''
+            cd "$PWD/apps/relay"
+            exec ${pkgs.biome}/bin/biome "$@"
+          '';
+
+          # Wrapper to run typecheck from apps/relay
+          # Skips if node_modules not installed (CI/fresh clone)
+          typecheckWrapper = pkgs.writeShellScriptBin "typecheck-relay" ''
+            cd "$PWD/apps/relay"
+            if [ ! -d "node_modules" ]; then
+              echo "Skipping typecheck: node_modules not installed"
+              exit 0
+            fi
+            exec ${pkgs.pnpm}/bin/pnpm typecheck
+          '';
         in
         {
           pre-commit.settings.hooks = {
@@ -46,6 +62,33 @@
               files = "\\.swift$";
               language = "system";
             };
+            biome-check = {
+              enable = true;
+              name = "biome-check";
+              description = "Lint TypeScript/JavaScript files";
+              entry = "${biomeWrapper}/bin/biome-relay check --no-errors-on-unmatched";
+              files = "^apps/relay/.*\\.(ts|tsx|js|jsx|json)$";
+              language = "system";
+              pass_filenames = false;
+            };
+            biome-format = {
+              enable = true;
+              name = "biome-format";
+              description = "Format TypeScript/JavaScript files";
+              entry = "${biomeWrapper}/bin/biome-relay check --write --no-errors-on-unmatched";
+              files = "^apps/relay/.*\\.(ts|tsx|js|jsx|json)$";
+              language = "system";
+              pass_filenames = false;
+            };
+            relay-typecheck = {
+              enable = true;
+              name = "relay-typecheck";
+              description = "Type check relay app";
+              entry = "${typecheckWrapper}/bin/typecheck-relay";
+              files = "^apps/relay/.*\\.tsx?$";
+              language = "system";
+              pass_filenames = false;
+            };
           };
 
           devShells.default = pkgs.mkShellNoCC {
@@ -55,6 +98,8 @@
               pkgs.gnumake
               pkgs.nodejs_22
               pkgs.pnpm
+              pkgs.biome
+              pkgs.pre-commit
             ];
 
             shellHook = ''
