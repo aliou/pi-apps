@@ -51,26 +51,26 @@ export default function AppLayout() {
       <aside
         data-mobile-open={mobileOpen || undefined}
         className={cn(
-          "flex shrink-0 flex-col bg-(--color-bg-deep) transition-all duration-200 ease-in-out",
+          "flex shrink-0 flex-col bg-bg-deep transition-all duration-200 ease-in-out",
           // mobile: fixed drawer
           "fixed inset-y-0 left-0 z-40 w-64 -translate-x-full shadow-xl",
           "data-[mobile-open]:translate-x-0",
           // desktop: static, collapsible
-          "md:static md:z-auto md:translate-x-0 md:shadow-none md:border-r md:border-(--color-border)",
+          "md:static md:z-auto md:translate-x-0 md:shadow-none md:border-r md:border-border",
           collapsed ? "md:w-14" : "md:w-64",
         )}
       >
         {/* ── Header: expanded ── */}
         <div
           className={cn(
-            "shrink-0 border-b border-(--color-border)",
+            "shrink-0 border-b border-border",
             collapsed && "md:hidden",
           )}
         >
           <div className="flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-3">
               <Logo variant="accent" className="size-6 shrink-0" />
-              <span className="text-base font-semibold tracking-wide text-(--color-fg)">
+              <span className="text-base font-semibold tracking-wide text-fg">
                 Pi Relay
               </span>
             </div>
@@ -79,7 +79,7 @@ export default function AppLayout() {
             <button
               type="button"
               onClick={toggle}
-              className="hidden rounded-md p-1.5 text-(--color-muted) transition-colors hover:bg-(--color-surface) hover:text-(--color-fg) md:block"
+              className="hidden rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-fg md:block"
               title="Collapse sidebar"
             >
               <SidebarSimpleIcon className="size-4" />
@@ -89,7 +89,7 @@ export default function AppLayout() {
             <button
               type="button"
               onClick={() => setMobileOpen(false)}
-              className="rounded-md p-1.5 text-(--color-muted) transition-colors hover:bg-(--color-surface) hover:text-(--color-fg) md:hidden"
+              className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-fg md:hidden"
               aria-label="Close sidebar"
             >
               <XIcon className="size-4" />
@@ -100,7 +100,7 @@ export default function AppLayout() {
         {/* ── Header: collapsed (desktop only) ── */}
         <div
           className={cn(
-            "hidden shrink-0 flex-col items-center gap-3 border-b border-(--color-border) px-2 py-4",
+            "hidden shrink-0 flex-col items-center gap-3 border-b border-border px-2 py-4",
             collapsed && "md:flex",
           )}
         >
@@ -108,7 +108,7 @@ export default function AppLayout() {
           <button
             type="button"
             onClick={toggle}
-            className="rounded-md p-1.5 text-(--color-muted) transition-colors hover:bg-(--color-surface) hover:text-(--color-fg)"
+            className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-fg"
             title="Expand sidebar"
           >
             <SidebarSimpleIcon className="size-4" />
@@ -136,8 +136,8 @@ export default function AppLayout() {
                   collapsed ? "md:justify-center md:p-2" : "",
                   "gap-3 px-3 py-2",
                   isActive
-                    ? "bg-(--color-surface) text-(--color-fg)"
-                    : "text-(--color-muted) hover:bg-(--color-surface)/50 hover:text-(--color-fg)",
+                    ? "bg-surface text-fg"
+                    : "text-muted hover:bg-surface/50 hover:text-fg",
                 )
               }
             >
@@ -162,14 +162,14 @@ export default function AppLayout() {
         {/* Footer */}
         <div
           className={cn(
-            "shrink-0 border-t border-(--color-border)",
+            "shrink-0 border-t border-border",
             collapsed ? "md:flex md:justify-center md:px-2 md:py-4" : "",
             "flex items-center justify-between px-5 py-4",
           )}
         >
           <p
             className={cn(
-              "font-mono text-xs text-(--color-muted)/50",
+              "font-mono text-xs text-muted/50",
               collapsed && "md:hidden",
             )}
           >
@@ -187,18 +187,16 @@ export default function AppLayout() {
       {/* ── Main content ── */}
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* Mobile top bar */}
-        <div className="flex shrink-0 items-center gap-3 border-b border-(--color-border) px-4 py-3 md:hidden">
+        <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 md:hidden">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="rounded-md p-1.5 text-(--color-muted) transition-colors hover:bg-(--color-surface) hover:text-(--color-fg)"
+            className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-fg"
             aria-label="Open sidebar"
           >
             <ListIcon className="size-5" />
           </button>
-          <span className="text-sm font-medium text-(--color-fg)">
-            {currentLabel}
-          </span>
+          <span className="text-sm font-medium text-fg">{currentLabel}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto">

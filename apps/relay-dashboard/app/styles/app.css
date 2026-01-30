@@ -12,16 +12,7 @@
   --color-abyssal: #1B2632;
   --color-abyssal-deep: #141D27;
 
-  /* Fonts */
-  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
-}
-
-/* ── Semantic tokens ── */
-
-:root {
-  color-scheme: light;
-
+  /* Semantic tokens (light defaults) */
   --color-bg: #F5F1EB;
   --color-bg-deep: #EDEAE4;
   --color-fg: #1B2632;
@@ -33,14 +24,21 @@
   --color-accent-fg: #FFFFFF;
   --color-destructive: #B93B3B;
   --color-border: #DDD7CC;
-
   --color-status-ok: #2D8A4E;
   --color-status-warn: #A07D1A;
   --color-status-err: #B93B3B;
   --color-status-info: #3B6ECC;
   --color-diff-add: #2D8A4E;
   --color-diff-del: #B93B3B;
+
+  /* Fonts */
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 }
+
+/* ── Dark mode overrides ── */
+
+:root { color-scheme: light; }
 
 .dark {
   color-scheme: dark;
@@ -56,7 +54,6 @@
   --color-accent-fg: #1B2632;
   --color-destructive: #C75D5D;
   --color-border: #263344;
-
   --color-status-ok: #5CB870;
   --color-status-warn: #D4A843;
   --color-status-err: #C75D5D;

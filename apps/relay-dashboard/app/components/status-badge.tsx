@@ -9,21 +9,21 @@ type Status =
   | "deleted";
 
 const dotColors: Record<Status, string> = {
-  creating: "bg-(--color-status-info)",
-  ready: "bg-(--color-status-ok)",
-  running: "bg-(--color-accent)",
-  stopped: "bg-(--color-muted)/40",
-  error: "bg-(--color-status-err)",
-  deleted: "bg-(--color-muted)/20",
+  creating: "bg-status-info",
+  ready: "bg-status-ok",
+  running: "bg-accent",
+  stopped: "bg-muted/40",
+  error: "bg-status-err",
+  deleted: "bg-muted/20",
 };
 
 const badgeStyles: Record<Status, string> = {
-  creating: "bg-(--color-status-info)/10 text-(--color-status-info)",
-  ready: "bg-(--color-status-ok)/10 text-(--color-status-ok)",
-  running: "bg-(--color-accent)/10 text-(--color-accent)",
-  stopped: "bg-(--color-muted)/10 text-(--color-muted)",
-  error: "bg-(--color-status-err)/10 text-(--color-status-err)",
-  deleted: "bg-(--color-muted)/10 text-(--color-muted)/60",
+  creating: "bg-status-info/10 text-status-info",
+  ready: "bg-status-ok/10 text-status-ok",
+  running: "bg-accent/10 text-accent",
+  stopped: "bg-muted/10 text-muted",
+  error: "bg-status-err/10 text-status-err",
+  deleted: "bg-muted/10 text-muted/60",
 };
 
 interface StatusDotProps {

@@ -44,40 +44,38 @@ export function ConnectionGate({ children }: ConnectionGateProps) {
   if (status === "ok") return <>{children}</>;
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-(--color-bg)">
+    <div className="flex h-screen flex-col items-center justify-center bg-bg">
       <div className="flex max-w-md flex-col items-center text-center">
         <Logo variant="muted" className="mb-6 size-10" />
 
         {status === "checking" && (
           <>
-            <CircleNotchIcon className="mb-4 size-8 animate-spin text-(--color-muted)" />
-            <p className="text-sm text-(--color-muted)">
-              Connecting to relay server...
-            </p>
+            <CircleNotchIcon className="mb-4 size-8 animate-spin text-muted" />
+            <p className="text-sm text-muted">Connecting to relay server...</p>
           </>
         )}
 
         {status === "no-url" && (
           <>
             <WarningCircleIcon
-              className="mb-4 size-8 text-(--color-status-warn)"
+              className="mb-4 size-8 text-status-warn"
               weight="fill"
             />
-            <h1 className="mb-2 text-lg font-semibold text-(--color-fg)">
+            <h1 className="mb-2 text-lg font-semibold text-fg">
               Server not configured
             </h1>
-            <p className="mb-5 text-sm text-(--color-muted)">
+            <p className="mb-5 text-sm text-muted">
               Set{" "}
-              <code className="rounded bg-(--color-surface) px-1.5 py-0.5 font-mono text-xs text-(--color-fg)">
+              <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-fg">
                 VITE_RELAY_URL
               </code>{" "}
               in your{" "}
-              <code className="rounded bg-(--color-surface) px-1.5 py-0.5 font-mono text-xs text-(--color-fg)">
+              <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-fg">
                 .env
               </code>{" "}
               file and restart the dev server.
             </p>
-            <pre className="w-full rounded-lg bg-(--color-surface) px-4 py-3 text-left font-mono text-xs text-(--color-muted)">
+            <pre className="w-full rounded-lg bg-surface px-4 py-3 text-left font-mono text-xs text-muted">
               VITE_RELAY_URL=http://localhost:31415
             </pre>
           </>
@@ -85,17 +83,14 @@ export function ConnectionGate({ children }: ConnectionGateProps) {
 
         {status === "unreachable" && (
           <>
-            <PlugsIcon
-              className="mb-4 size-8 text-(--color-status-err)"
-              weight="fill"
-            />
-            <h1 className="mb-2 text-lg font-semibold text-(--color-fg)">
+            <PlugsIcon className="mb-4 size-8 text-status-err" weight="fill" />
+            <h1 className="mb-2 text-lg font-semibold text-fg">
               Server unreachable
             </h1>
-            <p className="mb-2 text-sm text-(--color-muted)">
+            <p className="mb-2 text-sm text-muted">
               Could not connect to the relay server at:
             </p>
-            <code className="mb-5 rounded-lg bg-(--color-surface) px-3 py-2 font-mono text-xs text-(--color-fg)">
+            <code className="mb-5 rounded-lg bg-surface px-3 py-2 font-mono text-xs text-fg">
               {RELAY_URL}
             </code>
             <button
@@ -103,7 +98,7 @@ export function ConnectionGate({ children }: ConnectionGateProps) {
               onClick={retry}
               className={cn(
                 "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                "bg-(--color-accent) text-(--color-accent-fg) hover:bg-(--color-accent-hover)",
+                "bg-accent text-accent-fg hover:bg-accent-hover",
               )}
             >
               Retry

@@ -35,7 +35,7 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
       <div>
         <label
           htmlFor="token"
-          className="mb-2 block text-sm font-medium text-(--color-fg)"
+          className="mb-2 block text-sm font-medium text-fg"
         >
           Personal Access Token
         </label>
@@ -46,9 +46,9 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
           onChange={(e) => setToken(e.target.value)}
           placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
           className={cn(
-            "w-full rounded-lg border border-(--color-border) bg-(--color-bg) px-3.5 py-2.5 font-mono text-sm",
-            "text-(--color-fg) placeholder:text-(--color-muted)/40",
-            "focus:border-(--color-accent) focus:outline-hidden focus:ring-1 focus:ring-(--color-accent)",
+            "w-full rounded-lg border border-border bg-bg px-3.5 py-2.5 font-mono text-sm",
+            "text-fg placeholder:text-muted/40",
+            "focus:border-accent focus:outline-hidden focus:ring-1 focus:ring-accent",
             "transition-colors",
           )}
           disabled={isLoading}
@@ -56,14 +56,14 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-(--color-status-err)">
+        <div className="flex items-center gap-2 text-sm text-status-err">
           <WarningCircleIcon className="size-4 shrink-0" weight="fill" />
           {error}
         </div>
       )}
 
       {success && (
-        <div className="flex items-center gap-2 text-sm text-(--color-status-ok)">
+        <div className="flex items-center gap-2 text-sm text-status-ok">
           <CheckCircleIcon className="size-4 shrink-0" weight="fill" />
           Token saved
         </div>
@@ -74,8 +74,8 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
         disabled={isLoading || !token.trim()}
         className={cn(
           "inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition-colors",
-          "bg-(--color-accent) text-(--color-accent-fg)",
-          "hover:bg-(--color-accent-hover)",
+          "bg-accent text-accent-fg",
+          "hover:bg-accent-hover",
           "disabled:cursor-not-allowed disabled:opacity-40",
         )}
       >

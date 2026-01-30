@@ -38,10 +38,8 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-(--color-fg)">Sessions</h1>
-          <p className="mt-1 text-sm text-(--color-muted)">
-            Active and recent sessions
-          </p>
+          <h1 className="text-xl font-semibold text-fg">Sessions</h1>
+          <p className="mt-1 text-sm text-muted">Active and recent sessions</p>
         </div>
         <button
           type="button"
@@ -49,7 +47,7 @@ export default function DashboardPage() {
           disabled={loading}
           className={cn(
             "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-            "text-(--color-muted) hover:bg-(--color-surface) hover:text-(--color-fg)",
+            "text-muted hover:bg-surface hover:text-fg",
             "disabled:opacity-40",
           )}
         >
@@ -62,22 +60,20 @@ export default function DashboardPage() {
 
       {/* Error */}
       {error && (
-        <div className="mb-6 rounded-lg border border-(--color-status-err)/20 bg-(--color-status-err)/5 px-4 py-3 text-sm text-(--color-status-err)">
+        <div className="mb-6 rounded-lg border border-status-err/20 bg-status-err/5 px-4 py-3 text-sm text-status-err">
           {error}
         </div>
       )}
 
       {/* Content */}
       {sessions.length === 0 && !loading ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) py-24">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-24">
           <TerminalWindowIcon
-            className="mb-4 size-12 text-(--color-muted)/25"
+            className="mb-4 size-12 text-muted/25"
             weight="duotone"
           />
-          <p className="mb-1 text-base font-medium text-(--color-fg)">
-            No sessions yet
-          </p>
-          <p className="text-sm text-(--color-muted)">
+          <p className="mb-1 text-base font-medium text-fg">No sessions yet</p>
+          <p className="text-sm text-muted">
             Sessions appear here when clients connect.
           </p>
         </div>

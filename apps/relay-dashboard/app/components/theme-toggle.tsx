@@ -13,7 +13,7 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-(--color-surface) p-0.5">
+    <div className="flex items-center gap-0.5 rounded-lg bg-surface p-0.5">
       {options.map((opt) => {
         const active = theme === opt.value;
         return (
@@ -24,9 +24,7 @@ export function ThemeToggle() {
             title={opt.label}
             className={cn(
               "rounded-md p-1.5 transition-colors",
-              active
-                ? "bg-(--color-accent) text-(--color-accent-fg)"
-                : "text-(--color-muted) hover:text-(--color-fg)",
+              active ? "bg-accent text-accent-fg" : "text-muted hover:text-fg",
             )}
           >
             <opt.icon
@@ -59,7 +57,7 @@ export function ThemeToggleCycler() {
       type="button"
       onClick={() => setTheme(next)}
       title={`Theme: ${current.label}`}
-      className="rounded-md bg-(--color-surface) p-1.5 text-(--color-accent) transition-colors hover:bg-(--color-surface-hover)"
+      className="rounded-md bg-surface p-1.5 text-accent transition-colors hover:bg-surface-hover"
     >
       <current.icon className="size-3.5" weight="fill" />
     </button>

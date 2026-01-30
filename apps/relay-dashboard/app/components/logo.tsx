@@ -6,9 +6,9 @@ interface LogoProps {
 }
 
 const fillMap = {
-  accent: "fill-(--color-accent)",
-  light: "fill-(--color-fg)",
-  muted: "fill-(--color-muted)",
+  accent: "fill-accent",
+  light: "fill-fg",
+  muted: "fill-muted",
 };
 
 export function Logo({ className, variant = "accent" }: LogoProps) {

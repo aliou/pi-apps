@@ -18,12 +18,12 @@ export function SessionItem({ session, className }: SessionItemProps) {
     <div
       className={cn(
         "group flex items-center gap-3.5 rounded-lg px-3.5 py-3 transition-colors",
-        "hover:bg-(--color-surface)",
+        "hover:bg-surface",
         className,
       )}
     >
       {/* Icon */}
-      <div className="text-(--color-muted)">
+      <div className="text-muted">
         {isCode ? (
           <CodeIcon className="size-[18px]" weight="bold" />
         ) : (
@@ -34,16 +34,16 @@ export function SessionItem({ session, className }: SessionItemProps) {
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-(--color-fg)">
+          <span className="truncate text-sm font-medium text-fg">
             {displayName}
           </span>
           <StatusDot status={session.status} />
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-xs text-(--color-muted)">
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
           {session.repoId && (
             <>
               <span className="truncate font-mono">{session.repoId}</span>
-              <span className="text-(--color-muted)/30">~</span>
+              <span className="text-muted/30">~</span>
             </>
           )}
           <span className="shrink-0">{timeAgo}</span>
@@ -52,7 +52,7 @@ export function SessionItem({ session, className }: SessionItemProps) {
 
       {/* Model badge */}
       {session.currentModelId && (
-        <span className="shrink-0 rounded-md bg-(--color-surface) px-2 py-1 font-mono text-xs text-(--color-muted) group-hover:bg-(--color-surface-hover)">
+        <span className="shrink-0 rounded-md bg-surface px-2 py-1 font-mono text-xs text-muted group-hover:bg-surface-hover">
           {session.currentModelId}
         </span>
       )}
