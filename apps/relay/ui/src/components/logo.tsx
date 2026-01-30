@@ -7,7 +7,7 @@ interface LogoProps {
 
 const fillMap = {
   accent: "fill-(--color-accent)",
-  light: "fill-(--color-foreground)",
+  light: "fill-(--color-fg)",
   muted: "fill-(--color-muted)",
 };
 

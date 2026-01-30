@@ -1,57 +1,81 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  /* MP072 palette */
+  /* Static palette (MP072) -- generates utilities like bg-palladian */
   --color-palladian: #EEE9DF;
   --color-oatmeal: #C9C1B1;
   --color-blue-fantastic: #2C3B4D;
   --color-burning-flame: #FFB162;
   --color-truffle: #A35139;
   --color-abyssal: #1B2632;
-
-  /* Extended shades */
   --color-abyssal-deep: #141D27;
-  --color-blue-fantastic-light: #37495D;
-  --color-burning-flame-dim: #CC8D4E;
-
-  /* Semantic tokens */
-  --color-background: var(--color-abyssal);
-  --color-foreground: var(--color-palladian);
-  --color-surface: var(--color-blue-fantastic);
-  --color-surface-hover: var(--color-blue-fantastic-light);
-  --color-muted: var(--color-oatmeal);
-  --color-accent: var(--color-burning-flame);
-  --color-accent-dim: var(--color-burning-flame-dim);
-  --color-destructive: var(--color-truffle);
-  --color-border: #263344;
-
-  /* Status */
-  --color-status-ok: #5CB870;
-  --color-status-warn: #D4A843;
-  --color-status-err: #C75D5D;
-  --color-status-info: #5B8FC7;
-  --color-diff-add: #5CB870;
-  --color-diff-del: #C75D5D;
 
   /* Fonts */
   --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 }
 
-@layer base {
-  :root {
-    color-scheme: dark;
-  }
+/* ── Semantic tokens ── */
 
+:root {
+  color-scheme: light;
+
+  --color-bg: #F5F1EB;
+  --color-bg-deep: #EDEAE4;
+  --color-fg: #1B2632;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #F0ECE5;
+  --color-muted: #7A7269;
+  --color-accent: #A35139;
+  --color-accent-hover: #8C4531;
+  --color-accent-fg: #FFFFFF;
+  --color-destructive: #B93B3B;
+  --color-border: #DDD7CC;
+
+  --color-status-ok: #2D8A4E;
+  --color-status-warn: #A07D1A;
+  --color-status-err: #B93B3B;
+  --color-status-info: #3B6ECC;
+  --color-diff-add: #2D8A4E;
+  --color-diff-del: #B93B3B;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --color-bg: #1B2632;
+  --color-bg-deep: #141D27;
+  --color-fg: #EEE9DF;
+  --color-surface: #2C3B4D;
+  --color-surface-hover: #37495D;
+  --color-muted: #C9C1B1;
+  --color-accent: #FFB162;
+  --color-accent-hover: #CC8D4E;
+  --color-accent-fg: #1B2632;
+  --color-destructive: #C75D5D;
+  --color-border: #263344;
+
+  --color-status-ok: #5CB870;
+  --color-status-warn: #D4A843;
+  --color-status-err: #C75D5D;
+  --color-status-info: #5B8FC7;
+  --color-diff-add: #5CB870;
+  --color-diff-del: #C75D5D;
+}
+
+/* ── Base ── */
+
+@layer base {
   body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
+    background-color: var(--color-bg);
+    color: var(--color-fg);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Scrollbar styling */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -62,11 +86,11 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--color-blue-fantastic-light);
+    background: var(--color-border);
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-oatmeal);
+    background: var(--color-muted);
   }
 }

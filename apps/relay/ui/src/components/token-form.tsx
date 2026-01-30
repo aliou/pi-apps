@@ -27,9 +27,9 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <div>
-        <label htmlFor="token" className="mb-1.5 block text-sm font-medium text-(--color-foreground)">
+        <label htmlFor="token" className="mb-2 block text-sm font-medium text-(--color-fg)">
           Personal Access Token
         </label>
         <input
@@ -39,8 +39,8 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
           onChange={(e) => setToken(e.target.value)}
           placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
           className={cn(
-            "w-full rounded-md border border-(--color-border) bg-(--color-background) px-3 py-2 font-mono text-sm",
-            "text-(--color-foreground) placeholder:text-(--color-muted)/40",
+            "w-full rounded-lg border border-(--color-border) bg-(--color-bg) px-3.5 py-2.5 font-mono text-sm",
+            "text-(--color-fg) placeholder:text-(--color-muted)/40",
             "focus:border-(--color-accent) focus:outline-hidden focus:ring-1 focus:ring-(--color-accent)",
             "transition-colors",
           )}
@@ -66,9 +66,9 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
         type="submit"
         disabled={isLoading || !token.trim()}
         className={cn(
-          "inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
-          "bg-(--color-accent) text-(--color-abyssal)",
-          "hover:bg-(--color-accent-dim)",
+          "inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition-colors",
+          "bg-(--color-accent) text-(--color-accent-fg)",
+          "hover:bg-(--color-accent-hover)",
           "disabled:cursor-not-allowed disabled:opacity-40",
         )}
       >

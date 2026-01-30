@@ -29,7 +29,7 @@ export function StatusDot({ status, className }: StatusDotProps) {
   return (
     <span
       className={cn(
-        "inline-block size-1.5 shrink-0 rounded-full",
+        "inline-block size-2 shrink-0 rounded-full",
         dotColors[status],
         status === "running" && "animate-pulse",
         className,
@@ -47,7 +47,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
         badgeStyles[status],
         className,
       )}

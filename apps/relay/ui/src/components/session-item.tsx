@@ -17,7 +17,7 @@ export function SessionItem({ session, className }: SessionItemProps) {
   return (
     <div
       className={cn(
-        "group flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors",
+        "group flex items-center gap-3.5 rounded-lg px-3.5 py-3 transition-colors",
         "hover:bg-(--color-surface)",
         className,
       )}
@@ -25,25 +25,25 @@ export function SessionItem({ session, className }: SessionItemProps) {
       {/* Icon */}
       <div className="text-(--color-muted)">
         {isCode ? (
-          <CodeIcon className="size-4" weight="bold" />
+          <CodeIcon className="size-[18px]" weight="bold" />
         ) : (
-          <ChatCircleIcon className="size-4" weight="bold" />
+          <ChatCircleIcon className="size-[18px]" weight="bold" />
         )}
       </div>
 
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-(--color-foreground)">
+          <span className="truncate text-sm font-medium text-(--color-fg)">
             {displayName}
           </span>
           <StatusDot status={session.status} />
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-(--color-muted)">
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-(--color-muted)">
           {session.repoId && (
             <>
               <span className="truncate font-mono">{session.repoId}</span>
-              <span className="text-(--color-muted)/40">~</span>
+              <span className="text-(--color-muted)/30">~</span>
             </>
           )}
           <span className="shrink-0">{timeAgo}</span>
@@ -52,7 +52,7 @@ export function SessionItem({ session, className }: SessionItemProps) {
 
       {/* Model badge */}
       {session.currentModelId && (
-        <span className="shrink-0 rounded bg-(--color-surface) px-1.5 py-0.5 font-mono text-xs text-(--color-muted) group-hover:bg-(--color-surface-hover)">
+        <span className="shrink-0 rounded-md bg-(--color-surface) px-2 py-1 font-mono text-xs text-(--color-muted) group-hover:bg-(--color-surface-hover)">
           {session.currentModelId}
         </span>
       )}

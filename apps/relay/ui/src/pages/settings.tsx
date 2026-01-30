@@ -3,30 +3,32 @@ import { FolderIcon, InfoIcon } from "@phosphor-icons/react";
 export function SettingsPage() {
   return (
     <div className="max-w-2xl">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold text-(--color-foreground)">Settings</h1>
-        <p className="text-sm text-(--color-muted)">Server configuration and information.</p>
+      <div className="mb-8">
+        <h1 className="text-xl font-semibold text-(--color-fg)">Settings</h1>
+        <p className="mt-1 text-sm text-(--color-muted)">
+          Server configuration and information.
+        </p>
       </div>
 
       {/* Server info */}
-      <div className="rounded-lg border border-(--color-border) bg-(--color-surface)/50 p-4">
-        <h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-(--color-foreground)">
-          <InfoIcon className="size-4" weight="bold" />
+      <div className="rounded-xl border border-(--color-border) bg-(--color-surface)/50 p-5">
+        <h2 className="mb-5 flex items-center gap-2 text-sm font-semibold text-(--color-fg)">
+          <InfoIcon className="size-[18px]" weight="bold" />
           Server Information
         </h2>
 
-        <dl className="space-y-4">
+        <dl className="space-y-5">
           <div>
-            <dt className="text-xs text-(--color-muted)">Version</dt>
-            <dd className="font-mono text-sm text-(--color-foreground)">0.1.0</dd>
+            <dt className="text-xs font-medium text-(--color-muted)">Version</dt>
+            <dd className="mt-1 font-mono text-sm text-(--color-fg)">0.1.0</dd>
           </div>
 
           <div>
-            <dt className="mb-1 flex items-center gap-1.5 text-xs text-(--color-muted)">
-              <FolderIcon className="size-3.5" />
+            <dt className="mb-1.5 flex items-center gap-2 text-xs font-medium text-(--color-muted)">
+              <FolderIcon className="size-4" />
               Data Directory
             </dt>
-            <dd className="rounded-md bg-(--color-surface) px-2.5 py-1.5 font-mono text-xs text-(--color-muted)">
+            <dd className="rounded-lg bg-(--color-surface) px-3 py-2 font-mono text-xs text-(--color-muted)">
               ~/.local/share/pi-relay
             </dd>
           </div>
@@ -34,8 +36,8 @@ export function SettingsPage() {
       </div>
 
       {/* Placeholder */}
-      <div className="mt-6 rounded-lg border border-dashed border-(--color-border) py-12 text-center">
-        <p className="text-sm text-(--color-muted)/60">
+      <div className="mt-8 rounded-xl border border-dashed border-(--color-border) py-14 text-center">
+        <p className="text-sm text-(--color-muted)/50">
           Default model, LLM API keys, and other settings will be available in a future update.
         </p>
       </div>

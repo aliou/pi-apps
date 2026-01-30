@@ -36,43 +36,43 @@ export function DashboardPage() {
   return (
     <div>
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-(--color-foreground)">Sessions</h1>
-          <p className="text-sm text-(--color-muted)">Active and recent sessions</p>
+          <h1 className="text-xl font-semibold text-(--color-fg)">Sessions</h1>
+          <p className="mt-1 text-sm text-(--color-muted)">Active and recent sessions</p>
         </div>
         <button
           onClick={fetchSessions}
           disabled={loading}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-            "text-(--color-muted) hover:bg-(--color-surface) hover:text-(--color-foreground)",
+            "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            "text-(--color-muted) hover:bg-(--color-surface) hover:text-(--color-fg)",
             "disabled:opacity-40",
           )}
         >
-          <ArrowsClockwiseIcon className={cn("size-3.5", loading && "animate-spin")} />
+          <ArrowsClockwiseIcon className={cn("size-4", loading && "animate-spin")} />
           Refresh
         </button>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mb-4 rounded-md border border-(--color-status-err)/20 bg-(--color-status-err)/5 px-4 py-3 text-sm text-(--color-status-err)">
+        <div className="mb-6 rounded-lg border border-(--color-status-err)/20 bg-(--color-status-err)/5 px-4 py-3 text-sm text-(--color-status-err)">
           {error}
         </div>
       )}
 
       {/* Content */}
       {sessions.length === 0 && !loading ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-(--color-border) py-20">
-          <TerminalWindowIcon className="mb-3 size-10 text-(--color-muted)/30" weight="duotone" />
-          <p className="mb-1 text-sm font-medium text-(--color-foreground)">No sessions yet</p>
-          <p className="text-xs text-(--color-muted)">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) py-24">
+          <TerminalWindowIcon className="mb-4 size-12 text-(--color-muted)/25" weight="duotone" />
+          <p className="mb-1 text-base font-medium text-(--color-fg)">No sessions yet</p>
+          <p className="text-sm text-(--color-muted)">
             Sessions appear here when clients connect.
           </p>
         </div>
       ) : (
-        <div className="-mx-3 flex flex-col">
+        <div className="-mx-3.5 flex flex-col">
           {sessions.map((session) => (
             <SessionItem key={session.id} session={session} />
           ))}
