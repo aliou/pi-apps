@@ -45,7 +45,7 @@ pnpm --filter pi-relay-dashboard dev
 - `apps/desktop/` - macOS app, XcodeGen project.yml
 - `apps/mobile/` - iOS app, connects to relay via WebSocket
 - `apps/relay-server/` - Relay API server (Node.js/Hono/SQLite)
-- `apps/relay-dashboard/` - Relay admin UI (React/Vite/Tailwind)
+- `apps/relay-dashboard/` - Relay admin UI (React Router v7 SPA/Vite/Tailwind)
 - `packages/pi-core/` - RPC types, transport layer (Foundation only)
 - `packages/pi-ui/` - Shared UI components (SwiftUI)
 
