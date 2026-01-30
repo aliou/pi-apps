@@ -1,0 +1,4 @@
+packages:
+  - "apps/server"
+  - "apps/relay"
+  - "apps/relay/ui"

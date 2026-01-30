@@ -22,7 +22,6 @@
     "hono": "^4"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.0.6",
     "@types/node": "^22",
     "@typescript/native-preview": "^7.0.0-dev.20250610",
     "esbuild": "^0.25.2",

@@ -36,11 +36,18 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  async function runXcode(args: string[], signal?: AbortSignal): Promise<XcodeResult> {
-    const result = await pi.exec("bash", ["-c", `${XCODECONTROL} ${args.join(" ")}`], {
-      signal,
-      timeout: 300_000, // 5 min for builds
-    });
+  async function runXcode(
+    args: string[],
+    signal?: AbortSignal,
+  ): Promise<XcodeResult> {
+    const result = await pi.exec(
+      "bash",
+      ["-c", `${XCODECONTROL} ${args.join(" ")}`],
+      {
+        signal,
+        timeout: 300_000, // 5 min for builds
+      },
+    );
     return {
       stdout: result.stdout,
       stderr: result.stderr,
@@ -60,7 +67,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "xcode_health_check",
     label: "Xcode Health Check",
-    description: "Check Xcode environment: installation, XCLogParser, JXA availability",
+    description:
+      "Check Xcode environment: installation, XCLogParser, JXA availability",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _onUpdate, _ctx, signal) {
       const result = await runXcode(["health-check"], signal);
@@ -77,10 +85,18 @@ export default function (pi: ExtensionAPI) {
     label: "Xcode Build",
     description: "Build an Xcode project or workspace",
     parameters: Type.Object({
-      xcodeproj: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
+      xcodeproj: Type.Optional(
+        Type.String({ description: "Path to .xcodeproj" }),
+      ),
+      workspace: Type.Optional(
+        Type.String({ description: "Path to .xcworkspace" }),
+      ),
       scheme: Type.Optional(Type.String({ description: "Scheme to build" })),
-      destination: Type.Optional(Type.String({ description: "Build destination (e.g., 'iPhone 16 Simulator')" })),
+      destination: Type.Optional(
+        Type.String({
+          description: "Build destination (e.g., 'iPhone 16 Simulator')",
+        }),
+      ),
     }),
     async execute(_toolCallId, params, onUpdate, _ctx, signal) {
       const args = ["build"];
@@ -104,8 +120,12 @@ export default function (pi: ExtensionAPI) {
     label: "Xcode Clean",
     description: "Clean build artifacts for an Xcode project",
     parameters: Type.Object({
-      xcodeproj: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
+      xcodeproj: Type.Optional(
+        Type.String({ description: "Path to .xcodeproj" }),
+      ),
+      workspace: Type.Optional(
+        Type.String({ description: "Path to .xcworkspace" }),
+      ),
     }),
     async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
       const args = ["clean"];
@@ -126,10 +146,16 @@ export default function (pi: ExtensionAPI) {
     label: "Xcode Test",
     description: "Run tests for an Xcode project",
     parameters: Type.Object({
-      xcodeproj: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
+      xcodeproj: Type.Optional(
+        Type.String({ description: "Path to .xcodeproj" }),
+      ),
+      workspace: Type.Optional(
+        Type.String({ description: "Path to .xcworkspace" }),
+      ),
       scheme: Type.Optional(Type.String({ description: "Scheme to test" })),
-      destination: Type.Optional(Type.String({ description: "Test destination" })),
+      destination: Type.Optional(
+        Type.String({ description: "Test destination" }),
+      ),
     }),
     async execute(_toolCallId, params, onUpdate, _ctx, signal) {
       const args = ["test"];
@@ -153,8 +179,12 @@ export default function (pi: ExtensionAPI) {
     label: "Xcode Run",
     description: "Build and run an Xcode project on a simulator or device",
     parameters: Type.Object({
-      xcodeproj: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
+      xcodeproj: Type.Optional(
+        Type.String({ description: "Path to .xcodeproj" }),
+      ),
+      workspace: Type.Optional(
+        Type.String({ description: "Path to .xcworkspace" }),
+      ),
       scheme: Type.Optional(Type.String({ description: "Scheme to run" })),
     }),
     async execute(_toolCallId, params, onUpdate, _ctx, signal) {
@@ -163,7 +193,9 @@ export default function (pi: ExtensionAPI) {
       if (params.workspace) args.push("--workspace", params.workspace);
       if (params.scheme) args.push("--scheme", params.scheme);
 
-      onUpdate?.({ content: [{ type: "text", text: "Building and running..." }] });
+      onUpdate?.({
+        content: [{ type: "text", text: "Building and running..." }],
+      });
       const result = await runXcode(args, signal);
       return {
         content: [{ type: "text", text: formatResult(result) }],
@@ -178,8 +210,12 @@ export default function (pi: ExtensionAPI) {
     label: "Xcode Get Schemes",
     description: "List available schemes in an Xcode project or workspace",
     parameters: Type.Object({
-      xcodeproj: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
+      xcodeproj: Type.Optional(
+        Type.String({ description: "Path to .xcodeproj" }),
+      ),
+      workspace: Type.Optional(
+        Type.String({ description: "Path to .xcworkspace" }),
+      ),
     }),
     async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
       const args = ["get-schemes"];
@@ -200,8 +236,12 @@ export default function (pi: ExtensionAPI) {
     label: "Xcode Get Destinations",
     description: "List available run destinations (simulators and devices)",
     parameters: Type.Object({
-      xcodeproj: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
+      xcodeproj: Type.Optional(
+        Type.String({ description: "Path to .xcodeproj" }),
+      ),
+      workspace: Type.Optional(
+        Type.String({ description: "Path to .xcworkspace" }),
+      ),
     }),
     async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
       const args = ["get-run-destinations"];
@@ -222,8 +262,12 @@ export default function (pi: ExtensionAPI) {
     label: "Xcode Stop",
     description: "Stop the currently running app",
     parameters: Type.Object({
-      xcodeproj: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
+      xcodeproj: Type.Optional(
+        Type.String({ description: "Path to .xcodeproj" }),
+      ),
+      workspace: Type.Optional(
+        Type.String({ description: "Path to .xcworkspace" }),
+      ),
     }),
     async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
       const args = ["stop"];

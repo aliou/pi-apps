@@ -24,21 +24,20 @@ make test     # run tests
 make xcode    # open in xcode
 ```
 
-Server (TypeScript/Node.js):
+TypeScript apps are managed as a pnpm workspace with turbo:
 ```bash
-cd apps/server && pnpm install
-pnpm run dev   # hot reload
-pnpm run build # production build
-pnpm run lint  # biome
-pnpm run test  # vitest
+pnpm install        # install all dependencies (run from repo root)
+pnpm dev            # run all TS apps (hot reload)
+pnpm build          # build all TS apps
+pnpm lint           # lint all (biome)
+pnpm typecheck      # typecheck all (tsc/tsgo)
+pnpm test           # test all (vitest)
 ```
 
-Relay (WIP - will replace server):
+To run a single app:
 ```bash
-cd apps/relay && pnpm install
-pnpm run dev   # hot reload
-pnpm test      # vitest
-pnpm run lint  # biome
+pnpm --filter pi-relay dev
+pnpm --filter pi-server dev
 ```
 
 ## Structure
@@ -70,7 +69,7 @@ The mobile app exposes native iOS capabilities as tools the LLM can invoke. Tool
 
 **Swift:** Swift 6, SwiftLint enforced. Use `Theme.*` colors from PiUI. Types should be `Sendable`. Use `Self` in static refs.
 
-**TypeScript:** Biome for lint/format.
+**TypeScript:** pnpm workspace monorepo with turbo. Biome for lint/format (config at repo root, sub-packages extend with `"root": false`). Turbo orchestrates build/dev/lint/typecheck/test across packages.
 
 ## Desktop App Paths
 

@@ -24,7 +24,11 @@
       ];
 
       perSystem =
-        { config, pkgs, ... }:
+        {
+          config,
+          pkgs,
+          ...
+        }:
         let
           xcodeWrapper = pkgs.xcodeenv.composeXcodeWrapper {
             versions = [ ];
@@ -34,22 +38,6 @@
             export DYLD_FRAMEWORK_PATH="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib"
             export PATH="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
             exec ${pkgs.swiftlint}/bin/swiftlint "$@"
-          '';
-          # Wrapper to run biome from apps/relay
-          biomeWrapper = pkgs.writeShellScriptBin "biome-relay" ''
-            cd "$PWD/apps/relay"
-            exec ${pkgs.biome}/bin/biome "$@"
-          '';
-
-          # Wrapper to run typecheck from apps/relay
-          # Skips if node_modules not installed (CI/fresh clone)
-          typecheckWrapper = pkgs.writeShellScriptBin "typecheck-relay" ''
-            cd "$PWD/apps/relay"
-            if [ ! -d "node_modules" ]; then
-              echo "Skipping typecheck: node_modules not installed"
-              exit 0
-            fi
-            exec ${pkgs.pnpm}/bin/pnpm typecheck
           '';
         in
         {
@@ -65,27 +53,18 @@
             biome-check = {
               enable = true;
               name = "biome-check";
-              description = "Lint TypeScript/JavaScript files";
-              entry = "${biomeWrapper}/bin/biome-relay check --no-errors-on-unmatched";
-              files = "^apps/relay/.*\\.(ts|tsx|js|jsx|json)$";
+              description = "Lint and format TypeScript/JavaScript files";
+              entry = "${pkgs.pnpm}/bin/pnpm exec biome check --no-errors-on-unmatched";
+              files = "\\.(ts|tsx|js|jsx|json|mjs)$";
               language = "system";
               pass_filenames = false;
             };
-            biome-format = {
+            ts-typecheck = {
               enable = true;
-              name = "biome-format";
-              description = "Format TypeScript/JavaScript files";
-              entry = "${biomeWrapper}/bin/biome-relay check --write --no-errors-on-unmatched";
-              files = "^apps/relay/.*\\.(ts|tsx|js|jsx|json)$";
-              language = "system";
-              pass_filenames = false;
-            };
-            relay-typecheck = {
-              enable = true;
-              name = "relay-typecheck";
-              description = "Type check relay app";
-              entry = "${typecheckWrapper}/bin/typecheck-relay";
-              files = "^apps/relay/.*\\.tsx?$";
+              name = "ts-typecheck";
+              description = "Type check TypeScript apps";
+              entry = "${pkgs.pnpm}/bin/pnpm exec turbo typecheck --filter=!pi-server";
+              files = "\\.(ts|tsx)$";
               language = "system";
               pass_filenames = false;
             };
@@ -98,7 +77,6 @@
               pkgs.gnumake
               pkgs.nodejs_22
               pkgs.pnpm
-              pkgs.biome
               pkgs.pre-commit
             ];
 
@@ -115,24 +93,24 @@
               export PI_RELAY_CONFIG_DIR="$PWD/.dev/relay/config"
               export PI_RELAY_CACHE_DIR="$PWD/.dev/relay/cache"
               export PI_RELAY_STATE_DIR="$PWD/.dev/relay/state"
-              
+
               echo ""
               echo "Pi Apps Development Environment"
               echo "================================"
               echo ""
+              echo "Setup:"
+              echo "  pnpm install  - Install all dependencies"
+              echo "  make setup    - First-time Swift/Xcode setup"
+              echo ""
               echo "Desktop/Mobile (Swift):"
-              echo "  make setup    - First-time setup"
               echo "  make xcode    - Open in Xcode"
               echo "  make build    - Build from command line"
               echo ""
-              echo "Server (TypeScript/Node.js):"
-              echo "  cd apps/server && pnpm install"
-              echo "  pnpm run dev   - Run with hot reload"
-              echo "  pnpm run build - Build for production"
-              echo ""
-              echo "Relay (dev dirs at .dev/relay/):"
-              echo "  cd apps/relay && pnpm install"
-              echo "  pnpm run dev   - Run with hot reload"
+              echo "TypeScript (monorepo):"
+              echo "  pnpm dev      - Run all apps"
+              echo "  pnpm build    - Build all apps"
+              echo "  pnpm lint     - Lint all apps"
+              echo "  pnpm test     - Test all apps"
               echo ""
             '';
           };

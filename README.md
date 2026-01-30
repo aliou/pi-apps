@@ -22,7 +22,10 @@ pi-apps/
 # enter nix shell (required for swift apps)
 nix develop
 
-# first-time setup
+# install all TypeScript dependencies
+pnpm install
+
+# first-time swift/xcode setup
 make setup
 
 # open in xcode
@@ -48,23 +51,23 @@ Connects to a pi-server instance via WebSocket. Cannot run pi locally (iOS limit
 
 WebSocket server that wraps pi sessions. Enables iOS and remote clients.
 
-```bash
-cd apps/server
-bun install
-bun run dev       # dev with hot reload
-bun run build     # standalone binary
-```
-
 ### Relay (WIP)
 
 Next-gen relay server. SQLite persistence, Drizzle ORM, admin UI. Will replace `apps/server/`.
 
+### TypeScript (monorepo)
+
+All TS apps are managed from the repo root via pnpm workspace + turbo:
+
 ```bash
-cd apps/relay
-pnpm install
-pnpm run dev      # dev with hot reload
-pnpm test         # run tests
+pnpm install      # install all dependencies
+pnpm dev          # run all apps (hot reload)
+pnpm build        # build all apps
+pnpm lint         # lint (biome)
+pnpm test         # test (vitest)
 ```
+
+Run a single app with `pnpm --filter pi-relay dev` or `pnpm --filter pi-server dev`.
 
 ## Configuration
 
