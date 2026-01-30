@@ -7,11 +7,11 @@ Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agen
 An attempt at creating native macOS/iOS clients for Pi - not just as a coding agent, but also as a general-purpose chat tool for mobile.
 
 **Architecture:**
-- **Mobile app** connects to a remote server via WebSocket. The server runs Pi as an RPC subprocess and bridges messages. Mobile cannot run Pi locally (iOS limitation).
+- **Mobile app** connects to the relay server via WebSocket. The relay runs Pi as an RPC subprocess and bridges messages. Mobile cannot run Pi locally (iOS limitation).
 - **Desktop app** has dual mode:
   - **Local mode:** Vendors and spawns the pi CLI directly, communicating via RPC over stdin/stdout
-  - **Remote mode:** Connects to a server via WebSocket, same as mobile
-- **Server** wraps Pi sessions, manages repos (cloned from GitHub), and exposes an RPC-over-WebSocket protocol for remote clients.
+  - **Remote mode:** Connects to the relay via WebSocket, same as mobile
+- **Relay** wraps Pi sessions, manages repos (cloned from GitHub), and exposes an RPC-over-WebSocket protocol for remote clients.
 
 ## Build
 
@@ -37,21 +37,19 @@ pnpm test           # test all (vitest)
 To run a single app:
 ```bash
 pnpm --filter pi-relay dev
-pnpm --filter pi-server dev
 ```
 
 ## Structure
 
 - `apps/desktop/` - macOS app, XcodeGen project.yml
-- `apps/mobile/` - iOS app, connects to server via WebSocket
-- `apps/relay/` - Relay server (Node.js/Hono/SQLite) - WIP replacement for server
-- `apps/server/` - WebSocket server (Bun/Hono)
+- `apps/mobile/` - iOS app, connects to relay via WebSocket
+- `apps/relay/` - Relay server (Node.js/Hono/SQLite)
 - `packages/pi-core/` - RPC types, transport layer (Foundation only)
 - `packages/pi-ui/` - Shared UI components (SwiftUI)
 
 ## Native Tools (Mobile)
 
-The mobile app exposes native iOS capabilities as tools the LLM can invoke. Tools are registered with the server during the hello handshake. See existing tools in `apps/mobile/Sources/NativeTools/Tools/` for examples.
+The mobile app exposes native iOS capabilities as tools the LLM can invoke. Tools are registered with the relay during the hello handshake. See existing tools in `apps/mobile/Sources/NativeTools/Tools/` for examples.
 
 **Creating a native tool:**
 1. Create `apps/mobile/Sources/NativeTools/Tools/YourTool.swift` implementing `NativeToolExecutable`

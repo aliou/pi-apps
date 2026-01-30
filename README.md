@@ -8,9 +8,8 @@ Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agen
 pi-apps/
 ├── apps/
 │   ├── desktop/       # macOS app (local subprocess)
-│   ├── mobile/        # iOS app (connects to server)
-│   ├── relay/         # Relay server (Node.js/Hono) - WIP replacement for server
-│   └── server/        # WebSocket server (Bun/Hono)
+│   ├── mobile/        # iOS app (connects to relay)
+│   └── relay/         # Relay server (Node.js/Hono/SQLite)
 └── packages/
     ├── pi-core/       # RPC types, transport protocols
     └── pi-ui/         # Shared SwiftUI components
@@ -45,15 +44,11 @@ make xcode        # open in xcode
 
 ### Mobile (iOS)
 
-Connects to a pi-server instance via WebSocket. Cannot run pi locally (iOS limitation).
+Connects to the relay via WebSocket. Cannot run pi locally (iOS limitation).
 
-### Server
+### Relay
 
-WebSocket server that wraps pi sessions. Enables iOS and remote clients.
-
-### Relay (WIP)
-
-Next-gen relay server. SQLite persistence, Drizzle ORM, admin UI. Will replace `apps/server/`.
+Server that wraps Pi sessions, manages repos, and bridges WebSocket clients. Node.js, Hono, SQLite (Drizzle ORM).
 
 ### TypeScript (monorepo)
 
@@ -67,7 +62,7 @@ pnpm lint         # lint (biome)
 pnpm test         # test (vitest)
 ```
 
-Run a single app with `pnpm --filter pi-relay dev` or `pnpm --filter pi-server dev`.
+Run a single app with `pnpm --filter pi-relay dev`.
 
 ## Configuration
 
