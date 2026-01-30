@@ -1,9 +1,12 @@
 import { serve } from "@hono/node-server";
+import { createNodeWebSocket } from "@hono/node-ws";
 import { createApp } from "./app";
 import { ensureDataDirs, parseConfig } from "./config";
 import { createDatabase } from "./db/connection";
 import { runMigrations } from "./db/migrate";
 import { loadEnv } from "./env";
+import { SandboxManager } from "./sandbox/manager";
+import { MockSandboxProvider } from "./sandbox/mock";
 import { EventJournal } from "./services/event-journal";
 import { GitHubService } from "./services/github.service";
 import { RepoService } from "./services/repo.service";
@@ -41,6 +44,11 @@ async function main() {
   const repoService = new RepoService(db);
   const githubService = new GitHubService();
 
+  // Initialize sandbox manager with mock provider
+  const sandboxProvider = new MockSandboxProvider();
+  const sandboxManager = new SandboxManager(sandboxProvider);
+  console.log(`Sandbox provider: ${sandboxManager.providerName}`);
+
   // Prune old events on startup (7 days)
   const cutoffDate = new Date(
     Date.now() - 7 * 24 * 60 * 60 * 1000,
@@ -50,14 +58,36 @@ async function main() {
     console.log(`Pruned ${pruned} old events`);
   }
 
-  // Create app
+  // Create app first (without WebSocket initially)
   const app = createApp({
-    db,
-    sessionService,
-    eventJournal,
-    repoService,
-    githubService,
+    services: {
+      db,
+      sessionService,
+      eventJournal,
+      repoService,
+      githubService,
+      sandboxManager,
+    },
   });
+
+  // Create WebSocket adapter with the app
+  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+
+  // Now mount the WebSocket handler
+  const { ConnectionManager } = await import("./ws/connection");
+  const { createWebSocketHandler } = await import("./ws/handler");
+
+  const connectionManager = new ConnectionManager();
+  const wsHandler = createWebSocketHandler(
+    upgradeWebSocket,
+    {
+      sandboxManager,
+      sessionService,
+      eventJournal,
+    },
+    connectionManager,
+  );
+  app.get("/ws/sessions/:id", wsHandler);
 
   // Graceful shutdown
   const shutdown = () => {
@@ -69,12 +99,15 @@ async function main() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  // Start server
-  serve({
+  // Start server with WebSocket support
+  const server = serve({
     fetch: app.fetch,
     port: config.port,
     hostname: config.host,
   });
+
+  // Inject WebSocket into server
+  injectWebSocket(server);
 
   console.log(`Server listening on http://${config.host}:${config.port}`);
   console.log("Press Ctrl+C to stop");

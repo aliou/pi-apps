@@ -5,7 +5,7 @@ import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
-import { createTestDatabase } from "../test-helpers";
+import { createTestDatabase, createTestSandboxManager } from "../test-helpers";
 
 describe("Health Routes", () => {
   let db: AppDatabase;
@@ -22,6 +22,7 @@ describe("Health Routes", () => {
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
       githubService: new GitHubService(),
+      sandboxManager: createTestSandboxManager(),
     };
   });
 
@@ -31,7 +32,7 @@ describe("Health Routes", () => {
 
   describe("GET /health", () => {
     it("returns ok and version", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/health");
 
       expect(res.status).toBe(200);
@@ -43,7 +44,7 @@ describe("Health Routes", () => {
 
   describe("GET /api", () => {
     it("returns server info and endpoints", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api");
 
       expect(res.status).toBe(200);

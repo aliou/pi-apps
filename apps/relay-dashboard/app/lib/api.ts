@@ -85,3 +85,23 @@ export interface GitHubRepo {
   sshUrl: string;
   defaultBranch: string;
 }
+
+export interface JournalEvent {
+  seq: number;
+  type: string;
+  payload: unknown;
+  createdAt: string;
+}
+
+export interface ConnectResponse {
+  sessionId: string;
+  status: Session["status"];
+  lastSeq: number;
+  sandboxReady: boolean;
+  wsEndpoint: string;
+}
+
+export interface EventsResponse {
+  events: JournalEvent[];
+  lastSeq: number;
+}

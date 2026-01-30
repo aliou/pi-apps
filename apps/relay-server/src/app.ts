@@ -6,6 +6,7 @@ import { githubRoutes } from "./routes/github";
 import { healthRoutes } from "./routes/health";
 import { sessionsRoutes } from "./routes/sessions";
 import { settingsRoutes } from "./routes/settings";
+import type { SandboxManager } from "./sandbox/manager";
 import type { EventJournal } from "./services/event-journal";
 import type { GitHubService } from "./services/github.service";
 import type { RepoService } from "./services/repo.service";
@@ -18,6 +19,7 @@ export type AppEnv = {
     eventJournal: EventJournal;
     repoService: RepoService;
     githubService: GitHubService;
+    sandboxManager: SandboxManager;
   };
 };
 
@@ -27,9 +29,15 @@ export interface AppServices {
   eventJournal: EventJournal;
   repoService: RepoService;
   githubService: GitHubService;
+  sandboxManager: SandboxManager;
 }
 
-export function createApp(services: AppServices): Hono<AppEnv> {
+export interface CreateAppOptions {
+  services: AppServices;
+}
+
+export function createApp(options: CreateAppOptions): Hono<AppEnv> {
+  const { services } = options;
   const app = new Hono<AppEnv>();
 
   // Inject services into context
@@ -39,6 +47,7 @@ export function createApp(services: AppServices): Hono<AppEnv> {
     c.set("eventJournal", services.eventJournal);
     c.set("repoService", services.repoService);
     c.set("githubService", services.githubService);
+    c.set("sandboxManager", services.sandboxManager);
     await next();
   });
 

@@ -1,4 +1,5 @@
 import { ChatCircleIcon, CodeIcon } from "@phosphor-icons/react";
+import { Link } from "react-router";
 import type { Session } from "../lib/api";
 import { cn } from "../lib/utils";
 import { StatusDot } from "./status-badge";
@@ -15,7 +16,8 @@ export function SessionItem({ session, className }: SessionItemProps) {
   const timeAgo = formatTimeAgo(lastActivity);
 
   return (
-    <div
+    <Link
+      to={`/sessions/${session.id}`}
       className={cn(
         "group flex items-center gap-3.5 rounded-lg px-3.5 py-3 transition-colors",
         "hover:bg-surface",
@@ -56,7 +58,7 @@ export function SessionItem({ session, className }: SessionItemProps) {
           {session.currentModelId}
         </span>
       )}
-    </div>
+    </Link>
   );
 }
 

@@ -5,7 +5,7 @@ import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
-import { createTestDatabase } from "../test-helpers";
+import { createTestDatabase, createTestSandboxManager } from "../test-helpers";
 
 describe("Sessions Routes", () => {
   let db: AppDatabase;
@@ -22,6 +22,7 @@ describe("Sessions Routes", () => {
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
       githubService: new GitHubService(),
+      sandboxManager: createTestSandboxManager(),
     };
   });
 
@@ -31,7 +32,7 @@ describe("Sessions Routes", () => {
 
   describe("GET /api/sessions", () => {
     it("returns empty array when no sessions", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/sessions");
 
       expect(res.status).toBe(200);
@@ -44,7 +45,7 @@ describe("Sessions Routes", () => {
       services.sessionService.create({ mode: "chat" });
       services.sessionService.create({ mode: "code", repoId: "owner/repo" });
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/sessions");
 
       expect(res.status).toBe(200);
@@ -57,7 +58,7 @@ describe("Sessions Routes", () => {
       const session = services.sessionService.create({ mode: "chat" });
       services.sessionService.update(session.id, { status: "deleted" });
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/sessions");
 
       expect(res.status).toBe(200);
@@ -70,7 +71,7 @@ describe("Sessions Routes", () => {
     it("returns session by ID", async () => {
       const session = services.sessionService.create({ mode: "chat" });
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request(`/api/sessions/${session.id}`);
 
       expect(res.status).toBe(200);
@@ -81,13 +82,209 @@ describe("Sessions Routes", () => {
     });
 
     it("returns 404 for nonexistent session", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/sessions/nonexistent-id");
 
       expect(res.status).toBe(404);
       const json = await res.json();
       expect(json.data).toBeNull();
       expect(json.error).toBe("Session not found");
+    });
+  });
+
+  describe("POST /api/sessions", () => {
+    it("creates chat session", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "chat" }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.mode).toBe("chat");
+      expect(json.data.status).toBe("creating");
+      expect(json.data.wsEndpoint).toContain("/ws/sessions/");
+      expect(json.error).toBeNull();
+    });
+
+    it("creates code session with repoId", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "code", repoId: "owner/repo" }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.mode).toBe("code");
+      expect(json.data.repoId).toBe("owner/repo");
+    });
+
+    it("rejects code session without repoId", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "code" }),
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("repoId is required for code mode");
+    });
+
+    it("rejects invalid mode", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "invalid" }),
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("mode must be 'chat' or 'code'");
+    });
+
+    it("rejects invalid JSON", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("Invalid JSON body");
+    });
+  });
+
+  describe("GET /api/sessions/:id/connect", () => {
+    it("returns connection info for existing session", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}/connect`);
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.sessionId).toBe(session.id);
+      expect(json.data.status).toBe("creating");
+      expect(json.data.lastSeq).toBe(0);
+      expect(json.data.wsEndpoint).toContain("/ws/sessions/");
+      expect(json.error).toBeNull();
+    });
+
+    it("returns 404 for nonexistent session", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions/nonexistent-id/connect");
+
+      expect(res.status).toBe(404);
+      const json = await res.json();
+      expect(json.error).toBe("Session not found");
+    });
+
+    it("returns 410 for deleted session", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      services.sessionService.update(session.id, { status: "deleted" });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}/connect`);
+
+      expect(res.status).toBe(410);
+      const json = await res.json();
+      expect(json.error).toBe("Session has been deleted");
+    });
+  });
+
+  describe("GET /api/sessions/:id/events", () => {
+    it("returns empty events for new session", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}/events`);
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.events).toEqual([]);
+      expect(json.data.lastSeq).toBe(0);
+    });
+
+    it("returns events for session with history", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      services.eventJournal.append(session.id, "agent_start", {
+        type: "agent_start",
+      });
+      services.eventJournal.append(session.id, "message_start", {
+        type: "message_start",
+        message: {},
+      });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}/events`);
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.events).toHaveLength(2);
+      expect(json.data.events[0].type).toBe("agent_start");
+      expect(json.data.events[1].type).toBe("message_start");
+      expect(json.data.lastSeq).toBe(2);
+    });
+
+    it("respects afterSeq parameter", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      services.eventJournal.append(session.id, "event1", { type: "event1" });
+      services.eventJournal.append(session.id, "event2", { type: "event2" });
+      services.eventJournal.append(session.id, "event3", { type: "event3" });
+
+      const app = createApp({ services });
+      const res = await app.request(
+        `/api/sessions/${session.id}/events?afterSeq=1`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.events).toHaveLength(2);
+      expect(json.data.events[0].type).toBe("event2");
+    });
+
+    it("returns 404 for nonexistent session", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions/nonexistent-id/events");
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("DELETE /api/sessions/:id", () => {
+    it("deletes session", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}`, {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.ok).toBe(true);
+
+      // Verify deleted
+      const deleted = services.sessionService.get(session.id);
+      expect(deleted).toBeUndefined();
+    });
+
+    it("returns 404 for nonexistent session", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions/nonexistent-id", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(404);
     });
   });
 });

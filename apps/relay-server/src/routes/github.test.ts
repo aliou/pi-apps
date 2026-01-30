@@ -14,7 +14,7 @@ import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
-import { createTestDatabase } from "../test-helpers";
+import { createTestDatabase, createTestSandboxManager } from "../test-helpers";
 
 describe("GitHub Routes", () => {
   let db: AppDatabase;
@@ -33,6 +33,7 @@ describe("GitHub Routes", () => {
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
       githubService,
+      sandboxManager: createTestSandboxManager(),
     };
   });
 
@@ -43,7 +44,7 @@ describe("GitHub Routes", () => {
 
   describe("GET /api/github/token", () => {
     it("returns configured: false when no token", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/token");
 
       expect(res.status).toBe(200);
@@ -70,7 +71,7 @@ describe("GitHub Routes", () => {
         rateLimitRemaining: 5000,
       });
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/token");
 
       expect(res.status).toBe(200);
@@ -95,7 +96,7 @@ describe("GitHub Routes", () => {
         error: "Bad credentials",
       });
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/token");
 
       expect(res.status).toBe(200);
@@ -114,7 +115,7 @@ describe("GitHub Routes", () => {
         scopes: ["repo", "user"],
       });
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,7 +144,7 @@ describe("GitHub Routes", () => {
         error: "Bad credentials",
       });
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,7 +158,7 @@ describe("GitHub Routes", () => {
     });
 
     it("rejects empty token", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,7 +171,7 @@ describe("GitHub Routes", () => {
     });
 
     it("rejects missing token", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,7 +194,7 @@ describe("GitHub Routes", () => {
         })
         .run();
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/token", { method: "DELETE" });
 
       expect(res.status).toBe(200);
@@ -212,7 +213,7 @@ describe("GitHub Routes", () => {
 
   describe("GET /api/github/repos", () => {
     it("returns 401 when no token configured", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/repos");
 
       expect(res.status).toBe(401);
@@ -243,7 +244,7 @@ describe("GitHub Routes", () => {
         },
       ]);
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/repos");
 
       expect(res.status).toBe(200);
@@ -265,7 +266,7 @@ describe("GitHub Routes", () => {
         new Error("Rate limited"),
       );
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/github/repos");
 
       expect(res.status).toBe(500);

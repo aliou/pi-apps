@@ -78,6 +78,7 @@
               pkgs.nodejs_22
               pkgs.pnpm
               pkgs.pre-commit
+              pkgs.websocat
             ];
 
             shellHook = ''

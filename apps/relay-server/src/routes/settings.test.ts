@@ -6,7 +6,7 @@ import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
-import { createTestDatabase } from "../test-helpers";
+import { createTestDatabase, createTestSandboxManager } from "../test-helpers";
 
 describe("Settings Routes", () => {
   let db: AppDatabase;
@@ -23,6 +23,7 @@ describe("Settings Routes", () => {
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
       githubService: new GitHubService(),
+      sandboxManager: createTestSandboxManager(),
     };
   });
 
@@ -32,7 +33,7 @@ describe("Settings Routes", () => {
 
   describe("GET /api/settings", () => {
     it("returns empty object when no settings", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/settings");
 
       expect(res.status).toBe(200);
@@ -53,7 +54,7 @@ describe("Settings Routes", () => {
         })
         .run();
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/settings");
 
       expect(res.status).toBe(200);
@@ -81,7 +82,7 @@ describe("Settings Routes", () => {
         })
         .run();
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/settings");
 
       expect(res.status).toBe(200);
@@ -93,7 +94,7 @@ describe("Settings Routes", () => {
 
   describe("PUT /api/settings", () => {
     it("creates new setting", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -123,7 +124,7 @@ describe("Settings Routes", () => {
         })
         .run();
 
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -142,7 +143,7 @@ describe("Settings Routes", () => {
     });
 
     it("stores complex values", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -166,7 +167,7 @@ describe("Settings Routes", () => {
     });
 
     it("rejects empty key", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -179,7 +180,7 @@ describe("Settings Routes", () => {
     });
 
     it("rejects protected keys", async () => {
-      const app = createApp(services);
+      const app = createApp({ services });
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

@@ -5,6 +5,8 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { AppDatabase } from "./db/connection";
 import * as schema from "./db/schema";
+import { SandboxManager } from "./sandbox/manager";
+import { MockSandboxProvider } from "./sandbox/mock";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,4 +54,11 @@ export function testSessionId(): string {
  */
 export function testTimestamp(): string {
   return new Date().toISOString();
+}
+
+/**
+ * Create a test sandbox manager with mock provider.
+ */
+export function createTestSandboxManager(): SandboxManager {
+  return new SandboxManager(new MockSandboxProvider());
 }
