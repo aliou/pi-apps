@@ -15,6 +15,7 @@ export const sessions = sqliteTable("sessions", {
   })
     .notNull()
     .default("creating"),
+  sandboxProvider: text("sandbox_provider", { enum: ["mock", "docker"] }),
   repoId: text("repo_id"),
   repoPath: text("repo_path"),
   branchName: text("branch_name"),

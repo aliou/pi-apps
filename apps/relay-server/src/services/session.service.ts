@@ -10,6 +10,7 @@ export type SessionStatus =
   | "error"
   | "deleted";
 export type SessionMode = "chat" | "code";
+export type SandboxProviderType = "mock" | "docker";
 
 export interface CreateSessionParams {
   mode: SessionMode;
@@ -19,6 +20,7 @@ export interface CreateSessionParams {
   systemPrompt?: string;
   modelProvider?: string;
   modelId?: string;
+  sandboxProvider?: SandboxProviderType;
 }
 
 export interface UpdateSessionParams {
@@ -51,6 +53,7 @@ export class SessionService {
       id,
       mode: params.mode,
       status: "creating" as SessionStatus,
+      sandboxProvider: params.sandboxProvider ?? null,
       repoId: params.repoId ?? null,
       repoPath: params.repoPath ?? null,
       branchName: params.branchName ?? null,

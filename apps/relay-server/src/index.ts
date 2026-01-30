@@ -45,12 +45,17 @@ async function main() {
 
   // Initialize sandbox manager based on config
   const sandboxManager = new SandboxManager({
-    provider: SANDBOX_PROVIDER as SandboxProviderType,
+    defaultProvider: SANDBOX_PROVIDER as SandboxProviderType,
     docker: {
       image: SANDBOX_DOCKER_IMAGE,
     },
   });
-  console.log(`Sandbox provider: ${sandboxManager.providerName}`);
+  console.log(
+    `Default sandbox provider: ${sandboxManager.defaultProviderName}`,
+  );
+  console.log(
+    `Enabled providers: ${sandboxManager.enabledProviders.join(", ")}`,
+  );
 
   // Check availability on startup
   const available = await sandboxManager.isProviderAvailable();

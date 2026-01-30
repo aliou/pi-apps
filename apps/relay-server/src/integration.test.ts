@@ -26,7 +26,7 @@ describe("Session Protocol Integration", () => {
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
       githubService: new GitHubService(),
-      sandboxManager: new SandboxManager({ provider: "mock" }),
+      sandboxManager: new SandboxManager({ defaultProvider: "mock" }),
     };
   });
 

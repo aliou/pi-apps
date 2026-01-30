@@ -20,7 +20,7 @@ describe("WebSocket Handler", () => {
     deps = {
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
-      sandboxManager: new SandboxManager({ provider: "mock" }),
+      sandboxManager: new SandboxManager({ defaultProvider: "mock" }),
     };
     connectionManager = new ConnectionManager();
   });

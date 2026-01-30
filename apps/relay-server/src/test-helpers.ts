@@ -59,5 +59,8 @@ export function testTimestamp(): string {
  * Create a test sandbox manager with mock provider.
  */
 export function createTestSandboxManager(): SandboxManager {
-  return new SandboxManager({ provider: "mock" });
+  return new SandboxManager({
+    defaultProvider: "mock",
+    enabledProviders: ["mock"],
+  });
 }

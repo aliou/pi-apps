@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
+import type { SandboxProviderType } from "../sandbox/manager";
 import type { SessionMode } from "../services/session.service";
 
 interface CreateSessionRequest {
@@ -8,6 +9,7 @@ interface CreateSessionRequest {
   modelProvider?: string;
   modelId?: string;
   systemPrompt?: string;
+  sandboxProvider?: SandboxProviderType;
 }
 
 export function sessionsRoutes(): Hono<AppEnv> {
@@ -48,6 +50,25 @@ export function sessionsRoutes(): Hono<AppEnv> {
       );
     }
 
+    // Validate sandbox provider if specified
+    const validProviders = sandboxManager.enabledProviders;
+    if (
+      body.sandboxProvider &&
+      !validProviders.includes(body.sandboxProvider)
+    ) {
+      return c.json(
+        {
+          data: null,
+          error: `Invalid sandboxProvider. Must be one of: ${validProviders.join(", ")}`,
+        },
+        400,
+      );
+    }
+
+    // Use specified provider or server default
+    const sandboxProvider =
+      body.sandboxProvider ?? sandboxManager.defaultProviderName;
+
     try {
       // Create session in database
       const session = sessionService.create({
@@ -56,11 +77,12 @@ export function sessionsRoutes(): Hono<AppEnv> {
         modelProvider: body.modelProvider,
         modelId: body.modelId,
         systemPrompt: body.systemPrompt,
+        sandboxProvider,
       });
 
       // Start sandbox provisioning (async, don't await)
       sandboxManager
-        .createForSession(session.id)
+        .createForSession(session.id, undefined, sandboxProvider)
         .then(() => {
           sessionService.update(session.id, { status: "ready" });
         })
