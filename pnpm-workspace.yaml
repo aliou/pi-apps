@@ -1,4 +1,3 @@
 packages:
-  - "apps/server"
-  - "apps/relay"
-  - "apps/relay/ui"
+  - "apps/relay-server"
+  - "apps/relay-dashboard"

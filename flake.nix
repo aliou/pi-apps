@@ -63,7 +63,7 @@
               enable = true;
               name = "ts-typecheck";
               description = "Type check TypeScript apps";
-              entry = "${pkgs.pnpm}/bin/pnpm exec turbo typecheck --filter=!pi-server";
+              entry = "${pkgs.pnpm}/bin/pnpm exec turbo typecheck";
               files = "\\.(ts|tsx)$";
               language = "system";
               pass_filenames = false;

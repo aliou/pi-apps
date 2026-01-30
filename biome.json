@@ -7,13 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": [
-      "**/*.ts",
-      "**/*.tsx",
-      "!.pi/skills",
-      "!var",
-      "!apps/server/**"
-    ]
+    "includes": ["**/*.ts", "**/*.tsx", "!.pi/skills", "!var", "!apps/server"]
   },
   "formatter": {
     "enabled": true,

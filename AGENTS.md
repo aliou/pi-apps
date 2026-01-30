@@ -36,14 +36,16 @@ pnpm test           # test all (vitest)
 
 To run a single app:
 ```bash
-pnpm --filter pi-relay dev
+pnpm --filter pi-relay-server dev
+pnpm --filter pi-relay-dashboard dev
 ```
 
 ## Structure
 
 - `apps/desktop/` - macOS app, XcodeGen project.yml
 - `apps/mobile/` - iOS app, connects to relay via WebSocket
-- `apps/relay/` - Relay server (Node.js/Hono/SQLite)
+- `apps/relay-server/` - Relay API server (Node.js/Hono/SQLite)
+- `apps/relay-dashboard/` - Relay admin UI (React/Vite/Tailwind)
 - `packages/pi-core/` - RPC types, transport layer (Foundation only)
 - `packages/pi-ui/` - Shared UI components (SwiftUI)
 
