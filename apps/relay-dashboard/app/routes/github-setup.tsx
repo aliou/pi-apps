@@ -79,7 +79,7 @@ export default function GitHubSetupPage() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="mx-auto max-w-2xl">
       <div className="mb-8">
         <h1 className="text-xl font-semibold text-(--color-fg)">GitHub</h1>
         <p className="mt-1 text-sm text-(--color-muted)">

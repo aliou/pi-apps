@@ -34,7 +34,7 @@ export default function DashboardPage() {
   }, [fetchSessions]);
 
   return (
-    <div>
+    <div className="mx-auto max-w-3xl">
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>

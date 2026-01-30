@@ -8,6 +8,7 @@ const options = [
   { value: "system" as const, icon: DesktopIcon, label: "System" },
 ];
 
+/** Full 3-button toggle for expanded sidebar. */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 
@@ -36,5 +37,31 @@ export function ThemeToggle() {
         );
       })}
     </div>
+  );
+}
+
+const cycle: Record<string, "light" | "dark" | "system"> = {
+  light: "dark",
+  dark: "system",
+  system: "light",
+};
+
+/** Single icon button that cycles light -> dark -> system. For collapsed sidebar. */
+export function ThemeToggleCycler() {
+  const { theme, setTheme } = useTheme();
+  const current =
+    // biome-ignore lint/style/noNonNullAssertion: options is a static non-empty array
+    options.find((o) => o.value === theme) ?? options[0]!;
+  const next = cycle[theme] ?? "light";
+
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(next)}
+      title={`Theme: ${current.label}`}
+      className="rounded-md bg-(--color-surface) p-1.5 text-(--color-accent) transition-colors hover:bg-(--color-surface-hover)"
+    >
+      <current.icon className="size-3.5" weight="fill" />
+    </button>
   );
 }

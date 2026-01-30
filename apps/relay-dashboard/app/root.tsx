@@ -8,6 +8,7 @@ import {
 } from "react-router";
 import type { Route } from "./+types/root";
 import { ConnectionGate } from "./components/connection-gate";
+import { SidebarProvider } from "./lib/sidebar";
 import { ThemeProvider } from "./lib/theme";
 import "./styles/app.css";
 
@@ -67,9 +68,11 @@ export function HydrateFallback() {
 export default function App() {
   return (
     <ThemeProvider>
-      <ConnectionGate>
-        <Outlet />
-      </ConnectionGate>
+      <SidebarProvider>
+        <ConnectionGate>
+          <Outlet />
+        </ConnectionGate>
+      </SidebarProvider>
     </ThemeProvider>
   );
 }

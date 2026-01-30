@@ -2,7 +2,7 @@ import { FolderIcon, InfoIcon } from "@phosphor-icons/react";
 
 export default function SettingsPage() {
   return (
-    <div className="max-w-2xl">
+    <div className="mx-auto max-w-2xl">
       <div className="mb-8">
         <h1 className="text-xl font-semibold text-(--color-fg)">Settings</h1>
         <p className="mt-1 text-sm text-(--color-muted)">
