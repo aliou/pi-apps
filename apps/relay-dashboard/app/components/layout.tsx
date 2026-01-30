@@ -3,24 +3,18 @@ import {
   GithubLogoIcon,
   SquaresFourIcon,
 } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { NavLink, Outlet } from "react-router";
 import { cn } from "../lib/utils";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 
-interface LayoutProps {
-  children: ReactNode;
-  currentPage: string;
-  onNavigate: (page: string) => void;
-}
-
 const navItems = [
-  { id: "dashboard", label: "Sessions", icon: SquaresFourIcon },
-  { id: "github", label: "GitHub", icon: GithubLogoIcon },
-  { id: "settings", label: "Settings", icon: GearIcon },
+  { to: "/", label: "Sessions", icon: SquaresFourIcon },
+  { to: "/github", label: "GitHub", icon: GithubLogoIcon },
+  { to: "/settings", label: "Settings", icon: GearIcon },
 ];
 
-export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
+export default function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
@@ -35,28 +29,31 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
 
         {/* Nav */}
         <nav className="flex flex-col gap-1 px-3">
-          {navItems.map((item) => {
-            const active = currentPage === item.id;
-            return (
-              <button
-                type="button"
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className={cn(
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === "/"}
+              className={({ isActive }) =>
+                cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  active
+                  isActive
                     ? "bg-(--color-surface) text-(--color-fg)"
                     : "text-(--color-muted) hover:bg-(--color-surface)/50 hover:text-(--color-fg)",
-                )}
-              >
-                <item.icon
-                  className="size-[18px]"
-                  weight={active ? "fill" : "regular"}
-                />
-                {item.label}
-              </button>
-            );
-          })}
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <item.icon
+                    className="size-[18px]"
+                    weight={isActive ? "fill" : "regular"}
+                  />
+                  {item.label}
+                </>
+              )}
+            </NavLink>
+          ))}
         </nav>
 
         {/* Spacer */}
@@ -71,7 +68,9 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl px-10 py-10">{children}</div>
+        <div className="mx-auto max-w-4xl px-10 py-10">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

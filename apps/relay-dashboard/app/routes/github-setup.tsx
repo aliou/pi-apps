@@ -11,7 +11,7 @@ import { TokenForm } from "../components/token-form";
 import { api, type GitHubRepo, type GitHubTokenInfo } from "../lib/api";
 import { cn } from "../lib/utils";
 
-export function GitHubSetupPage() {
+export default function GitHubSetupPage() {
   const [tokenInfo, setTokenInfo] = useState<GitHubTokenInfo | null>(null);
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [loading, setLoading] = useState(true);

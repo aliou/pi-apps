@@ -4,7 +4,7 @@ import { SessionItem } from "../components/session-item";
 import { api, type Session } from "../lib/api";
 import { cn } from "../lib/utils";
 
-export function DashboardPage() {
+export default function DashboardPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

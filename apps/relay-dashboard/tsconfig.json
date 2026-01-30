@@ -15,7 +15,11 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    "rootDirs": [".", "./.react-router/types"]
   },
-  "include": ["src"]
+  "include": [
+    ".react-router/types/**/*",
+    "app"
+  ]
 }
