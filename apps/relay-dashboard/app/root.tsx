@@ -22,7 +22,7 @@ const themeScript = `(function () {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -91,10 +91,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   return (
     <main className="flex h-screen flex-col items-center justify-center text-center">
-      <h1 className="mb-2 text-2xl font-semibold text-(--color-fg)">
-        {message}
-      </h1>
-      <p className="text-sm text-(--color-muted)">{details}</p>
+      <h1 className="mb-2 text-2xl font-semibold text-fg">{message}</h1>
+      <p className="text-sm text-muted">{details}</p>
     </main>
   );
 }
