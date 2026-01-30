@@ -1,4 +1,4 @@
-import { CheckCircleIcon, SpinnerIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { cn } from "../lib/utils";
 
@@ -29,7 +29,7 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="token" className="mb-2 block text-sm font-medium">
+        <label htmlFor="token" className="mb-1.5 block text-sm font-medium text-(--color-foreground)">
           Personal Access Token
         </label>
         <input
@@ -39,25 +39,26 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
           onChange={(e) => setToken(e.target.value)}
           placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
           className={cn(
-            "w-full rounded-lg border border-(--color-border) bg-(--color-background) px-3 py-2",
-            "focus:border-(--color-accent) focus:outline-none focus:ring-1 focus:ring-(--color-accent)",
-            "placeholder:text-(--color-muted-foreground)",
+            "w-full rounded-md border border-(--color-border) bg-(--color-background) px-3 py-2 font-mono text-sm",
+            "text-(--color-foreground) placeholder:text-(--color-muted)/40",
+            "focus:border-(--color-accent) focus:outline-hidden focus:ring-1 focus:ring-(--color-accent)",
+            "transition-colors",
           )}
           disabled={isLoading}
         />
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
-          <WarningCircleIcon className="size-4" weight="fill" />
+        <div className="flex items-center gap-2 text-sm text-(--color-status-err)">
+          <WarningCircleIcon className="size-4 shrink-0" weight="fill" />
           {error}
         </div>
       )}
 
       {success && (
-        <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-          <CheckCircleIcon className="size-4" weight="fill" />
-          Token saved successfully
+        <div className="flex items-center gap-2 text-sm text-(--color-status-ok)">
+          <CheckCircleIcon className="size-4 shrink-0" weight="fill" />
+          Token saved
         </div>
       )}
 
@@ -65,12 +66,13 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
         type="submit"
         disabled={isLoading || !token.trim()}
         className={cn(
-          "inline-flex items-center gap-2 rounded-lg px-4 py-2 font-medium transition-colors",
-          "bg-(--color-accent) text-(--color-accent-foreground)",
-          "hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50",
+          "inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
+          "bg-(--color-accent) text-(--color-abyssal)",
+          "hover:bg-(--color-accent-dim)",
+          "disabled:cursor-not-allowed disabled:opacity-40",
         )}
       >
-        {isLoading && <SpinnerIcon className="size-4 animate-spin" />}
+        {isLoading && <CircleNotchIcon className="size-4 animate-spin" />}
         Save Token
       </button>
     </form>

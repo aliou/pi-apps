@@ -2,14 +2,41 @@ import { cn } from "../lib/utils";
 
 type Status = "creating" | "ready" | "running" | "stopped" | "error" | "deleted";
 
-const statusStyles: Record<Status, string> = {
-  creating: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  ready: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  running: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  stopped: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400",
-  error: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  deleted: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500",
+const dotColors: Record<Status, string> = {
+  creating: "bg-(--color-status-info)",
+  ready: "bg-(--color-status-ok)",
+  running: "bg-(--color-accent)",
+  stopped: "bg-(--color-muted)/40",
+  error: "bg-(--color-status-err)",
+  deleted: "bg-(--color-muted)/20",
 };
+
+const badgeStyles: Record<Status, string> = {
+  creating: "bg-(--color-status-info)/10 text-(--color-status-info)",
+  ready: "bg-(--color-status-ok)/10 text-(--color-status-ok)",
+  running: "bg-(--color-accent)/10 text-(--color-accent)",
+  stopped: "bg-(--color-muted)/10 text-(--color-muted)",
+  error: "bg-(--color-status-err)/10 text-(--color-status-err)",
+  deleted: "bg-(--color-muted)/10 text-(--color-muted)/60",
+};
+
+interface StatusDotProps {
+  status: Status;
+  className?: string;
+}
+
+export function StatusDot({ status, className }: StatusDotProps) {
+  return (
+    <span
+      className={cn(
+        "inline-block size-1.5 shrink-0 rounded-full",
+        dotColors[status],
+        status === "running" && "animate-pulse",
+        className,
+      )}
+    />
+  );
+}
 
 interface StatusBadgeProps {
   status: Status;
@@ -20,11 +47,12 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        statusStyles[status],
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+        badgeStyles[status],
         className,
       )}
     >
+      <StatusDot status={status} />
       {status}
     </span>
   );

@@ -1,11 +1,7 @@
-import {
-  GearIcon,
-  GithubLogoIcon,
-  HouseIcon,
-  TerminalIcon,
-} from "@phosphor-icons/react";
+import { GearIcon, GithubLogoIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
+import { Logo } from "./logo";
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,42 +10,62 @@ interface LayoutProps {
 }
 
 const navItems = [
-  { id: "dashboard", label: "Dashboard", icon: HouseIcon },
+  { id: "dashboard", label: "Sessions", icon: SquaresFourIcon },
   { id: "github", label: "GitHub", icon: GithubLogoIcon },
   { id: "settings", label: "Settings", icon: GearIcon },
 ];
 
 export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 border-r border-(--color-border) bg-(--color-card) p-4">
-        <div className="mb-8 flex items-center gap-2">
-          <TerminalIcon className="size-6 text-(--color-accent)" weight="bold" />
-          <span className="text-lg font-semibold">Pi Relay</span>
+      <aside className="flex w-60 shrink-0 flex-col border-r border-(--color-border) bg-(--color-abyssal-deep)">
+        {/* Brand */}
+        <div className="flex items-center gap-2.5 px-4 pt-4 pb-5">
+          <Logo variant="accent" className="size-5" />
+          <span className="text-sm font-semibold tracking-wide text-(--color-foreground)">
+            Pi Relay
+          </span>
         </div>
 
-        <nav className="space-y-1">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                currentPage === item.id
-                  ? "bg-(--color-accent) text-(--color-accent-foreground)"
-                  : "text-(--color-muted-foreground) hover:bg-(--color-muted) hover:text-(--color-foreground)",
-              )}
-            >
-              <item.icon className="size-5" weight={currentPage === item.id ? "fill" : "regular"} />
-              {item.label}
-            </button>
-          ))}
+        {/* Nav */}
+        <nav className="flex flex-col gap-0.5 px-2">
+          {navItems.map((item) => {
+            const active = currentPage === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onNavigate(item.id)}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                  active
+                    ? "bg-(--color-surface) text-(--color-foreground)"
+                    : "text-(--color-muted) hover:bg-(--color-surface)/50 hover:text-(--color-foreground)",
+                )}
+              >
+                <item.icon
+                  className="size-4"
+                  weight={active ? "fill" : "regular"}
+                />
+                {item.label}
+              </button>
+            );
+          })}
         </nav>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Footer */}
+        <div className="border-t border-(--color-border) px-4 py-3">
+          <p className="font-mono text-xs text-(--color-muted)/60">v0.1.0</p>
+        </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 p-8">{children}</main>
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl px-8 py-8">{children}</div>
+      </main>
     </div>
   );
 }

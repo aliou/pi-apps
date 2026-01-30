@@ -1,6 +1,6 @@
-import { ArrowsClockwiseIcon, TerminalIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, TerminalWindowIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { SessionCard } from "../components/session-card";
+import { SessionItem } from "../components/session-item";
 import { type Session, api } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -23,13 +23,10 @@ export function DashboardPage() {
 
   useEffect(() => {
     fetchSessions();
-
-    // Auto-refresh every 30 seconds
     const interval = setInterval(fetchSessions, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Refresh on focus
   useEffect(() => {
     const handleFocus = () => fetchSessions();
     window.addEventListener("focus", handleFocus);
@@ -38,45 +35,46 @@ export function DashboardPage() {
 
   return (
     <div>
+      {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Sessions</h1>
-          <p className="text-(--color-muted-foreground)">
-            Active and recent sessions
-          </p>
+          <h1 className="text-lg font-semibold text-(--color-foreground)">Sessions</h1>
+          <p className="text-sm text-(--color-muted)">Active and recent sessions</p>
         </div>
         <button
           onClick={fetchSessions}
           disabled={loading}
           className={cn(
-            "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm",
-            "border border-(--color-border) bg-(--color-card)",
-            "hover:bg-(--color-muted) disabled:opacity-50",
+            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+            "text-(--color-muted) hover:bg-(--color-surface) hover:text-(--color-foreground)",
+            "disabled:opacity-40",
           )}
         >
-          <ArrowsClockwiseIcon className={cn("size-4", loading && "animate-spin")} />
+          <ArrowsClockwiseIcon className={cn("size-3.5", loading && "animate-spin")} />
           Refresh
         </button>
       </div>
 
+      {/* Error */}
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+        <div className="mb-4 rounded-md border border-(--color-status-err)/20 bg-(--color-status-err)/5 px-4 py-3 text-sm text-(--color-status-err)">
           {error}
         </div>
       )}
 
+      {/* Content */}
       {sessions.length === 0 && !loading ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-(--color-border) py-16">
-          <TerminalIcon className="mb-4 size-12 text-(--color-muted-foreground)" />
-          <h2 className="mb-2 text-lg font-medium">No sessions yet</h2>
-          <p className="text-(--color-muted-foreground)">
-            Sessions will appear here when clients connect.
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-(--color-border) py-20">
+          <TerminalWindowIcon className="mb-3 size-10 text-(--color-muted)/30" weight="duotone" />
+          <p className="mb-1 text-sm font-medium text-(--color-foreground)">No sessions yet</p>
+          <p className="text-xs text-(--color-muted)">
+            Sessions appear here when clients connect.
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="-mx-3 flex flex-col">
           {sessions.map((session) => (
-            <SessionCard key={session.id} session={session} />
+            <SessionItem key={session.id} session={session} />
           ))}
         </div>
       )}

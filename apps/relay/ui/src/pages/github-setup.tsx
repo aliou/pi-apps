@@ -1,8 +1,8 @@
 import {
   ArrowSquareOutIcon,
   CheckCircleIcon,
+  CircleNotchIcon,
   LockKeyIcon,
-  SpinnerIcon,
   TrashIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
@@ -67,61 +67,67 @@ export function GitHubSetupPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <SpinnerIcon className="size-8 animate-spin text-(--color-muted-foreground)" />
+      <div className="flex items-center justify-center py-20">
+        <CircleNotchIcon className="size-6 animate-spin text-(--color-muted)" />
       </div>
     );
   }
 
   return (
     <div className="max-w-2xl">
-      <h1 className="mb-2 text-2xl font-semibold">GitHub Setup</h1>
-      <p className="mb-8 text-(--color-muted-foreground)">
-        Configure a GitHub Personal Access Token to access your repositories.
-      </p>
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold text-(--color-foreground)">GitHub</h1>
+        <p className="text-sm text-(--color-muted)">
+          Configure a Personal Access Token to access repositories.
+        </p>
+      </div>
 
       {tokenInfo?.configured ? (
         <div className="space-y-6">
           {/* Token status */}
-          <div className="rounded-lg border border-(--color-border) bg-(--color-card) p-4">
+          <div className="rounded-lg border border-(--color-border) bg-(--color-surface)/50 p-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 {tokenInfo.valid ? (
-                  <CheckCircleIcon className="size-8 text-green-500" weight="fill" />
+                  <CheckCircleIcon className="size-5 text-(--color-status-ok)" weight="fill" />
                 ) : (
-                  <WarningCircleIcon className="size-8 text-red-500" weight="fill" />
+                  <WarningCircleIcon className="size-5 text-(--color-status-err)" weight="fill" />
                 )}
                 <div>
-                  <h3 className="font-medium">
+                  <p className="text-sm font-medium text-(--color-foreground)">
                     {tokenInfo.valid ? "Token configured" : "Token invalid"}
-                  </h3>
+                  </p>
                   {tokenInfo.valid && tokenInfo.user && (
-                    <p className="text-sm text-(--color-muted-foreground)">
-                      Authenticated as <strong>{tokenInfo.user}</strong>
+                    <p className="text-xs text-(--color-muted)">
+                      Authenticated as{" "}
+                      <span className="font-mono text-(--color-accent)">{tokenInfo.user}</span>
                     </p>
                   )}
                   {!tokenInfo.valid && tokenInfo.error && (
-                    <p className="text-sm text-red-600 dark:text-red-400">{tokenInfo.error}</p>
+                    <p className="text-xs text-(--color-status-err)">{tokenInfo.error}</p>
                   )}
                 </div>
               </div>
               <button
                 onClick={handleRemoveToken}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors",
+                  "text-(--color-status-err)/70 hover:bg-(--color-status-err)/10 hover:text-(--color-status-err)",
+                )}
               >
-                <TrashIcon className="size-4" />
+                <TrashIcon className="size-3.5" />
                 Remove
               </button>
             </div>
 
             {tokenInfo.valid && tokenInfo.scopes && tokenInfo.scopes.length > 0 && (
-              <div className="mt-4 border-t border-(--color-border) pt-4">
-                <p className="mb-2 text-sm font-medium">Scopes</p>
+              <div className="mt-3 border-t border-(--color-border) pt-3">
+                <p className="mb-1.5 text-xs font-medium text-(--color-muted)">Scopes</p>
                 <div className="flex flex-wrap gap-1">
                   {tokenInfo.scopes.map((scope) => (
                     <span
                       key={scope}
-                      className="rounded bg-(--color-muted) px-2 py-0.5 text-xs"
+                      className="rounded bg-(--color-surface) px-1.5 py-0.5 font-mono text-xs text-(--color-muted)"
                     >
                       {scope}
                     </span>
@@ -134,29 +140,33 @@ export function GitHubSetupPage() {
           {/* Repos list */}
           {tokenInfo.valid && (
             <div>
-              <h2 className="mb-4 text-lg font-medium">Accessible Repositories</h2>
+              <h2 className="mb-3 text-sm font-medium text-(--color-foreground)">
+                Repositories
+              </h2>
               {reposLoading ? (
-                <div className="flex items-center gap-2 text-(--color-muted-foreground)">
-                  <SpinnerIcon className="size-4 animate-spin" />
-                  Loading repositories...
+                <div className="flex items-center gap-2 text-sm text-(--color-muted)">
+                  <CircleNotchIcon className="size-3.5 animate-spin" />
+                  Loading...
                 </div>
               ) : repos.length === 0 ? (
-                <p className="text-(--color-muted-foreground)">No repositories found.</p>
+                <p className="text-sm text-(--color-muted)">No repositories found.</p>
               ) : (
-                <div className="space-y-2">
+                <div className="flex flex-col gap-px overflow-hidden rounded-lg border border-(--color-border)">
                   {repos.slice(0, 10).map((repo) => (
                     <div
                       key={repo.id}
-                      className="flex items-center justify-between rounded-lg border border-(--color-border) bg-(--color-card) p-3"
+                      className="flex items-center justify-between bg-(--color-surface)/50 px-3 py-2.5 transition-colors hover:bg-(--color-surface)"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         {repo.isPrivate && (
-                          <LockKeyIcon className="size-4 text-(--color-muted-foreground)" />
+                          <LockKeyIcon className="size-3.5 shrink-0 text-(--color-muted)/60" />
                         )}
-                        <div>
-                          <p className="font-medium">{repo.fullName}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-(--color-foreground)">
+                            {repo.fullName}
+                          </p>
                           {repo.description && (
-                            <p className="text-sm text-(--color-muted-foreground) line-clamp-1">
+                            <p className="truncate text-xs text-(--color-muted)">
                               {repo.description}
                             </p>
                           )}
@@ -166,16 +176,16 @@ export function GitHubSetupPage() {
                         href={repo.htmlUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-(--color-muted-foreground) hover:text-(--color-foreground)"
+                        className="shrink-0 text-(--color-muted)/60 transition-colors hover:text-(--color-foreground)"
                       >
-                        <ArrowSquareOutIcon className="size-5" />
+                        <ArrowSquareOutIcon className="size-4" />
                       </a>
                     </div>
                   ))}
                   {repos.length > 10 && (
-                    <p className="text-sm text-(--color-muted-foreground)">
-                      And {repos.length - 10} more...
-                    </p>
+                    <div className="bg-(--color-surface)/30 px-3 py-2 text-xs text-(--color-muted)">
+                      And {repos.length - 10} more
+                    </div>
                   )}
                 </div>
               )}
@@ -185,47 +195,48 @@ export function GitHubSetupPage() {
       ) : (
         <div className="space-y-6">
           {/* Instructions */}
-          <div className="rounded-lg border border-(--color-border) bg-(--color-card) p-4">
-            <h3 className="mb-3 font-medium">Create a Personal Access Token</h3>
-            <ol className="mb-4 list-inside list-decimal space-y-2 text-sm text-(--color-muted-foreground)">
+          <div className="rounded-lg border border-(--color-border) bg-(--color-surface)/50 p-4">
+            <h3 className="mb-3 text-sm font-medium text-(--color-foreground)">
+              Create a Personal Access Token
+            </h3>
+            <ol className="mb-4 list-inside list-decimal space-y-1.5 text-sm text-(--color-muted)">
               <li>
                 Go to{" "}
                 <a
                   href="https://github.com/settings/tokens?type=beta"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-(--color-accent) underline"
+                  className="text-(--color-accent) underline decoration-(--color-accent)/30 underline-offset-2 hover:decoration-(--color-accent)"
                 >
                   GitHub Token Settings
                 </a>
               </li>
-              <li>Click "Generate new token" and select "Fine-grained token"</li>
-              <li>Set expiration and select repositories to access</li>
+              <li>Click &ldquo;Generate new token&rdquo; (fine-grained)</li>
+              <li>Set expiration and select repositories</li>
               <li>
-                Under "Permissions", grant:
-                <ul className="ml-4 mt-1 list-disc">
-                  <li>Contents: Read and write</li>
-                  <li>Metadata: Read-only</li>
-                </ul>
+                Grant permissions:
+                <span className="ml-1 font-mono text-xs text-(--color-accent)">
+                  contents:rw metadata:r
+                </span>
               </li>
-              <li>Generate and copy the token</li>
+              <li>Generate and paste below</li>
             </ol>
             <a
               href="https://github.com/settings/tokens?type=beta"
               target="_blank"
               rel="noopener noreferrer"
               className={cn(
-                "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium",
-                "bg-(--color-muted) hover:bg-(--color-border)",
+                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                "bg-(--color-surface) text-(--color-foreground) hover:bg-(--color-surface-hover)",
               )}
             >
-              <ArrowSquareOutIcon className="size-4" />
+              <ArrowSquareOutIcon className="size-3.5" />
               Open GitHub Settings
             </a>
           </div>
 
           {/* Token form */}
-          <div className="rounded-lg border border-(--color-border) bg-(--color-card) p-4">
+          <div className="rounded-lg border border-(--color-border) bg-(--color-surface)/50 p-4">
             <TokenForm onSubmit={handleSubmitToken} isLoading={submitting} />
           </div>
         </div>

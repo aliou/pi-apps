@@ -1,64 +1,72 @@
 @import "tailwindcss";
 
 @theme {
-  /* Brand palette */
-  --color-midnight: #0f172a;
-  --color-slate: #1e293b;
-  --color-steel: #334155;
-  --color-ash: #64748b;
-  --color-silver: #94a3b8;
-  --color-pearl: #e2e8f0;
-  --color-snow: #f8fafc;
+  /* MP072 palette */
+  --color-palladian: #EEE9DF;
+  --color-oatmeal: #C9C1B1;
+  --color-blue-fantastic: #2C3B4D;
+  --color-burning-flame: #FFB162;
+  --color-truffle: #A35139;
+  --color-abyssal: #1B2632;
 
-  /* Accent */
-  --color-coral: #f97316;
-  --color-coral-muted: #fb923c;
+  /* Extended shades */
+  --color-abyssal-deep: #141D27;
+  --color-blue-fantastic-light: #37495D;
+  --color-burning-flame-dim: #CC8D4E;
 
-  /* Status colors */
-  --color-success: #22c55e;
-  --color-warning: #eab308;
-  --color-error: #ef4444;
-  --color-info: #3b82f6;
+  /* Semantic tokens */
+  --color-background: var(--color-abyssal);
+  --color-foreground: var(--color-palladian);
+  --color-surface: var(--color-blue-fantastic);
+  --color-surface-hover: var(--color-blue-fantastic-light);
+  --color-muted: var(--color-oatmeal);
+  --color-accent: var(--color-burning-flame);
+  --color-accent-dim: var(--color-burning-flame-dim);
+  --color-destructive: var(--color-truffle);
+  --color-border: #263344;
 
-  /* Semantic tokens - light mode defaults */
-  --color-background: var(--color-snow);
-  --color-foreground: var(--color-midnight);
-  --color-muted: var(--color-pearl);
-  --color-muted-foreground: var(--color-ash);
-  --color-card: white;
-  --color-card-foreground: var(--color-midnight);
-  --color-border: var(--color-pearl);
-  --color-accent: var(--color-coral);
-  --color-accent-foreground: white;
+  /* Status */
+  --color-status-ok: #5CB870;
+  --color-status-warn: #D4A843;
+  --color-status-err: #C75D5D;
+  --color-status-info: #5B8FC7;
+  --color-diff-add: #5CB870;
+  --color-diff-del: #C75D5D;
+
+  /* Fonts */
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 }
 
 @layer base {
   :root {
-    color-scheme: light;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --color-background: var(--color-midnight);
-      --color-foreground: var(--color-snow);
-      --color-muted: var(--color-slate);
-      --color-muted-foreground: var(--color-silver);
-      --color-card: var(--color-slate);
-      --color-card-foreground: var(--color-snow);
-      --color-border: var(--color-steel);
-    }
+    color-scheme: dark;
   }
 
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family:
-      system-ui,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      Roboto,
-      sans-serif;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-blue-fantastic-light);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-oatmeal);
   }
 }
