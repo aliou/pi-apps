@@ -4,9 +4,8 @@ import { createApp } from "./app";
 import { ensureDataDirs, parseConfig } from "./config";
 import { createDatabase } from "./db/connection";
 import { runMigrations } from "./db/migrate";
-import { loadEnv } from "./env";
-import { SandboxManager } from "./sandbox/manager";
-import { MockSandboxProvider } from "./sandbox/mock";
+import { loadEnv, SANDBOX_DOCKER_IMAGE, SANDBOX_PROVIDER } from "./env";
+import { SandboxManager, type SandboxProviderType } from "./sandbox/manager";
 import { EventJournal } from "./services/event-journal";
 import { GitHubService } from "./services/github.service";
 import { RepoService } from "./services/repo.service";
@@ -44,10 +43,23 @@ async function main() {
   const repoService = new RepoService(db);
   const githubService = new GitHubService();
 
-  // Initialize sandbox manager with mock provider
-  const sandboxProvider = new MockSandboxProvider();
-  const sandboxManager = new SandboxManager(sandboxProvider);
+  // Initialize sandbox manager based on config
+  const sandboxManager = new SandboxManager({
+    provider: SANDBOX_PROVIDER as SandboxProviderType,
+    docker: {
+      image: SANDBOX_DOCKER_IMAGE,
+    },
+  });
   console.log(`Sandbox provider: ${sandboxManager.providerName}`);
+
+  // Check availability on startup
+  const available = await sandboxManager.isProviderAvailable();
+  if (!available) {
+    console.warn(`Sandbox provider "${SANDBOX_PROVIDER}" is not available`);
+    if (SANDBOX_PROVIDER === "docker") {
+      console.warn("Is Docker running?");
+    }
+  }
 
   // Prune old events on startup (7 days)
   const cutoffDate = new Date(

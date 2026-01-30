@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "./app";
 import type { AppDatabase } from "./db/connection";
 import { SandboxManager } from "./sandbox/manager";
-import { MockSandboxProvider } from "./sandbox/mock";
 import { EventJournal } from "./services/event-journal";
 import { GitHubService } from "./services/github.service";
 import { RepoService } from "./services/repo.service";
@@ -17,20 +16,17 @@ describe("Session Protocol Integration", () => {
   let db: AppDatabase;
   let sqlite: ReturnType<typeof createTestDatabase>["sqlite"];
   let services: AppServices;
-  let sandboxProvider: MockSandboxProvider;
-
   beforeEach(() => {
     const result = createTestDatabase();
     db = result.db;
     sqlite = result.sqlite;
-    sandboxProvider = new MockSandboxProvider();
     services = {
       db,
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
       githubService: new GitHubService(),
-      sandboxManager: new SandboxManager(sandboxProvider),
+      sandboxManager: new SandboxManager({ provider: "mock" }),
     };
   });
 
@@ -68,7 +64,7 @@ describe("Session Protocol Integration", () => {
       expect(getJson.data.status).toBe("ready");
 
       // Check sandbox is available
-      const sandbox = sandboxProvider.getSandbox(sessionId);
+      const sandbox = services.sandboxManager.getForSession(sessionId);
       expect(sandbox).toBeDefined();
       expect(sandbox?.status).toBe("running");
     });
@@ -124,7 +120,7 @@ describe("Session Protocol Integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Verify sandbox exists
-      expect(sandboxProvider.getSandbox(sessionId)).toBeDefined();
+      expect(services.sandboxManager.getForSession(sessionId)).toBeDefined();
 
       // Delete session
       const deleteRes = await app.request(`/api/sessions/${sessionId}`, {
@@ -137,7 +133,7 @@ describe("Session Protocol Integration", () => {
       expect(getRes.status).toBe(404);
 
       // Verify sandbox is terminated
-      expect(sandboxProvider.getSandbox(sessionId)).toBeUndefined();
+      expect(services.sandboxManager.getForSession(sessionId)).toBeUndefined();
     });
   });
 

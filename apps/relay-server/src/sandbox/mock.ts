@@ -14,6 +14,7 @@ import type {
 class MockSandboxHandle implements SandboxHandle {
   readonly stdin = new PassThrough();
   readonly stdout = new PassThrough();
+  readonly stderr = new PassThrough();
 
   private _status: SandboxStatus = "creating";
   private statusHandlers = new Set<(status: SandboxStatus) => void>();

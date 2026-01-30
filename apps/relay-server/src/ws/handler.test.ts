@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AppDatabase } from "../db/connection";
 import { SandboxManager } from "../sandbox/manager";
-import { MockSandboxProvider } from "../sandbox/mock";
 import { EventJournal } from "../services/event-journal";
 import { SessionService } from "../services/session.service";
 import { createTestDatabase } from "../test-helpers";
@@ -21,7 +20,7 @@ describe("WebSocket Handler", () => {
     deps = {
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
-      sandboxManager: new SandboxManager(new MockSandboxProvider()),
+      sandboxManager: new SandboxManager({ provider: "mock" }),
     };
     connectionManager = new ConnectionManager();
   });
