@@ -14,7 +14,11 @@ import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
-import { createTestDatabase, createTestSandboxManager } from "../test-helpers";
+import {
+  createTestDatabase,
+  createTestSandboxManager,
+  createTestSecretsService,
+} from "../test-helpers";
 
 describe("GitHub Routes", () => {
   let db: AppDatabase;
@@ -34,6 +38,7 @@ describe("GitHub Routes", () => {
       repoService: new RepoService(db),
       githubService,
       sandboxManager: createTestSandboxManager(),
+      secretsService: createTestSecretsService(db),
     };
   });
 

@@ -16,9 +16,27 @@ export function loadEnv(configDir: string): void {
 
 /**
  * Sandbox provider configuration from environment.
+ * These are functions to ensure they read env vars after loadEnv() is called.
  */
-export const SANDBOX_PROVIDER = (process.env.SANDBOX_PROVIDER ?? "mock") as
-  | "mock"
-  | "docker";
-export const SANDBOX_DOCKER_IMAGE =
-  process.env.SANDBOX_DOCKER_IMAGE ?? "pi-sandbox:local";
+export function getSandboxProvider(): "mock" | "docker" {
+  return (process.env.SANDBOX_PROVIDER ?? "mock") as "mock" | "docker";
+}
+
+export function getSandboxDockerImage(): string {
+  return process.env.SANDBOX_DOCKER_IMAGE ?? "pi-sandbox:local";
+}
+
+/**
+ * Encryption key for secrets at rest (base64-encoded 32 bytes).
+ * Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+ */
+export function getRelayEncryptionKey(): string | undefined {
+  return process.env.RELAY_ENCRYPTION_KEY;
+}
+
+/**
+ * Key version for encryption key rotation support.
+ */
+export function getRelayEncryptionKeyVersion(): number {
+  return Number.parseInt(process.env.RELAY_ENCRYPTION_KEY_VERSION ?? "1", 10);
+}

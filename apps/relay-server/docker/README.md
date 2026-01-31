@@ -1,30 +1,86 @@
 # Pi Sandbox Docker Image
 
-Docker image for running pi inside isolated containers.
+Docker image for running pi in isolated containers for the relay server.
 
 ## Building
 
 ```bash
-# Build with latest pi version
+# Build the image
 docker build -t pi-sandbox:local .
 
 # Build with specific pi version
-docker build -t pi-sandbox:local --build-arg PI_VERSION=0.50.5 .
+docker build --build-arg PI_VERSION=v0.50.6 -t pi-sandbox:local .
 ```
 
-## Testing
+## Image Details
+
+- **Base**: `ghcr.io/openai/codex-universal:latest` (~5GB)
+- **Pi**: Downloaded from GitHub releases (binary, no Node.js runtime needed)
+- **Multi-language**: Node.js, Python, Go, Rust, etc. pre-installed
+- **User**: Runs as non-root `user` for security
+
+## Secrets Management
+
+**Secrets are NOT passed as environment variables** (visible in `docker inspect`, `/proc`).
+
+Instead, secrets are mounted as read-only files in `/run/secrets/`:
+
+```
+/run/secrets/
+├── anthropic_api_key    # Contains: sk-ant-...
+├── openai_api_key       # Contains: sk-...
+└── github_token         # Contains: ghp_...
+```
+
+The entrypoint script automatically loads these files into environment variables:
+- `/run/secrets/anthropic_api_key` → `ANTHROPIC_API_KEY`
+- `/run/secrets/openai_api_key` → `OPENAI_API_KEY`
+
+### Why Files Instead of Env Vars?
+
+| Method | `docker inspect` | `/proc/[pid]/environ` | Logs |
+|--------|-----------------|----------------------|------|
+| Env vars | ❌ Visible | ❌ Visible | ❌ Often leaked |
+| Mounted files | ✅ Path only | ✅ Hidden | ✅ Safer |
+
+## Testing Locally
 
 ```bash
-# Run container interactively
-docker run -it --rm pi-sandbox:local
+# Run with pi version check
+docker run --rm pi-sandbox:local pi --version
+
+# Run with mounted secrets
+echo "sk-test-key" > /tmp/anthropic_api_key
+docker run --rm \
+  -v /tmp/anthropic_api_key:/run/secrets/anthropic_api_key:ro \
+  pi-sandbox:local \
+  bash -c 'echo "Key loaded: ${ANTHROPIC_API_KEY:0:10}..."'
 
 # Run pi in RPC mode
-docker run -it --rm pi-sandbox:local pi --mode rpc --no-session
+docker run --rm -i \
+  -v /tmp/anthropic_api_key:/run/secrets/anthropic_api_key:ro \
+  pi-sandbox:local \
+  pi --mode rpc --no-session
+```
 
-# Run with workspace volume
-docker run -it --rm \
-  -v pi-test-workspace:/workspace \
-  pi-sandbox:local
+## Relay Server Integration
+
+The relay server:
+1. Stores API keys encrypted in SQLite (AES-256-GCM)
+2. Decrypts keys at container creation time
+3. Writes keys to temp files on host (mode 0400)
+4. Mounts temp directory as `/run/secrets:ro`
+5. Cleans up temp files when container stops
+
+Configure the relay:
+```bash
+# Generate encryption key (do this once, store securely)
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+
+# Set environment
+export RELAY_ENCRYPTION_KEY="<base64-key>"
+export SANDBOX_PROVIDER=docker
+export SANDBOX_DOCKER_IMAGE=pi-sandbox:local
 ```
 
 ## Environment Variables
@@ -32,19 +88,13 @@ docker run -it --rm \
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PI_CODING_AGENT_DIR` | Pi agent data directory | `/data/agent` |
-| `PI_SESSION_ID` | Session identifier | (none) |
-| `CODEX_ENV_NODE_VERSION` | Node.js version (codex-universal) | (default) |
-| `CODEX_ENV_PYTHON_VERSION` | Python version (codex-universal) | (default) |
+| `PI_SECRETS_DIR` | Directory containing secret files | `/run/secrets` |
+| `PI_SESSION_ID` | Session ID (set by relay) | - |
 
 ## Volumes
 
-- `/workspace` - Working directory for code
-- `/data/agent` - Pi agent data (auth, models, sessions)
-
-## Base Image
-
-Based on [OpenAI's codex-universal](https://github.com/openai/codex-universal) image which provides:
-
-- Multi-language runtime support (Node, Python, Go, Rust, etc.)
-- Designed for AI coding agents
-- Dynamic language version selection via env vars
+| Path | Purpose |
+|------|---------|
+| `/workspace` | Git repository / working directory |
+| `/data/agent` | Pi agent config and sessions |
+| `/run/secrets` | Mounted secrets (read-only) |

@@ -6,6 +6,8 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { AppDatabase } from "./db/connection";
 import * as schema from "./db/schema";
 import { SandboxManager } from "./sandbox/manager";
+import { CryptoService } from "./services/crypto.service";
+import { SecretsService } from "./services/secrets.service";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -63,4 +65,13 @@ export function createTestSandboxManager(): SandboxManager {
     defaultProvider: "mock",
     enabledProviders: ["mock"],
   });
+}
+
+/**
+ * Create a test secrets service with a random encryption key.
+ */
+export function createTestSecretsService(db: AppDatabase): SecretsService {
+  const testKey = CryptoService.generateKey();
+  const crypto = new CryptoService(testKey);
+  return new SecretsService(db, crypto);
 }

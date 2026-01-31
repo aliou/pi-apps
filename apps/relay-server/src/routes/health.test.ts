@@ -5,7 +5,11 @@ import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
-import { createTestDatabase, createTestSandboxManager } from "../test-helpers";
+import {
+  createTestDatabase,
+  createTestSandboxManager,
+  createTestSecretsService,
+} from "../test-helpers";
 
 describe("Health Routes", () => {
   let db: AppDatabase;
@@ -23,6 +27,7 @@ describe("Health Routes", () => {
       repoService: new RepoService(db),
       githubService: new GitHubService(),
       sandboxManager: createTestSandboxManager(),
+      secretsService: createTestSecretsService(db),
     };
   });
 

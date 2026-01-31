@@ -4,11 +4,19 @@ import { createApp } from "./app";
 import { ensureDataDirs, parseConfig } from "./config";
 import { createDatabase } from "./db/connection";
 import { runMigrations } from "./db/migrate";
-import { loadEnv, SANDBOX_DOCKER_IMAGE, SANDBOX_PROVIDER } from "./env";
+import {
+  getRelayEncryptionKey,
+  getRelayEncryptionKeyVersion,
+  getSandboxDockerImage,
+  getSandboxProvider,
+  loadEnv,
+} from "./env";
 import { SandboxManager, type SandboxProviderType } from "./sandbox/manager";
+import { CryptoService } from "./services/crypto.service";
 import { EventJournal } from "./services/event-journal";
 import { GitHubService } from "./services/github.service";
 import { RepoService } from "./services/repo.service";
+import { SecretsService } from "./services/secrets.service";
 import { SessionService } from "./services/session.service";
 
 const VERSION = "0.1.0";
@@ -43,11 +51,36 @@ async function main() {
   const repoService = new RepoService(db);
   const githubService = new GitHubService();
 
+  // Initialize secrets service (required)
+  const encryptionKey = getRelayEncryptionKey();
+  if (!encryptionKey) {
+    console.error("RELAY_ENCRYPTION_KEY is required");
+    console.error(
+      "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+    );
+    process.exit(1);
+  }
+
+  const cryptoService = new CryptoService(
+    encryptionKey,
+    getRelayEncryptionKeyVersion(),
+  );
+  const secretsService = new SecretsService(db, cryptoService);
+  console.log("Secrets service initialized");
+
+  // Load secrets for sandbox injection
+  const secrets = await secretsService.getAllAsEnv();
+  const secretCount = Object.keys(secrets).length;
+  console.log(`Loaded ${secretCount} secret(s) for sandbox injection`);
+
   // Initialize sandbox manager based on config
+  const sandboxProvider = getSandboxProvider();
   const sandboxManager = new SandboxManager({
-    defaultProvider: SANDBOX_PROVIDER as SandboxProviderType,
+    defaultProvider: sandboxProvider as SandboxProviderType,
     docker: {
-      image: SANDBOX_DOCKER_IMAGE,
+      image: getSandboxDockerImage(),
+      secrets,
+      secretsBaseDir: paths.stateDir, // Use state dir for temp secrets (Lima-compatible)
     },
   });
   console.log(
@@ -60,8 +93,8 @@ async function main() {
   // Check availability on startup
   const available = await sandboxManager.isProviderAvailable();
   if (!available) {
-    console.warn(`Sandbox provider "${SANDBOX_PROVIDER}" is not available`);
-    if (SANDBOX_PROVIDER === "docker") {
+    console.warn(`Sandbox provider "${sandboxProvider}" is not available`);
+    if (sandboxProvider === "docker") {
       console.warn("Is Docker running?");
     }
   }
@@ -84,6 +117,7 @@ async function main() {
       repoService,
       githubService,
       sandboxManager,
+      secretsService,
     },
   });
 

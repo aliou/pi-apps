@@ -15,6 +15,13 @@
       "when": 1769815989201,
       "tag": "0001_amused_stone_men",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1769817871851,
+      "tag": "0002_moaning_inhumans",
+      "breakpoints": true
     }
   ]
 }

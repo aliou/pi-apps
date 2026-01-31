@@ -6,7 +6,7 @@ import { EventJournal } from "./services/event-journal";
 import { GitHubService } from "./services/github.service";
 import { RepoService } from "./services/repo.service";
 import { SessionService } from "./services/session.service";
-import { createTestDatabase } from "./test-helpers";
+import { createTestDatabase, createTestSecretsService } from "./test-helpers";
 
 /**
  * Integration tests for the session protocol flow.
@@ -27,6 +27,7 @@ describe("Session Protocol Integration", () => {
       repoService: new RepoService(db),
       githubService: new GitHubService(),
       sandboxManager: new SandboxManager({ defaultProvider: "mock" }),
+      secretsService: createTestSecretsService(db),
     };
   });
 

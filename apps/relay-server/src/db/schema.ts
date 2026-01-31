@@ -71,6 +71,26 @@ export const settings = sqliteTable("settings", {
   updatedAt: text("updated_at").notNull(),
 });
 
+// -- secrets (encrypted API keys) ------------------------------
+export const secrets = sqliteTable("secrets", {
+  /** Unique identifier (e.g., "anthropic_api_key", "openai_api_key") */
+  id: text("id").primaryKey(),
+  /** Human-readable name */
+  name: text("name").notNull(),
+  /** Base64-encoded initialization vector */
+  iv: text("iv").notNull(),
+  /** Base64-encoded encrypted value */
+  ciphertext: text("ciphertext").notNull(),
+  /** Base64-encoded authentication tag */
+  tag: text("tag").notNull(),
+  /** Encryption key version (for rotation) */
+  keyVersion: integer("key_version").notNull().default(1),
+  /** ISO timestamp of creation */
+  createdAt: text("created_at").notNull(),
+  /** ISO timestamp of last update */
+  updatedAt: text("updated_at").notNull(),
+});
+
 // Type exports
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
@@ -83,3 +103,6 @@ export type NewRepo = typeof repos.$inferInsert;
 
 export type Setting = typeof settings.$inferSelect;
 export type NewSetting = typeof settings.$inferInsert;
+
+export type Secret = typeof secrets.$inferSelect;
+export type NewSecret = typeof secrets.$inferInsert;

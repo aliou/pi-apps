@@ -1,5 +1,15 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "PI_RELAY_DATA_DIR",
+    "PI_RELAY_CONFIG_DIR",
+    "PI_RELAY_CACHE_DIR",
+    "PI_RELAY_STATE_DIR",
+    "PI_RELAY_DB_PATH",
+    "PI_RELAY_PORT",
+    "PI_RELAY_HOST",
+    "DOCKER_HOST"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

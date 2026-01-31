@@ -4,12 +4,14 @@ import { logger } from "hono/logger";
 import type { AppDatabase } from "./db/connection";
 import { githubRoutes } from "./routes/github";
 import { healthRoutes } from "./routes/health";
+import { secretsRoutes } from "./routes/secrets";
 import { sessionsRoutes } from "./routes/sessions";
 import { settingsRoutes } from "./routes/settings";
 import type { SandboxManager } from "./sandbox/manager";
 import type { EventJournal } from "./services/event-journal";
 import type { GitHubService } from "./services/github.service";
 import type { RepoService } from "./services/repo.service";
+import type { SecretsService } from "./services/secrets.service";
 import type { SessionService } from "./services/session.service";
 
 export type AppEnv = {
@@ -30,6 +32,7 @@ export interface AppServices {
   repoService: RepoService;
   githubService: GitHubService;
   sandboxManager: SandboxManager;
+  secretsService: SecretsService;
 }
 
 export interface CreateAppOptions {
@@ -65,6 +68,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
   app.route("/api/sessions", sessionsRoutes());
   app.route("/api/github", githubRoutes());
   app.route("/api/settings", settingsRoutes());
+  app.route("/api/secrets", secretsRoutes(services.secretsService));
 
   return app;
 }

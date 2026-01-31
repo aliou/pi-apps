@@ -1,3 +1,6 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough, type Readable, type Writable } from "node:stream";
 import Docker from "dockerode";
 import type {
@@ -27,9 +30,24 @@ export interface DockerProviderConfig {
     cpuShares?: number;
     memoryMB?: number;
   };
+
+  /**
+   * Secrets to inject into containers.
+   * Keys are environment variable names (e.g., "ANTHROPIC_API_KEY"),
+   * values are the secret values.
+   * These are mounted as files in /run/secrets/ (not as env vars).
+   */
+  secrets?: Record<string, string>;
+
+  /**
+   * Base directory for temporary secrets files.
+   * Must be accessible to Docker (not /tmp on Lima/Docker Desktop).
+   * Defaults to os.tmpdir() - override for Lima compatibility.
+   */
+  secretsBaseDir?: string;
 }
 
-const DEFAULT_CONFIG: Required<DockerProviderConfig> = {
+const DEFAULT_CONFIG = {
   image: "pi-sandbox:local",
   networkMode: "bridge",
   volumePrefix: "pi-session",
@@ -38,7 +56,7 @@ const DEFAULT_CONFIG: Required<DockerProviderConfig> = {
     cpuShares: 1024,
     memoryMB: 2048,
   },
-};
+} as const;
 
 /**
  * Docker-based sandbox provider that runs pi inside isolated containers.
@@ -46,12 +64,38 @@ const DEFAULT_CONFIG: Required<DockerProviderConfig> = {
 export class DockerSandboxProvider implements SandboxProvider {
   readonly name = "docker";
   private docker: Docker;
-  private config: Required<DockerProviderConfig>;
+  private config: Required<
+    Pick<
+      DockerProviderConfig,
+      "image" | "networkMode" | "volumePrefix" | "containerPrefix"
+    >
+  > & {
+    defaultResources: { cpuShares: number; memoryMB: number };
+    secrets?: Record<string, string>;
+    secretsBaseDir?: string;
+  };
   private sandboxes = new Map<string, DockerSandboxHandle>();
+  /** Track secrets directories for cleanup */
+  private secretsDirs = new Map<string, string>();
 
   constructor(config: DockerProviderConfig = { image: DEFAULT_CONFIG.image }) {
     this.docker = new Docker();
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      defaultResources: {
+        ...DEFAULT_CONFIG.defaultResources,
+        ...config.defaultResources,
+      },
+    };
+  }
+
+  /**
+   * Update the secrets configuration.
+   * Call this when secrets change in the database.
+   */
+  setSecrets(secrets: Record<string, string>): void {
+    this.config.secrets = secrets;
   }
 
   async isAvailable(): Promise<boolean> {
@@ -84,11 +128,22 @@ export class DockerSandboxProvider implements SandboxProvider {
       await this.cloneRepoIntoVolume(volumeName, repoUrl, repoBranch);
     }
 
-    // Build environment variables
+    // Build environment variables (non-secret config only)
     const containerEnv = [
       ...Object.entries(env).map(([k, v]) => `${k}=${v}`),
       `PI_SESSION_ID=${sessionId}`,
     ];
+
+    // Create secrets directory on host and write secret files
+    const secretsDir = this.createSecretsDir(sessionId);
+    const binds = [`${volumeName}:/workspace`];
+
+    if (secretsDir) {
+      // Mount secrets directory as read-only
+      binds.push(`${secretsDir}:/run/secrets:ro`);
+      // Tell the container to source secrets from files
+      containerEnv.push("PI_SECRETS_DIR=/run/secrets");
+    }
 
     // Resource limits (with defaults guaranteed)
     const cpuShares =
@@ -114,7 +169,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       StdinOnce: false,
       Tty: false,
       HostConfig: {
-        Binds: [`${volumeName}:/workspace`],
+        Binds: binds,
         NetworkMode: this.config.networkMode,
         CpuShares: limits.CpuShares,
         Memory: limits.Memory,
@@ -167,6 +222,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       handle.terminate();
       this.sandboxes.delete(sessionId);
     }
+
+    // Clean up secrets directory
+    this.cleanupSecretsDir(sessionId);
   }
 
   async listSandboxes(): Promise<SandboxInfo[]> {
@@ -271,6 +329,48 @@ export class DockerSandboxProvider implements SandboxProvider {
         return "stopped";
       default:
         return "error";
+    }
+  }
+
+  /**
+   * Create a temporary directory with secret files for a session.
+   * Returns the directory path, or null if no secrets configured.
+   */
+  private createSecretsDir(sessionId: string): string | null {
+    const secrets = this.config.secrets;
+    if (!secrets || Object.keys(secrets).length === 0) {
+      return null;
+    }
+
+    // Create a secure temporary directory
+    // Use configured base dir or fall back to system tmpdir
+    const baseDir = this.config.secretsBaseDir ?? tmpdir();
+    const secretsDir = join(baseDir, `pi-secrets-${sessionId}`);
+    mkdirSync(secretsDir, { mode: 0o700, recursive: true });
+
+    // Write each secret as a file (lowercase name)
+    for (const [envName, value] of Object.entries(secrets)) {
+      const filename = envName.toLowerCase();
+      const filepath = join(secretsDir, filename);
+      writeFileSync(filepath, value, { mode: 0o400 });
+    }
+
+    this.secretsDirs.set(sessionId, secretsDir);
+    return secretsDir;
+  }
+
+  /**
+   * Clean up the secrets directory for a session.
+   */
+  private cleanupSecretsDir(sessionId: string): void {
+    const secretsDir = this.secretsDirs.get(sessionId);
+    if (secretsDir) {
+      try {
+        rmSync(secretsDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+      this.secretsDirs.delete(sessionId);
     }
   }
 }

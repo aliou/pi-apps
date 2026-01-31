@@ -95,6 +95,15 @@
               export PI_RELAY_CACHE_DIR="$PWD/.dev/relay/cache"
               export PI_RELAY_STATE_DIR="$PWD/.dev/relay/state"
 
+              # Auto-detect Docker socket for Lima/colima
+              if [ -z "''${DOCKER_HOST:-}" ]; then
+                if [ -S "$HOME/.lima/default/sock/docker.sock" ]; then
+                  export DOCKER_HOST="unix://$HOME/.lima/default/sock/docker.sock"
+                elif [ -S "$HOME/.colima/default/docker.sock" ]; then
+                  export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+                fi
+              fi
+
               echo ""
               echo "Pi Apps Development Environment"
               echo "================================"
