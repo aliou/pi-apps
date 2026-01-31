@@ -123,37 +123,44 @@ export default function AppLayout() {
             "px-3",
           )}
         >
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              onClick={() => setMobileOpen(false)}
-              title={collapsed ? item.label : undefined}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center rounded-lg text-sm font-medium transition-colors",
-                  collapsed ? "md:justify-center md:p-2" : "",
-                  "gap-3 px-3 py-2",
-                  isActive
-                    ? "bg-surface text-fg"
-                    : "text-muted hover:bg-surface/50 hover:text-fg",
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon
-                    className="size-[18px] shrink-0"
-                    weight={isActive ? "fill" : "regular"}
-                  />
-                  <span className={cn(collapsed && "md:hidden")}>
-                    {item.label}
-                  </span>
-                </>
-              )}
-            </NavLink>
-          ))}
+          {navItems.map((item) => {
+            // Sessions nav item should also be active on /sessions/:id
+            const isSessionsItem = item.to === "/";
+            const isOnSessionPage = location.pathname.startsWith("/sessions/");
+            const forceActive = isSessionsItem && isOnSessionPage;
+
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === "/"}
+                onClick={() => setMobileOpen(false)}
+                title={collapsed ? item.label : undefined}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center rounded-lg text-sm font-medium transition-colors",
+                    collapsed ? "md:justify-center md:p-2" : "",
+                    "gap-3 px-3 py-2",
+                    isActive || forceActive
+                      ? "bg-surface text-fg"
+                      : "text-muted hover:bg-surface/50 hover:text-fg",
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <item.icon
+                      className="size-[18px] shrink-0"
+                      weight={isActive || forceActive ? "fill" : "regular"}
+                    />
+                    <span className={cn(collapsed && "md:hidden")}>
+                      {item.label}
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* Spacer */}
