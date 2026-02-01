@@ -139,7 +139,6 @@ describe("SecretsService", () => {
       await service.set("groq_api_key", "d");
       await service.set("deepseek_api_key", "e");
       await service.set("openrouter_api_key", "f");
-      await service.set("github_token", "g");
 
       const env = await service.getAllAsEnv();
 
@@ -150,7 +149,6 @@ describe("SecretsService", () => {
         GROQ_API_KEY: "d",
         DEEPSEEK_API_KEY: "e",
         OPENROUTER_API_KEY: "f",
-        GITHUB_TOKEN: "g",
       });
     });
   });
@@ -164,7 +162,6 @@ describe("SecretsService", () => {
         "groq_api_key",
         "deepseek_api_key",
         "openrouter_api_key",
-        "github_token",
       ];
 
       for (const id of expectedIds) {

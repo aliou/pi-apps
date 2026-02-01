@@ -62,7 +62,7 @@ describe("GitHub Routes", () => {
       // Store a token
       db.insert(settings)
         .values({
-          key: "github_token",
+          key: "github_repos_access_token",
           value: JSON.stringify("ghp_test"),
           updatedAt: new Date().toISOString(),
         })
@@ -90,7 +90,7 @@ describe("GitHub Routes", () => {
     it("returns invalid when token validation fails", async () => {
       db.insert(settings)
         .values({
-          key: "github_token",
+          key: "github_repos_access_token",
           value: JSON.stringify("ghp_invalid"),
           updatedAt: new Date().toISOString(),
         })
@@ -137,7 +137,9 @@ describe("GitHub Routes", () => {
       const stored = db
         .select()
         .from(settings)
-        .where(require("drizzle-orm").eq(settings.key, "github_token"))
+        .where(
+          require("drizzle-orm").eq(settings.key, "github_repos_access_token"),
+        )
         .get();
       assert(stored, "token stored");
       expect(JSON.parse(stored.value)).toBe("ghp_valid");
@@ -193,7 +195,7 @@ describe("GitHub Routes", () => {
     it("removes token", async () => {
       db.insert(settings)
         .values({
-          key: "github_token",
+          key: "github_repos_access_token",
           value: JSON.stringify("ghp_test"),
           updatedAt: new Date().toISOString(),
         })
@@ -210,7 +212,9 @@ describe("GitHub Routes", () => {
       const stored = db
         .select()
         .from(settings)
-        .where(require("drizzle-orm").eq(settings.key, "github_token"))
+        .where(
+          require("drizzle-orm").eq(settings.key, "github_repos_access_token"),
+        )
         .get();
       expect(stored).toBeUndefined();
     });
@@ -229,7 +233,7 @@ describe("GitHub Routes", () => {
     it("returns repos when token configured", async () => {
       db.insert(settings)
         .values({
-          key: "github_token",
+          key: "github_repos_access_token",
           value: JSON.stringify("ghp_test"),
           updatedAt: new Date().toISOString(),
         })
@@ -261,7 +265,7 @@ describe("GitHub Routes", () => {
     it("returns error on API failure", async () => {
       db.insert(settings)
         .values({
-          key: "github_token",
+          key: "github_repos_access_token",
           value: JSON.stringify("ghp_test"),
           updatedAt: new Date().toISOString(),
         })

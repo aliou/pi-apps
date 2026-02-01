@@ -223,7 +223,7 @@ describe("Database", () => {
 
       db.insert(schema.settings)
         .values({
-          key: "github_token",
+          key: "github_repos_access_token",
           value: JSON.stringify("ghp_xxx"),
           updatedAt: now,
         })
@@ -232,7 +232,7 @@ describe("Database", () => {
       const result = db
         .select()
         .from(schema.settings)
-        .where(eq(schema.settings.key, "github_token"))
+        .where(eq(schema.settings.key, "github_repos_access_token"))
         .get();
 
       assert(result, "setting exists");

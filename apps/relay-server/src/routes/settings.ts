@@ -4,7 +4,7 @@ import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
 
 // Keys that should not be exposed via the general settings API
-const PROTECTED_KEYS = ["github_token"];
+const PROTECTED_KEYS = ["github_repos_access_token"];
 
 export function settingsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();

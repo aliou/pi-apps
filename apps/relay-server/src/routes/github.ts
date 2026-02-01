@@ -3,7 +3,11 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
 
-const GITHUB_TOKEN_KEY = "github_token";
+/**
+ * Settings key for GitHub token used for repo listing/cloning.
+ * Named to avoid conflict with pi-ai's GITHUB_TOKEN env var check.
+ */
+const GITHUB_TOKEN_KEY = "github_repos_access_token";
 
 export function githubRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();

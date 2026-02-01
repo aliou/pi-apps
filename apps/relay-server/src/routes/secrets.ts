@@ -12,7 +12,6 @@ const VALID_SECRET_IDS: SecretId[] = [
   "groq_api_key",
   "deepseek_api_key",
   "openrouter_api_key",
-  "github_token",
 ];
 
 function isValidSecretId(id: string): id is SecretId {

@@ -73,7 +73,7 @@ describe("Settings Routes", () => {
     it("excludes protected keys", async () => {
       db.insert(settings)
         .values({
-          key: "github_token",
+          key: "github_repos_access_token",
           value: JSON.stringify("ghp_secret"),
           updatedAt: new Date().toISOString(),
         })
@@ -92,7 +92,7 @@ describe("Settings Routes", () => {
 
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.data.github_token).toBeUndefined();
+      expect(json.data.github_repos_access_token).toBeUndefined();
       expect(json.data.public_setting).toBe("visible");
     });
   });
@@ -189,7 +189,10 @@ describe("Settings Routes", () => {
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "github_token", value: "ghp_hack" }),
+        body: JSON.stringify({
+          key: "github_repos_access_token",
+          value: "ghp_hack",
+        }),
       });
 
       expect(res.status).toBe(400);

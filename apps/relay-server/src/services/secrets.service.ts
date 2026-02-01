@@ -5,6 +5,8 @@ import type { CryptoService, EncryptedData } from "./crypto.service";
 
 /**
  * Known secret identifiers for type safety.
+ * These are provider API keys only - GitHub token for repo access
+ * is stored separately in settings.
  */
 export type SecretId =
   | "anthropic_api_key"
@@ -12,8 +14,7 @@ export type SecretId =
   | "gemini_api_key"
   | "groq_api_key"
   | "deepseek_api_key"
-  | "openrouter_api_key"
-  | "github_token";
+  | "openrouter_api_key";
 
 /**
  * Secret metadata (without the decrypted value).
@@ -36,7 +37,6 @@ export const SECRET_ENV_MAP: Record<SecretId, string> = {
   groq_api_key: "GROQ_API_KEY",
   deepseek_api_key: "DEEPSEEK_API_KEY",
   openrouter_api_key: "OPENROUTER_API_KEY",
-  github_token: "GITHUB_TOKEN",
 };
 
 /**
@@ -49,7 +49,6 @@ const SECRET_NAMES: Record<SecretId, string> = {
   groq_api_key: "Groq API Key",
   deepseek_api_key: "DeepSeek API Key",
   openrouter_api_key: "OpenRouter API Key",
-  github_token: "GitHub Token",
 };
 
 /**

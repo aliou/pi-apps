@@ -19,7 +19,8 @@ interface SecretInfo {
   keyVersion: number;
 }
 
-// Known secrets with their display info
+// Known secrets with their display info (provider API keys only)
+// GitHub token for repo access is managed separately via /github-setup
 const SECRET_CONFIG: Record<
   string,
   { label: string; placeholder: string; description: string }
@@ -53,11 +54,6 @@ const SECRET_CONFIG: Record<
     label: "OpenRouter",
     placeholder: "sk-or-v1-...",
     description: "Access to multiple providers via OpenRouter",
-  },
-  github_token: {
-    label: "GitHub Token",
-    placeholder: "ghp_... or github_pat_...",
-    description: "For private repo access (optional)",
   },
 };
 
