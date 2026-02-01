@@ -104,6 +104,22 @@ extension DebugEvent {
                 rawJSON: error
             )
 
+        case .extensionError(let extensionPath, let event, let error):
+            return DebugEvent(
+                eventType: "extensionError",
+                details: "\(extensionPath) - \(event)",
+                rawJSON: error
+            )
+
+        case .extensionUIRequest(let request):
+            let methodDesc = "\(request.method.rawValue)"
+            let titleDesc = request.title.map { " - \($0)" } ?? ""
+            return DebugEvent(
+                eventType: "extensionUIRequest",
+                details: "\(methodDesc)\(titleDesc)",
+                rawJSON: request.id
+            )
+
         case .stateUpdate(let context):
             return DebugEvent(
                 eventType: "stateUpdate",

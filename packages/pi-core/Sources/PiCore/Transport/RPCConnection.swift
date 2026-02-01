@@ -230,6 +230,20 @@ public actor RPCConnection {
                 error: message.errorMessage
             )
 
+        case "extension_error":
+            return .extensionError(
+                extensionPath: message.extensionPath ?? "",
+                event: message.event ?? "",
+                error: message.errorMessage ?? ""
+            )
+
+        case "extension_ui_request":
+            // Decode the full request using the raw data
+            if let request = try? JSONDecoder().decode(ExtensionUIRequest.self, from: rawData) {
+                return .extensionUIRequest(request)
+            }
+            return .unknown(type: message.type, raw: rawData)
+
         case "state_update":
             return .stateUpdate(context: message.context ?? StateContext(
                 workingDirectory: nil,

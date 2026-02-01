@@ -194,6 +194,22 @@ public actor RelaySessionTransport {
         try await send(command)
     }
 
+    public func extensionUIResponse(
+        requestId: String,
+        value: String? = nil,
+        confirmed: Bool? = nil,
+        cancelled: Bool? = nil
+    ) async throws {
+        var command: [String: Any] = [
+            "type": "extension_ui_response",
+            "id": requestId
+        ]
+        if let value { command["value"] = value }
+        if let confirmed { command["confirmed"] = confirmed }
+        if let cancelled { command["cancelled"] = cancelled }
+        try await send(command)
+    }
+
     // MARK: - Private
 
     private func startReceiving() {
@@ -408,6 +424,20 @@ public actor RelaySessionTransport {
                 event: json["event"] as? String,
                 error: json["error"] as? String
             )
+
+        case "extension_error":
+            return .extensionError(
+                extensionPath: json["extensionPath"] as? String ?? "",
+                event: json["event"] as? String ?? "",
+                error: json["error"] as? String ?? ""
+            )
+
+        case "extension_ui_request":
+            // Decode the full request using the raw data
+            if let request = try? decoder.decode(ExtensionUIRequest.self, from: data) {
+                return .extensionUIRequest(request)
+            }
+            return .unknown(type: type, raw: data)
 
         case "state_update":
             if let contextDict = json["context"] as? [String: Any],

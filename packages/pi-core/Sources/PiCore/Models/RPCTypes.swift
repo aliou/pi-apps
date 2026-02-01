@@ -229,9 +229,24 @@ public struct RawRPCMessage: Decodable, Sendable {
     public let errorMessage: String?
     public let finalError: String?
 
-    // hook_error events
+    // hook_error / extension_error events
     public let extensionPath: String?
     public let event: String?
+
+    // extension_ui_request events
+    public let method: String?
+    public let timeout: Int?
+    public let title: String?
+    public let options: [String]?
+    public let placeholder: String?
+    public let prefill: String?
+    public let notifyType: String?
+    public let statusKey: String?
+    public let statusText: String?
+    public let widgetKey: String?
+    public let widgetLines: [String]?
+    public let widgetPlacement: String?
+    public let text: String?
 }
 
 /// Raw message from RPC (simplified version)
@@ -392,6 +407,109 @@ public struct AttachSessionResponse: Decodable, Sendable {
 /// Response for set_model command
 public struct SetModelResponse: Decodable, Sendable {
     public let model: ModelInfo
+}
+
+// MARK: - Extension Events
+
+/// Extension UI request methods
+public enum ExtensionUIMethod: String, Codable, Sendable {
+    // Dialog methods (require responses)
+    case select
+    case confirm
+    case input
+    case editor
+
+    // Fire-and-forget methods (no response expected)
+    case notify
+    case setStatus
+    case setWidget
+    case setTitle
+    case set_editor_text
+}
+
+/// Extension UI request event
+public struct ExtensionUIRequest: Codable, Sendable {
+    public let id: String
+    public let method: ExtensionUIMethod
+    public let timeout: Int?
+
+    // select method
+    public let title: String?
+    public let options: [String]?
+
+    // confirm method
+    public let message: String?
+
+    // input method
+    public let placeholder: String?
+
+    // editor method
+    public let prefill: String?
+
+    // notify method
+    public let notifyType: String?
+
+    // setStatus method
+    public let statusKey: String?
+    public let statusText: String?
+
+    // setWidget method
+    public let widgetKey: String?
+    public let widgetLines: [String]?
+    public let widgetPlacement: String?
+
+    // set_editor_text method
+    public let text: String?
+
+    public init(
+        id: String,
+        method: ExtensionUIMethod,
+        timeout: Int? = nil,
+        title: String? = nil,
+        options: [String]? = nil,
+        message: String? = nil,
+        placeholder: String? = nil,
+        prefill: String? = nil,
+        notifyType: String? = nil,
+        statusKey: String? = nil,
+        statusText: String? = nil,
+        widgetKey: String? = nil,
+        widgetLines: [String]? = nil,
+        widgetPlacement: String? = nil,
+        text: String? = nil
+    ) {
+        self.id = id
+        self.method = method
+        self.timeout = timeout
+        self.title = title
+        self.options = options
+        self.message = message
+        self.placeholder = placeholder
+        self.prefill = prefill
+        self.notifyType = notifyType
+        self.statusKey = statusKey
+        self.statusText = statusText
+        self.widgetKey = widgetKey
+        self.widgetLines = widgetLines
+        self.widgetPlacement = widgetPlacement
+        self.text = text
+    }
+}
+
+/// Extension UI response command (client -> agent)
+public struct ExtensionUIResponseCommand: RPCCommand, Sendable {
+    public let type = "extension_ui_response"
+    public let id: String
+    public let value: String?
+    public let confirmed: Bool?
+    public let cancelled: Bool?
+
+    public init(id: String, value: String? = nil, confirmed: Bool? = nil, cancelled: Bool? = nil) {
+        self.id = id
+        self.value = value
+        self.confirmed = confirmed
+        self.cancelled = cancelled
+    }
 }
 
 /// Get default model command
@@ -664,7 +782,9 @@ public enum RPCEvent: Sendable {
     case autoCompactionEnd
     case autoRetryStart(attempt: Int, maxAttempts: Int, delayMs: Int, errorMessage: String)
     case autoRetryEnd(success: Bool, attempt: Int, finalError: String?)
-    case hookError(extensionPath: String?, event: String?, error: String?)
+    case hookError(extensionPath: String?, event: String?, error: String?) // Legacy name for extensionError
+    case extensionError(extensionPath: String, event: String, error: String)
+    case extensionUIRequest(ExtensionUIRequest)
     case stateUpdate(context: StateContext)
     case modelChanged(model: ModelInfo)
     case nativeToolRequest(NativeToolRequest)

@@ -812,6 +812,10 @@ extension RPCEvent {
             return "auto_retry_end"
         case .hookError:
             return "hook_error"
+        case .extensionError:
+            return "extension_error"
+        case .extensionUIRequest:
+            return "extension_ui_request"
         case .stateUpdate:
             return "state_update"
         case .modelChanged:
@@ -877,7 +881,11 @@ extension RPCEvent {
         case .autoRetryEnd(let success, _, _):
             return success ? "success" : "failed"
         case .hookError(_, let event, let error):
-            return "\(event ?? "?"): \(error)"
+            return "\(event ?? "?"): \(error ?? "")"
+        case .extensionError(let path, let event, let error):
+            return "\(event): \(error)"
+        case .extensionUIRequest(let request):
+            return "\(request.method.rawValue): \(request.title ?? "")"
         case .stateUpdate:
             return ""
         case .modelChanged(let model):
