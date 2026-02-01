@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PiCore
 import PiUI
 
 /// Environment selection for session creation
@@ -242,9 +243,9 @@ struct WelcomeView: View {
                 throw ServerConnectionError.notConnected
             }
 
-            // Connect if not already connected
-            if !connection.isConnected {
-                try await connection.connect()
+            // Check server health if not already connected
+            if !connection.isServerReachable {
+                try await connection.checkHealth()
             }
 
             // Fetch repos

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import PiCore
 
 struct ContextPickerDropdown: View {
     let mode: SidebarMode
@@ -193,7 +194,7 @@ struct ContextPickerDropdown: View {
     private func repoRow(_ repo: RepoInfo) -> some View {
         DropdownRow(
             repo.name,
-            subtitle: repo.owner,
+            subtitle: repoOwner(repo),
             isSelected: selectedRepo?.id == repo.id
         ) {
             selectedRepo = repo
@@ -202,6 +203,12 @@ struct ContextPickerDropdown: View {
                 isExpanded = false
             }
         }
+    }
+
+    /// Extract owner from fullName (format: "owner/repo")
+    private func repoOwner(_ repo: RepoInfo) -> String? {
+        guard let slashIndex = repo.fullName.firstIndex(of: "/") else { return nil }
+        return String(repo.fullName[..<slashIndex])
     }
 
     // MARK: - Computed Properties
@@ -221,8 +228,9 @@ struct ContextPickerDropdown: View {
     }
 
     private var recentRepos: [RepoInfo] {
-        recentRepoIds.prefix(5).compactMap { id in
-            repos.first { $0.id == id }
+        recentRepoIds.prefix(5).compactMap { idStr in
+            guard let idInt = Int(idStr) else { return nil }
+            return repos.first { $0.id == idInt }
         }
     }
 
@@ -288,24 +296,20 @@ struct ContextPickerDropdown: View {
         onChooseDifferentFolder: {},
         repos: [
             RepoInfo(
-                id: "1", name: "pi-apps", fullName: "aliou/pi-apps", owner: "aliou",
-                private: false, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil,
-                defaultBranch: "main", path: nil
+                id: 1, name: "pi-apps", fullName: "aliou/pi-apps",
+                private: false, description: nil
             ),
             RepoInfo(
-                id: "2", name: "canvas", fullName: "378labs/canvas", owner: "378labs",
-                private: false, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil,
-                defaultBranch: "main", path: nil
+                id: 2, name: "canvas", fullName: "378labs/canvas",
+                private: false, description: nil
             ),
             RepoInfo(
-                id: "3", name: "catchup", fullName: "378labs/catchup", owner: "378labs",
-                private: false, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil,
-                defaultBranch: "main", path: nil
+                id: 3, name: "catchup", fullName: "378labs/catchup",
+                private: false, description: nil
             ),
             RepoInfo(
-                id: "4", name: "dotfiles", fullName: "aliou/dotfiles", owner: "aliou",
-                private: false, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil,
-                defaultBranch: "main", path: nil
+                id: 4, name: "dotfiles", fullName: "aliou/dotfiles",
+                private: false, description: nil
             )
         ],
         recentRepoIds: ["1", "2"],

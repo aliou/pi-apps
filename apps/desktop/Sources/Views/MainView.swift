@@ -172,10 +172,10 @@ struct MainView: View {
 
                 case .remoteCode(let repo, let initialPrompt):
                     guard let serverURL = ServerConfig.shared.serverURL else { return }
-                    ServerConfig.shared.addRecentRepo(repo.id)
+                    ServerConfig.shared.addRecentRepo(String(repo.id))
                     session = try await sessionManager.createRemoteCodeSession(
                         serverURL: serverURL,
-                        repoId: repo.id,
+                        repoId: String(repo.id),
                         repoName: repo.name
                     )
                     // TODO: Send initial prompt if provided

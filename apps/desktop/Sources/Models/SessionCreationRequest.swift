@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PiCore
 
 /// Session creation request with all context needed
 enum SessionCreationRequest: Sendable {

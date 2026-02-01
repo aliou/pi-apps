@@ -2,26 +2,25 @@
 //  PiConnection.swift
 //  pi
 //
-//  Unified interface for local subprocess and remote WebSocket connections
+//  Unified interface for local subprocess and remote connections
 //
 
 import Foundation
 import PiCore
 
 /// Unified interface for local and remote connections
+/// This extends AgentConnection with additional methods specific to the desktop app
 @MainActor
-public protocol PiConnection: AnyObject, Sendable {
-    var isConnected: Bool { get }
-
-    func connect() async throws
-    func disconnect() async
-
-    func prompt(_ message: String, streamingBehavior: StreamingBehavior?) async throws
-    func abort() async throws
-
-    func subscribe() -> AsyncStream<RPCEvent>
-
-    func getAvailableModels() async throws -> GetAvailableModelsResponse
-    func setModel(provider: String, modelId: String) async throws
-    func getState() async throws -> GetStateResponse
+public protocol PiConnection: AgentConnection {
+    // AgentConnection provides:
+    // - isConnected
+    // - connect()
+    // - disconnect()
+    // - subscribe()
+    // - prompt()
+    // - abort()
+    // - getState()
+    // - getAvailableModels()
+    // - setModel()
+    // - getMessages()
 }

@@ -153,6 +153,15 @@ final class LocalConnection: PiConnection, @unchecked Sendable {
         return try await transport.send(method: command.type, sessionId: nil, params: command)
     }
 
+    func getMessages() async throws -> GetMessagesResponse {
+        guard isConnected, let transport else {
+            throw LocalConnectionError.notConnected
+        }
+
+        let command = GetMessagesCommand()
+        return try await transport.send(method: command.type, sessionId: nil, params: command)
+    }
+
     // MARK: - Session Management (local subprocess specific)
 
     func newSession() async throws -> NewSessionResponse {
@@ -170,15 +179,6 @@ final class LocalConnection: PiConnection, @unchecked Sendable {
         }
 
         let command = SwitchSessionCommand(sessionPath: sessionPath)
-        return try await transport.send(method: command.type, sessionId: nil, params: command)
-    }
-
-    func getMessages() async throws -> GetMessagesResponse {
-        guard isConnected, let transport else {
-            throw LocalConnectionError.notConnected
-        }
-
-        let command = GetMessagesCommand()
         return try await transport.send(method: command.type, sessionId: nil, params: command)
     }
 

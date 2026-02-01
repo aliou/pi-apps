@@ -2,64 +2,37 @@
 //  ServerConnection.swift
 //  pi
 //
-//  Observable RPC client using WebSocketTransport from PiCore for desktop
+//  Observable client for relay server using REST + WebSocket (remote mode)
 //
 
 import Foundation
 import Observation
 import PiCore
 
-// MARK: - Server-specific Types
-
-/// Information about a repository
-public struct RepoInfo: Decodable, Sendable, Equatable {
-    public let id: String
-    public let name: String
-    public let fullName: String?
-    public let owner: String?
-    public let `private`: Bool?
-    public let description: String?
-    public let htmlUrl: String?
-    public let cloneUrl: String?
-    public let sshUrl: String?
-    public let defaultBranch: String?
-    public let path: String?
-}
-
-/// Result from listing repositories
-public struct ReposListResult: Decodable, Sendable {
-    public let repos: [RepoInfo]
-}
-
-/// Result from creating a session
-public struct SessionCreateResult: Decodable, Sendable {
-    public let sessionId: String
-}
-
-/// Result from listing sessions
-public struct SessionListResult: Decodable, Sendable {
-    public let sessions: [SessionInfo]
-}
-
 // MARK: - Connection Errors
 
 public enum ServerConnectionError: Error, LocalizedError, Sendable {
     case notConnected
+    case sessionNotConnected
     case encodingFailed
     case decodingFailed(String)
     case requestTimeout
     case requestCancelled
     case invalidResponse(String)
-    case serverError(RPCError)
+    case serverError(String)
     case connectionLost(String)
     case alreadyConnected
     case invalidServerURL
-    case transportError(RPCTransportError)
+    case sandboxNotReady
+    case apiError(RelayAPIError)
+    case agentError(AgentConnectionError)
 
     public var errorDescription: String? {
         switch self {
         case .notConnected:
             return "Not connected to server"
+        case .sessionNotConnected:
+            return "No active session"
         case .encodingFailed:
             return "Failed to encode command"
         case .decodingFailed(let details):
@@ -70,90 +43,78 @@ public enum ServerConnectionError: Error, LocalizedError, Sendable {
             return "Request was cancelled"
         case .invalidResponse(let details):
             return "Invalid response: \(details)"
-        case .serverError(let error):
-            return error.message
+        case .serverError(let message):
+            return message
         case .connectionLost(let reason):
             return "Connection lost: \(reason)"
         case .alreadyConnected:
             return "Already connected"
         case .invalidServerURL:
             return "Invalid server URL"
-        case .transportError(let error):
+        case .sandboxNotReady:
+            return "Sandbox not ready"
+        case .apiError(let error):
             return error.localizedDescription
-        }
-    }
-
-    static func from(_ error: RPCTransportError) -> Self {
-        switch error {
-        case .notConnected:
-            return .notConnected
-        case .connectionFailed(let reason):
-            return .connectionLost(reason)
-        case .connectionLost(let reason):
-            return .connectionLost(reason)
-        case .encodingFailed:
-            return .encodingFailed
-        case .decodingFailed(let details):
-            return .decodingFailed(details)
-        case .timeout:
-            return .requestTimeout
-        case .cancelled:
-            return .requestCancelled
-        case .invalidResponse(let details):
-            return .invalidResponse(details)
-        case .serverError(let rpcError):
-            return .serverError(rpcError)
+        case .agentError(let error):
+            return error.localizedDescription
         }
     }
 }
 
 // MARK: - Server Connection
 
-/// Observable RPC client for desktop remote connections
+/// Observable client for relay server using REST + WebSocket (for desktop remote mode)
 @MainActor
 @Observable
 public final class ServerConnection {
     // MARK: - Observable State
 
-    public private(set) var isConnected = false
-    public private(set) var currentSessionId: String?
+    public private(set) var isServerReachable = false
+    public private(set) var serverVersion: String?
+    public private(set) var currentSession: RelaySession?
+    public var isSessionConnected: Bool { agentConnection?.isConnected ?? false }
 
     // MARK: - Private State
 
-    private var transport: WebSocketTransport?
+    public let serverURL: URL
+    public let api: RelayAPIClient
+    private var agentConnection: RemoteAgentConnection?
     private var eventTask: Task<Void, Never>?
 
-    /// Active event subscribers - each gets their own continuation
+    /// Active event subscribers
     private var eventSubscribers: [UUID: AsyncStream<RPCEvent>.Continuation] = [:]
 
     /// Native tool executor for handling tool requests from server
     private let nativeToolExecutor = NativeToolExecutor()
 
-    public let serverURL: URL
-    private let clientInfo: ClientInfo
-
     // MARK: - Initialization
 
-    public init(
-        serverURL: URL,
-        clientName: String = "pi-desktop",
-        clientVersion: String = "1.0"
-    ) {
+    public init(serverURL: URL) {
         self.serverURL = serverURL
-        self.clientInfo = ClientInfo(name: clientName, version: clientVersion)
+        self.api = RelayAPIClient(baseURL: serverURL)
+    }
+
+    // MARK: - Health
+
+    public func checkHealth() async throws {
+        do {
+            let health = try await api.health()
+            isServerReachable = health.ok
+            serverVersion = health.version
+        } catch let error as RelayAPIError {
+            isServerReachable = false
+            serverVersion = nil
+            throw ServerConnectionError.apiError(error)
+        }
     }
 
     // MARK: - Events Stream
 
-    /// Creates a new event stream for each subscriber (broadcast pattern)
     public func subscribe() -> AsyncStream<RPCEvent> {
         let subscriberId = UUID()
 
         return AsyncStream<RPCEvent> { continuation in
-            // Store continuation for broadcasting
             self.eventSubscribers[subscriberId] = continuation
-
-            // Remove on termination
             continuation.onTermination = { @Sendable _ in
                 Task { @MainActor in
                     self.eventSubscribers.removeValue(forKey: subscriberId)
@@ -162,14 +123,12 @@ public final class ServerConnection {
         }
     }
 
-    /// Broadcast an event to all subscribers
     private func broadcastEvent(_ event: RPCEvent) {
         for continuation in eventSubscribers.values {
             continuation.yield(event)
         }
     }
 
-    /// Finish all subscriber streams
     private func finishAllSubscribers() {
         for continuation in eventSubscribers.values {
             continuation.finish()
@@ -177,287 +136,237 @@ public final class ServerConnection {
         eventSubscribers.removeAll()
     }
 
-    // MARK: - Connection
+    // MARK: - Session Management (REST)
 
-    public func connect() async throws {
-        guard !isConnected else {
-            throw ServerConnectionError.alreadyConnected
-        }
-
-        print("[ServerConnection] Connecting to \(serverURL)")
-        let config = RPCTransportConfig.remote(url: serverURL, clientInfo: clientInfo)
-        let newTransport = WebSocketTransport(config: config)
-        transport = newTransport
-
+    public func listSessions() async throws -> [RelaySession] {
         do {
-            // Connect with native tools (only those that are available)
-            try await newTransport.connect(nativeTools: NativeTool.availableDefinitions)
-            isConnected = await newTransport.isConnected
-
-            if !isConnected {
-                transport = nil
-                throw ServerConnectionError.notConnected
-            }
-
-            startEventForwarding()
-            print("[ServerConnection] Connected with \(NativeTool.availableDefinitions.count) native tools")
-
-        } catch let error as RPCTransportError {
-            transport = nil
-            isConnected = false
-            throw ServerConnectionError.from(error)
+            return try await api.listSessions()
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
         }
     }
-
-    public func disconnect() async {
-        guard isConnected else { return }
-
-        isConnected = false
-        currentSessionId = nil
-        eventTask?.cancel()
-        eventTask = nil
-
-        if let t = transport {
-            await t.disconnect()
-        }
-        transport = nil
-
-        finishAllSubscribers()
-    }
-
-    // MARK: - Generic Send
-
-    private func send<R: Decodable & Sendable>(
-        method: String,
-        sessionId: String? = nil,
-        params: (any Encodable & Sendable)? = nil
-    ) async throws -> R {
-        guard isConnected, let transport else {
-            throw ServerConnectionError.notConnected
-        }
-
-        do {
-            return try await transport.send(
-                method: method,
-                sessionId: sessionId ?? currentSessionId,
-                params: params
-            )
-        } catch let error as RPCTransportError {
-            let stillConnected = await transport.isConnected
-            if !stillConnected {
-                isConnected = false
-            }
-            throw ServerConnectionError.from(error)
-        }
-    }
-
-    private func sendVoid(
-        method: String,
-        sessionId: String? = nil,
-        params: (any Encodable & Sendable)? = nil
-    ) async throws {
-        guard isConnected, let transport else {
-            throw ServerConnectionError.notConnected
-        }
-
-        do {
-            try await transport.sendVoid(
-                method: method,
-                sessionId: sessionId ?? currentSessionId,
-                params: params
-            )
-        } catch let error as RPCTransportError {
-            let stillConnected = await transport.isConnected
-            if !stillConnected {
-                isConnected = false
-            }
-            throw ServerConnectionError.from(error)
-        }
-    }
-
-    // MARK: - Repository Operations
-
-    public func listRepos() async throws -> [RepoInfo] {
-        let result: ReposListResult = try await send(method: "repos.list")
-        return result.repos
-    }
-
-    // MARK: - Session Operations
 
     public func createSession(
         mode: SessionMode,
         repoId: String? = nil,
-        preferredProvider: String? = nil,
-        preferredModelId: String? = nil,
+        modelProvider: String? = nil,
+        modelId: String? = nil,
         systemPrompt: String? = nil
-    ) async throws -> SessionCreateResult {
-        struct CreateSessionParams: Encodable, Sendable {
-            let mode: String
-            let repoId: String?
-            let provider: String?
-            let modelId: String?
-            let systemPrompt: String?
-        }
-
-        return try await send(
-            method: "session.create",
-            params: CreateSessionParams(
-                mode: mode.rawValue,
-                repoId: repoId,
-                provider: preferredProvider,
-                modelId: preferredModelId,
-                systemPrompt: systemPrompt
-            )
+    ) async throws -> RelaySession {
+        let params = CreateSessionParams(
+            mode: mode,
+            repoId: repoId,
+            modelProvider: modelProvider,
+            modelId: modelId,
+            systemPrompt: systemPrompt
         )
-    }
-
-    /// Create a chat session (no repo needed)
-    public func createChatSession(systemPrompt: String? = nil) async throws -> SessionCreateResult {
-        try await createSession(mode: .chat, systemPrompt: systemPrompt)
-    }
-
-    /// Create a code session for a specific repo
-    public func createCodeSession(repoId: String) async throws -> SessionCreateResult {
-        try await createSession(mode: .code, repoId: repoId)
-    }
-
-    public func listSessions(repoId: String? = nil) async throws -> [SessionInfo] {
-        struct ListSessionsParams: Encodable, Sendable {
-            let repoId: String?
-        }
-
-        let result: SessionListResult = try await send(
-            method: "session.list",
-            params: repoId != nil ? ListSessionsParams(repoId: repoId) : nil
-        )
-        return result.sessions
-    }
-
-    @discardableResult
-    public func attachSession(sessionId: String) async throws -> ModelInfo? {
-        struct AttachSessionParams: Encodable, Sendable {
-            let sessionId: String
-        }
-
-        let response: AttachSessionResponse = try await send(
-            method: "session.attach",
-            params: AttachSessionParams(sessionId: sessionId)
-        )
-
-        currentSessionId = sessionId
-        return response.currentModel
-    }
-
-    public func detachSession() async throws {
-        guard currentSessionId != nil else { return }
-
-        try await sendVoid(method: "session.detach")
-        currentSessionId = nil
-    }
-
-    public func deleteSession(sessionId: String) async throws {
-        struct DeleteSessionParams: Encodable, Sendable {
-            let sessionId: String
-        }
-
-        try await sendVoid(
-            method: "session.delete",
-            params: DeleteSessionParams(sessionId: sessionId)
-        )
-
-        if currentSessionId == sessionId {
-            currentSessionId = nil
+        do {
+            return try await api.createSession(params)
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
         }
     }
 
-    // MARK: - Agent Operations
+    public func deleteSession(id: String) async throws {
+        do {
+            try await api.deleteSession(id: id)
+            if currentSession?.id == id {
+                await disconnectFromSession()
+            }
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        }
+    }
+
+    // MARK: - Session Connection (WebSocket)
+
+    public func connectToSession(_ session: RelaySession) async throws {
+        await disconnectFromSession()
+
+        do {
+            let info = try await api.getConnectionInfo(sessionId: session.id)
+            guard info.sandboxReady else {
+                throw ServerConnectionError.sandboxNotReady
+            }
+
+            let connection = RemoteAgentConnection(baseURL: serverURL, sessionId: session.id)
+            try await connection.connect()
+
+            agentConnection = connection
+            currentSession = session
+            startEventForwarding()
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        } catch let error as AgentConnectionError {
+            throw ServerConnectionError.agentError(error)
+        }
+    }
+
+    public func disconnectFromSession() async {
+        eventTask?.cancel()
+        eventTask = nil
+
+        if let connection = agentConnection {
+            await connection.disconnect()
+        }
+        agentConnection = nil
+        currentSession = nil
+
+        finishAllSubscribers()
+    }
+
+    // MARK: - Agent Commands (via WebSocket)
 
     public func prompt(_ message: String, streamingBehavior: StreamingBehavior? = nil) async throws {
-        let command = PromptCommand(message: message, streamingBehavior: streamingBehavior)
-        try await sendVoid(method: command.type, params: command)
+        guard let connection = agentConnection else {
+            throw ServerConnectionError.sessionNotConnected
+        }
+        do {
+            try await connection.prompt(message, streamingBehavior: streamingBehavior)
+        } catch let error as AgentConnectionError {
+            throw ServerConnectionError.agentError(error)
+        }
     }
 
     public func abort() async throws {
-        let command = AbortCommand()
-        try await sendVoid(method: command.type, params: command)
+        guard let connection = agentConnection else {
+            throw ServerConnectionError.sessionNotConnected
+        }
+        do {
+            try await connection.abort()
+        } catch let error as AgentConnectionError {
+            throw ServerConnectionError.agentError(error)
+        }
     }
 
-    public func getState(sessionId: String) async throws -> GetStateResponse {
-        let command = GetStateCommand()
-        return try await send(method: command.type, sessionId: sessionId, params: command)
-    }
-
+    /// Get available models.
+    /// If connected to a session, uses RPC (includes extension-defined providers).
+    /// If not connected, uses REST API (built-in providers only).
     public func getAvailableModels() async throws -> GetAvailableModelsResponse {
-        let command = GetAvailableModelsCommand()
-        return try await send(method: command.type, params: command)
+        // If connected to session, use RPC for full list including extensions
+        if let connection = agentConnection {
+            do {
+                return try await connection.getAvailableModels()
+            } catch let error as AgentConnectionError {
+                throw ServerConnectionError.agentError(error)
+            }
+        }
+
+        // Otherwise use REST API for built-in providers
+        do {
+            let models = try await api.getModels()
+            return GetAvailableModelsResponse(models: models)
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        }
     }
 
-    @discardableResult
-    public func setModel(provider: String, modelId: String, sessionId: String) async throws -> ModelInfo {
-        let command = SetModelCommand(provider: provider, modelId: modelId)
-        let response: SetModelResponse = try await send(method: command.type, sessionId: sessionId, params: command)
-        return response.model
+    public func setModel(provider: String, modelId: String) async throws {
+        guard let connection = agentConnection else {
+            throw ServerConnectionError.sessionNotConnected
+        }
+        do {
+            try await connection.setModel(provider: provider, modelId: modelId)
+        } catch let error as AgentConnectionError {
+            throw ServerConnectionError.agentError(error)
+        }
     }
 
-    public func getDefaultModel() async throws -> ModelInfo? {
-        let command = GetDefaultModelCommand()
-        let response: GetDefaultModelResponse = try await send(method: command.type, params: command)
-        return response.defaultModel
-    }
-
-    @discardableResult
-    public func setDefaultModel(provider: String, modelId: String) async throws -> ModelInfo {
-        let command = SetDefaultModelCommand(provider: provider, modelId: modelId)
-        let response: SetDefaultModelResponse = try await send(method: command.type, params: command)
-        return response.defaultModel
+    public func getState() async throws -> GetStateResponse {
+        guard let connection = agentConnection else {
+            throw ServerConnectionError.sessionNotConnected
+        }
+        do {
+            return try await connection.getState()
+        } catch let error as AgentConnectionError {
+            throw ServerConnectionError.agentError(error)
+        }
     }
 
     public func getMessages() async throws -> GetMessagesResponse {
-        let command = GetMessagesCommand()
-        return try await send(method: command.type, params: command)
+        guard let connection = agentConnection else {
+            throw ServerConnectionError.sessionNotConnected
+        }
+        do {
+            return try await connection.getMessages()
+        } catch let error as AgentConnectionError {
+            throw ServerConnectionError.agentError(error)
+        }
     }
 
-    public func clearConversation() async throws {
-        let command = ClearConversationCommand()
-        try await sendVoid(method: command.type, params: command)
+    // MARK: - GitHub (REST)
+
+    public func getGitHubTokenStatus() async throws -> GitHubTokenStatus {
+        do {
+            return try await api.getGitHubTokenStatus()
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        }
+    }
+
+    public func setGitHubToken(_ token: String) async throws {
+        do {
+            _ = try await api.setGitHubToken(token)
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        }
+    }
+
+    public func listRepos() async throws -> [RepoInfo] {
+        do {
+            return try await api.listRepos()
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        }
+    }
+
+    // MARK: - Secrets (REST)
+
+    public func listSecrets() async throws -> [SecretMetadata] {
+        do {
+            return try await api.listSecrets()
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        }
+    }
+
+    public func setSecret(id: SecretId, value: String) async throws {
+        do {
+            try await api.setSecret(id: id, value: value)
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        }
     }
 
     // MARK: - Event Forwarding
 
     private func startEventForwarding() {
-        guard let transport else { return }
+        guard let connection = agentConnection else { return }
 
         eventTask = Task { [weak self] in
-            let eventStream = await transport.events
+            let eventStream = connection.subscribe()
 
-            for await transportEvent in eventStream {
+            for await event in eventStream {
                 guard let self, !Task.isCancelled else { break }
 
-                switch transportEvent.event {
+                switch event {
                 case .nativeToolRequest(let request):
-                    // Handle in background, don't block event stream
                     Task {
-                        await self.handleNativeToolRequest(
-                            sessionId: transportEvent.sessionId,
-                            request: request
-                        )
+                        await self.handleNativeToolRequest(request: request)
                     }
 
                 case .nativeToolCancel(let callId):
                     await self.nativeToolExecutor.cancel(callId: callId)
 
                 default:
-                    // Broadcast other events to subscribers
                     await MainActor.run {
-                        self.broadcastEvent(transportEvent.event)
+                        self.broadcastEvent(event)
                     }
                 }
             }
 
-            // Transport disconnected
-            if let self, self.isConnected {
+            if let self, self.isSessionConnected {
                 await MainActor.run {
-                    self.isConnected = false
                     self.broadcastEvent(.agentEnd(
                         success: false,
                         error: RPCError(
@@ -474,63 +383,16 @@ public final class ServerConnection {
 
     // MARK: - Native Tool Handling
 
-    private func handleNativeToolRequest(sessionId: String, request: NativeToolRequest) async {
+    private func handleNativeToolRequest(request: NativeToolRequest) async {
         print("[ServerConnection] Handling native tool request: \(request.toolName)")
 
         do {
             let resultData = try await nativeToolExecutor.execute(request: request)
-
-            // Check if result contains _display field for rich content
-            if let parsed = NativeToolExecutor.parseResult(resultData) {
-                // If we have display content, broadcast it to UI
-                if let displayContent = parsed.displayContent {
-                    await MainActor.run {
-                        print("[ServerConnection] Rich content detected: \(displayContent)")
-                    }
-                }
-            }
-
-            // Convert JSON Data back to dictionary
-            let result = try JSONSerialization.jsonObject(with: resultData) as? [String: Any]
             print("[ServerConnection] Native tool \(request.toolName) succeeded")
-
-            try await sendNativeToolResponse(
-                sessionId: sessionId,
-                callId: request.callId,
-                result: result
-            )
+            // Note: Response sending needs relay server native tool support
         } catch {
             print("[ServerConnection] Native tool \(request.toolName) failed: \(error)")
-
-            try? await sendNativeToolResponse(
-                sessionId: sessionId,
-                callId: request.callId,
-                error: error.localizedDescription
-            )
         }
-    }
-
-    private func sendNativeToolResponse(
-        sessionId: String,
-        callId: String,
-        result: [String: Any]? = nil,
-        error: String? = nil
-    ) async throws {
-        guard isConnected, let transport else {
-            throw ServerConnectionError.notConnected
-        }
-
-        let params = NativeToolResponseParams(
-            callId: callId,
-            result: result,
-            error: error.map { NativeToolErrorInfo(message: $0) }
-        )
-
-        try await transport.sendVoid(
-            method: "native_tool_response",
-            sessionId: sessionId,
-            params: params
-        )
     }
 }
 

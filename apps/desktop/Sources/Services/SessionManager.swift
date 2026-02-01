@@ -219,7 +219,7 @@ final class SessionManager {
 
         // Clean up remote connection if exists
         if let conn = remoteConnections[id] {
-            await conn.disconnect()
+            await conn.disconnectFromSession()
             remoteConnections.removeValue(forKey: id)
         }
 
@@ -436,7 +436,7 @@ final class SessionManager {
         }
 
         // Check if connection already exists and is connected
-        if let existingConn = remoteConnections[session.id], existingConn.isConnected {
+        if let existingConn = remoteConnections[session.id], existingConn.isSessionConnected {
             print("[SessionManager] Reusing existing remote connection")
             connectionStates[session.id] = .connected
 
@@ -461,30 +461,32 @@ final class SessionManager {
         remoteConnections[session.id] = conn
 
         do {
-            try await conn.connect()
+            // Check server health first
+            try await conn.checkHealth()
 
             // Attach or create session on server
             if let serverSessionId = session.serverSessionId, !serverSessionId.isEmpty {
                 // Attach to existing server session
-                print("[SessionManager] Attaching to server session: \(serverSessionId)")
-                _ = try await conn.attachSession(sessionId: serverSessionId)
+                print("[SessionManager] Connecting to server session: \(serverSessionId)")
+                let relaySession = try await conn.api.getSession(id: serverSessionId)
+                try await conn.connectToSession(relaySession)
             } else {
                 // Create new session on server
                 print("[SessionManager] Creating new server session...")
-                let result: SessionCreateResult
+                let relaySession: RelaySession
                 if session.mode == .chat {
-                    result = try await conn.createChatSession()
+                    relaySession = try await conn.createSession(mode: .chat)
                 } else if let repoId = session.repoId {
-                    result = try await conn.createCodeSession(repoId: repoId)
+                    relaySession = try await conn.createSession(mode: .code, repoId: repoId)
                 } else {
                     throw SessionManagerError.invalidConfiguration
                 }
 
                 // Update local session with server ID
-                updateServerSessionId(for: session.id, serverSessionId: result.sessionId)
+                updateServerSessionId(for: session.id, serverSessionId: relaySession.id)
 
-                // Attach to the newly created session
-                _ = try await conn.attachSession(sessionId: result.sessionId)
+                // Connect to the newly created session
+                try await conn.connectToSession(relaySession)
             }
 
             // Configure engine with remote connection callbacks
@@ -752,7 +754,7 @@ final class SessionManager {
         let remoteConns = remoteConnections.values
         Task {
             for connection in remoteConns {
-                await connection.disconnect()
+                await connection.disconnectFromSession()
             }
         }
         remoteConnections.removeAll()
