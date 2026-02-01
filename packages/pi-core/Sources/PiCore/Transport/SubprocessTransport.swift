@@ -276,7 +276,7 @@ public actor SubprocessTransport: RPCTransport {
         await connection.processIncoming(data)
     }
 
-    private nonisolated func stripANSIEscapeCodes(_ string: String) -> String {
+    nonisolated private func stripANSIEscapeCodes(_ string: String) -> String {
         let patterns = [
             "\\x1b\\[[0-9;]*[a-zA-Z]",
             "\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)?"
