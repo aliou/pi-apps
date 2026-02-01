@@ -7,12 +7,13 @@ Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agen
 ```
 pi-apps/
 ├── apps/
-│   ├── desktop/       # macOS app (local subprocess)
-│   ├── mobile/        # iOS app (connects to relay)
-│   └── relay/         # Relay server (Node.js/Hono/SQLite)
+│   ├── desktop/           # macOS app (local subprocess or relay)
+│   ├── mobile/            # iOS app (connects to relay)
+│   ├── relay-server/      # Relay API server (Node.js/Hono/SQLite)
+│   └── relay-dashboard/   # Relay admin UI (React Router v7/Vite)
 └── packages/
-    ├── pi-core/       # RPC types, transport protocols
-    └── pi-ui/         # Shared SwiftUI components
+    ├── pi-core/           # RPC types, relay client, transport protocols
+    └── pi-ui/             # Shared SwiftUI components
 ```
 
 ## Quick Start
@@ -35,7 +36,7 @@ make xcode
 
 ### Desktop (macOS)
 
-Runs pi locally via subprocess. Communicates over stdin/stdout using JSONL.
+Dual mode: runs pi locally via subprocess, or connects to relay server.
 
 ```bash
 make build        # build debug
@@ -44,13 +45,26 @@ make xcode        # open in xcode
 
 ### Mobile (iOS)
 
-Connects to the relay via WebSocket. Cannot run pi locally (iOS limitation).
+Connects to the relay via REST + WebSocket. Cannot run pi locally (iOS limitation).
 
-### Relay
+### Relay Server
 
-Server that wraps Pi sessions, manages repos, and bridges WebSocket clients. Node.js, Hono, SQLite (Drizzle ORM).
+API server that wraps Pi sessions, manages repos, and bridges WebSocket clients.
 
-### TypeScript (monorepo)
+```bash
+pnpm --filter pi-relay-server dev    # run dev server
+pnpm --filter pi-relay-server test   # run tests
+```
+
+### Relay Dashboard
+
+Admin UI for managing secrets, GitHub token, and viewing sessions.
+
+```bash
+pnpm --filter pi-relay-dashboard dev
+```
+
+## TypeScript (monorepo)
 
 All TS apps are managed from the repo root via pnpm workspace + turbo:
 
@@ -59,10 +73,9 @@ pnpm install      # install all dependencies
 pnpm dev          # run all apps (hot reload)
 pnpm build        # build all apps
 pnpm lint         # lint (biome)
+pnpm typecheck    # typecheck (tsc)
 pnpm test         # test (vitest)
 ```
-
-Run a single app with `pnpm --filter pi-relay dev`.
 
 ## Configuration
 

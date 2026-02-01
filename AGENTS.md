@@ -7,11 +7,11 @@ Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agen
 An attempt at creating native macOS/iOS clients for Pi - not just as a coding agent, but also as a general-purpose chat tool for mobile.
 
 **Architecture:**
-- **Mobile app** connects to the relay server via WebSocket. The relay runs Pi as an RPC subprocess and bridges messages. Mobile cannot run Pi locally (iOS limitation).
+- **Mobile app** connects to the relay server via REST (session CRUD, models) + WebSocket (per-session agent communication). Cannot run Pi locally (iOS limitation).
 - **Desktop app** has dual mode:
   - **Local mode:** Vendors and spawns the pi CLI directly, communicating via RPC over stdin/stdout
-  - **Remote mode:** Connects to the relay via WebSocket, same as mobile
-- **Relay** wraps Pi sessions, manages repos (cloned from GitHub), and exposes an RPC-over-WebSocket protocol for remote clients.
+  - **Remote mode:** Connects to the relay via REST + WebSocket, same as mobile
+- **Relay** wraps Pi sessions, manages repos (cloned from GitHub), and exposes REST API + WebSocket protocol for remote clients.
 
 ## Build
 
@@ -48,6 +48,33 @@ pnpm --filter pi-relay-dashboard dev
 - `apps/relay-dashboard/` - Relay admin UI (React Router v7 SPA/Vite/Tailwind)
 - `packages/pi-core/` - RPC types, transport layer (Foundation only)
 - `packages/pi-ui/` - Shared UI components (SwiftUI)
+
+## Relay API
+
+The relay server exposes REST endpoints and WebSocket for session communication.
+
+**REST Endpoints:**
+- `GET /health` - Server health check
+- `GET /api/sessions` - List sessions
+- `POST /api/sessions` - Create session
+- `GET /api/sessions/:id` - Get session
+- `DELETE /api/sessions/:id` - Delete session
+- `GET /api/sessions/:id/connect` - Get WebSocket connection info
+- `GET /api/models` - List available models (based on configured secrets)
+- `GET /api/github/token` - GitHub token status
+- `POST /api/github/token` - Set GitHub token
+- `GET /api/github/repos` - List accessible repos
+- `GET /api/secrets` - List configured secrets (metadata only)
+- `PUT /api/secrets/:id` - Set a secret
+- `DELETE /api/secrets/:id` - Delete a secret
+
+**WebSocket:** `ws://host/ws/sessions/:id?lastSeq=N`
+
+Session communication uses WebSocket. Client sends commands (prompt, abort, get_state, etc.), server streams events (agent_start, message_update, tool_execution_*, etc.).
+
+**Models Endpoint:**
+
+`GET /api/models` returns available models based on configured provider secrets. Uses pi-ai's built-in provider list. For the full list including extension-defined providers, use `get_available_models` via RPC on an active session.
 
 ## Native Tools (Mobile)
 
