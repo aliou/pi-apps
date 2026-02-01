@@ -18,12 +18,12 @@ struct ConversationView: View {
     @State private var isEngineConfigured = false
 
     // Session state
-    @State private var currentSession: SessionInfo?
+    @State private var currentSession: RelaySession?
     @State private var currentMode: SessionMode = .chat
     @State private var currentModel: ModelInfo?
     @State private var availableModels: [Model] = []
     @State private var repos: [RepoInfo] = []
-    @State private var sessions: [SessionInfo] = []
+    @State private var sessions: [RelaySession] = []
 
     // UI state
     @State private var errorMessage: String?
@@ -83,8 +83,8 @@ struct ConversationView: View {
         RecentSelections.loadRecentModelIds()
     }
 
-    private var recentRepoIds: [String] {
-        RecentSelections.loadRecentRepoIds()
+    private var recentRepoIds: [Int] {
+        RecentSelections.loadRecentRepoIds().compactMap { Int($0) }
     }
 
     var body: some View {
@@ -167,7 +167,7 @@ struct ConversationView: View {
             NavigationStack {
                 SettingsView(connection: connection) {
                     showSettings = false
-                    Task { await connection.disconnect() }
+                    Task { await connection.disconnectFromSession() }
                 }
                 .navigationTitle("Settings")
                 .navigationBarTitleDisplayMode(.inline)
@@ -229,7 +229,7 @@ struct ConversationView: View {
         .onDisappear {
             eventTask?.cancel()
             eventTask = nil
-            Task { try? await connection.detachSession() }
+            Task { await connection.disconnectFromSession() }
         }
     }
 
@@ -432,8 +432,8 @@ struct ConversationView: View {
 
 extension ConversationView {
     private func reloadData() async {
-        await loadModels()
         await loadSessions()
+        // Models are loaded when model selector is opened
     }
 
     private func loadModels() async {
@@ -442,6 +442,9 @@ extension ConversationView {
         defer { isLoadingModels = false }
 
         do {
+            // Works with or without a session:
+            // - With session: uses RPC (full list including extensions)
+            // - Without session: uses REST API (built-in providers only)
             let response = try await connection.getAvailableModels()
             availableModels = response.models
             errorMessage = nil
@@ -489,36 +492,27 @@ extension ConversationView {
     }
 
     private func handleRepoSelection(_ repo: RepoInfo) async {
-        RecentSelections.addRecentRepoId(repo.id)
+        RecentSelections.addRecentRepoId(String(repo.id))
         if let prompt = pendingPrompt {
             pendingPrompt = nil
-            await createCodeSession(repoId: repo.id, initialPrompt: prompt)
+            await createCodeSession(repoId: String(repo.id), initialPrompt: prompt)
         } else {
-            await createCodeSession(repoId: repo.id, initialPrompt: nil)
+            await createCodeSession(repoId: String(repo.id), initialPrompt: nil)
         }
     }
 
     private func createChatSession(initialPrompt: String?) async {
         do {
-            let result = try await connection.createSession(
+            let session = try await connection.createSession(
                 mode: .chat,
-                preferredProvider: serverConfig.selectedModelProvider,
-                preferredModelId: serverConfig.selectedModelId,
+                modelProvider: serverConfig.selectedModelProvider,
+                modelId: serverConfig.selectedModelId,
                 systemPrompt: settings.effectiveChatSystemPrompt
-            )
-
-            let session = SessionInfo(
-                sessionId: result.sessionId,
-                mode: .chat,
-                createdAt: ISO8601DateFormatter().string(from: Date()),
-                lastActivityAt: nil,
-                name: nil,
-                repoId: nil
             )
 
             currentMode = .chat
             await loadSessions()
-            await attachToSession(session)
+            await connectToSession(session)
 
             if let initialPrompt {
                 await engine.send(initialPrompt, defaultStreamingBehavior: settings.streamingBehavior)
@@ -531,25 +525,16 @@ extension ConversationView {
 
     private func createCodeSession(repoId: String, initialPrompt: String?) async {
         do {
-            let result = try await connection.createSession(
+            let session = try await connection.createSession(
                 mode: .code,
                 repoId: repoId,
-                preferredProvider: serverConfig.selectedModelProvider,
-                preferredModelId: serverConfig.selectedModelId
-            )
-
-            let session = SessionInfo(
-                sessionId: result.sessionId,
-                mode: .code,
-                createdAt: ISO8601DateFormatter().string(from: Date()),
-                lastActivityAt: nil,
-                name: nil,
-                repoId: repoId
+                modelProvider: serverConfig.selectedModelProvider,
+                modelId: serverConfig.selectedModelId
             )
 
             currentMode = .code
             await loadSessions()
-            await attachToSession(session)
+            await connectToSession(session)
 
             if let initialPrompt {
                 await engine.send(initialPrompt, defaultStreamingBehavior: settings.streamingBehavior)
@@ -561,12 +546,12 @@ extension ConversationView {
     }
 
     private func selectSession(_ session: SessionHistoryItem) async {
-        guard let match = sessions.first(where: { $0.sessionId == session.id }) else { return }
-        await attachToSession(match)
+        guard let match = sessions.first(where: { $0.id == session.id }) else { return }
+        await connectToSession(match)
     }
 
-    private func attachToSession(_ session: SessionInfo) async {
-        if currentSession?.sessionId == session.sessionId {
+    private func connectToSession(_ session: RelaySession) async {
+        if currentSession?.id == session.id {
             return
         }
 
@@ -574,13 +559,19 @@ extension ConversationView {
         eventTask = nil
 
         do {
-            try? await connection.detachSession()
+            await connection.disconnectFromSession()
             engine.clearMessages()
             configureEngineIfNeeded()
 
-            currentModel = try await connection.attachSession(sessionId: session.sessionId)
+            try await connection.connectToSession(session)
             currentSession = session
-            currentMode = session.resolvedMode
+            currentMode = session.mode
+
+            // Get model info from session
+            if let provider = session.currentModelProvider,
+               let modelId = session.currentModelId {
+                currentModel = ModelInfo(id: modelId, name: modelId, provider: provider)
+            }
 
             startEventSubscription()
 
@@ -589,19 +580,19 @@ extension ConversationView {
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
-            print("[ConversationView] Failed to attach session: \(error)")
+            print("[ConversationView] Failed to connect to session: \(error)")
         }
     }
 
     private func deleteSession(_ session: SessionHistoryItem) async {
         do {
-            try await connection.deleteSession(sessionId: session.id)
-            sessions.removeAll { $0.sessionId == session.id }
+            try await connection.deleteSession(id: session.id)
+            sessions.removeAll { $0.id == session.id }
 
-            if currentSession?.sessionId == session.id {
+            if currentSession?.id == session.id {
                 eventTask?.cancel()
                 eventTask = nil
-                try? await connection.detachSession()
+                await connection.disconnectFromSession()
                 currentSession = nil
                 currentModel = nil
                 engine.clearMessages()
@@ -637,20 +628,10 @@ extension ConversationView {
         RecentSelections.addRecentModelId(model.id)
         serverConfig.setSelectedModel(provider: model.provider, modelId: model.id)
 
-        do {
-            _ = try await connection.setDefaultModel(provider: model.provider, modelId: model.id)
-        } catch {
-            print("[ConversationView] Failed to set default model: \(error)")
-        }
-
-        if let session = currentSession {
+        if currentSession != nil {
             do {
-                let updatedModel = try await connection.setModel(
-                    provider: model.provider,
-                    modelId: model.id,
-                    sessionId: session.sessionId
-                )
-                currentModel = updatedModel
+                try await connection.setModel(provider: model.provider, modelId: model.id)
+                currentModel = ModelInfo(from: model)
             } catch {
                 errorMessage = "Failed to switch model: \(error.localizedDescription)"
                 print("[ConversationView] Failed to switch model: \(error)")
@@ -667,7 +648,7 @@ extension ConversationView {
     private func sendMessage(_ text: String) async {
         guard !text.isEmpty else { return }
 
-        if let currentSession {
+        if currentSession != nil {
             configureEngineIfNeeded()
             await engine.send(text, defaultStreamingBehavior: settings.streamingBehavior)
             return
@@ -779,49 +760,26 @@ extension ConversationView {
 
     private func historyItems(for mode: SessionMode) -> [SessionHistoryItem] {
         sessions
-            .filter { $0.resolvedMode == mode }
+            .filter { $0.mode == mode }
             .map { session in
                 SessionHistoryItem(
-                    id: session.sessionId,
+                    id: session.id,
                     title: session.name,
                     firstMessage: nil,
                     repoName: displayName(forRepoId: session.repoId),
-                    mode: session.resolvedMode,
-                    lastActivityAt: sessionLastActivityDate(session)
+                    mode: session.mode,
+                    lastActivityAt: session.lastActivityDate ?? Date()
                 )
             }
             .sorted { $0.lastActivityAt > $1.lastActivityAt }
     }
 
     private func displayName(forRepoId repoId: String?) -> String? {
-        guard let repoId else { return nil }
-        if let repo = repos.first(where: { $0.id == repoId }) {
-            return repo.fullName ?? repo.name
+        guard let repoId, let repoIdInt = Int(repoId) else { return repoId }
+        if let repo = repos.first(where: { $0.id == repoIdInt }) {
+            return repo.fullName
         }
         return repoId
-    }
-
-    private func sessionLastActivityDate(_ session: SessionInfo) -> Date {
-        if let lastActivity = session.lastActivityDate {
-            return lastActivity
-        }
-
-        if let createdAt = session.createdAt,
-           let createdDate = parseISODate(createdAt) {
-            return createdDate
-        }
-
-        return Date()
-    }
-
-    private func parseISODate(_ value: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) {
-            return date
-        }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value)
     }
 
     private func scheduleScrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {

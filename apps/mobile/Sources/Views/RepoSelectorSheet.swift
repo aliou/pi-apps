@@ -6,10 +6,11 @@
 //
 
 import SwiftUI
+import PiCore
 
 struct RepoSelectorSheet: View {
     let repos: [RepoInfo]
-    let recentRepoIds: [String]
+    let recentRepoIds: [Int]
     let onSelect: (RepoInfo) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -20,7 +21,7 @@ struct RepoSelectorSheet: View {
             List {
                 if !recentRepos.isEmpty && searchText.isEmpty {
                     Section("Recent") {
-                        ForEach(recentRepos, id: \.id) { repo in
+                        ForEach(recentRepos) { repo in
                             RepoRow(repo: repo) {
                                 onSelect(repo)
                                 dismiss()
@@ -31,7 +32,7 @@ struct RepoSelectorSheet: View {
 
                 ForEach(groupedRepos, id: \.0) { org, orgRepos in
                     Section(org) {
-                        ForEach(orgRepos, id: \.id) { repo in
+                        ForEach(orgRepos) { repo in
                             RepoRow(repo: repo) {
                                 onSelect(repo)
                                 dismiss()
@@ -69,34 +70,25 @@ struct RepoSelectorSheet: View {
             return repos
         }
         return repos.filter {
-            repoDisplayName($0).localizedCaseInsensitiveContains(searchText)
+            $0.fullName.localizedCaseInsensitiveContains(searchText) ||
+            $0.name.localizedCaseInsensitiveContains(searchText)
         }
     }
 
     private var groupedRepos: [(String, [RepoInfo])] {
         let grouped = Dictionary(grouping: filteredRepos) { repoOrgName($0) }
         return grouped.keys.sorted().map { org in
-            let orgRepos = grouped[org]?.sorted { repoDisplayName($0) < repoDisplayName($1) } ?? []
+            let orgRepos = grouped[org]?.sorted { $0.fullName < $1.fullName } ?? []
             return (org, orgRepos)
         }
     }
 
     private func repoOrgName(_ repo: RepoInfo) -> String {
-        if let owner = repo.owner, !owner.isEmpty {
-            return owner
-        }
-        if let fullName = repo.fullName,
-           let slashIndex = fullName.firstIndex(of: "/") {
-            return String(fullName[..<slashIndex])
+        // Extract owner from fullName (format: "owner/repo")
+        if let slashIndex = repo.fullName.firstIndex(of: "/") {
+            return String(repo.fullName[..<slashIndex])
         }
         return "Other"
-    }
-
-    private func repoDisplayName(_ repo: RepoInfo) -> String {
-        if let fullName = repo.fullName, !fullName.isEmpty {
-            return fullName
-        }
-        return repo.name
     }
 }
 
@@ -122,17 +114,37 @@ struct RepoRow: View {
 
 extension RepoInfo {
     static let sampleRepos: [RepoInfo] = [
-        RepoInfo(id: "1", name: "pi-apps", fullName: "aliou/pi-apps", owner: "aliou", `private`: nil, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil, defaultBranch: nil, path: nil),
-        RepoInfo(id: "2", name: "dotfiles", fullName: "aliou/dotfiles", owner: "aliou", `private`: nil, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil, defaultBranch: nil, path: nil),
-        RepoInfo(id: "3", name: "claude-code", fullName: "anthropic/claude-code", owner: "anthropic", `private`: nil, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil, defaultBranch: nil, path: nil),
-        RepoInfo(id: "4", name: "pi-mono", fullName: "mariozechner/pi-mono", owner: "mariozechner", `private`: nil, description: nil, htmlUrl: nil, cloneUrl: nil, sshUrl: nil, defaultBranch: nil, path: nil)
+        RepoInfo(
+            id: 1,
+            name: "pi-apps",
+            fullName: "aliou/pi-apps",
+            private: false,
+            description: "Native Apple clients for pi"
+        ),
+        RepoInfo(
+            id: 2,
+            name: "dotfiles",
+            fullName: "aliou/dotfiles",
+            private: false,
+            description: "Personal configuration files"
+        ),
+        RepoInfo(
+            id: 3,
+            name: "claude-code",
+            fullName: "anthropic/claude-code",
+            private: false,
+            description: "Claude Code by Anthropic"
+        ),
+        RepoInfo(
+            id: 4,
+            name: "pi-mono",
+            fullName: "mariozechner/pi-mono",
+            private: false,
+            description: "Pi coding agent monorepo"
+        )
     ]
 
-    static let sampleRecentIds = [
-        "1",
-        "3",
-        "4"
-    ]
+    static let sampleRecentIds: [Int] = [1, 3, 4]
 }
 
 // MARK: - Previews

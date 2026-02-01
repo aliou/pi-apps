@@ -23,7 +23,7 @@ struct MainView: View {
                 }
             } else if isConnecting {
                 connectingView
-            } else if let connection, connection.isConnected {
+            } else if let connection, connection.isServerReachable {
                 ConversationView()
                     .environment(connection)
             } else {
@@ -87,36 +87,16 @@ struct MainView: View {
         let newConnection = ServerConnection(serverURL: url)
 
         do {
-            try await newConnection.connect()
+            // Check server health
+            try await newConnection.checkHealth()
             connection = newConnection
-
-            // Sync default model settings after successful connection
-            await syncDefaultModel(with: newConnection)
+            print("[MainView] Connected to server, version: \(newConnection.serverVersion ?? "unknown")")
         } catch {
             connectionError = error.localizedDescription
             print("[MainView] Connection failed: \(error)")
         }
 
         isConnecting = false
-    }
-
-    private func syncDefaultModel(with connection: ServerConnection) async {
-        do {
-            // Fetch server's default model
-            if let serverDefault = try await connection.getDefaultModel() {
-                // Server has a default - use it
-                serverConfig.setSelectedModel(provider: serverDefault.provider, modelId: serverDefault.id)
-                print("[MainView] Synced default model from server: \(serverDefault.provider)/\(serverDefault.id)")
-            } else if let localProvider = serverConfig.selectedModelProvider,
-                      let localModelId = serverConfig.selectedModelId {
-                // Server has no default but we have a local preference - push to server
-                _ = try await connection.setDefaultModel(provider: localProvider, modelId: localModelId)
-                print("[MainView] Pushed local default model to server: \(localProvider)/\(localModelId)")
-            }
-        } catch {
-            // Non-fatal - settings sync failure shouldn't block app usage
-            print("[MainView] Failed to sync default model: \(error)")
-        }
     }
 }
 

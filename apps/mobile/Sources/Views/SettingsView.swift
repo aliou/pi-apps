@@ -40,7 +40,7 @@ struct SettingsView: View {
                 currentModel: defaultModel,
                 recentModelIds: RecentSelections.loadRecentModelIds()
             ) { model in
-                Task { await setDefaultModel(model) }
+                setDefaultModel(model)
             }
         }
     }
@@ -57,9 +57,9 @@ struct SettingsView: View {
             LabeledContent("Status") {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(connection.isConnected ? Color.green : Color.red)
+                        .fill(connection.isServerReachable ? Color.green : Color.red)
                         .frame(width: 8, height: 8)
-                    Text(connection.isConnected ? "Connected" : "Disconnected")
+                    Text(connection.isServerReachable ? "Connected" : "Disconnected")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -86,6 +86,9 @@ struct SettingsView: View {
                             .scaleEffect(0.8)
                     } else if let model = defaultModel {
                         Text(model.name)
+                            .foregroundStyle(.secondary)
+                    } else if let storedId = serverConfig.selectedModelId {
+                        Text(storedId)
                             .foregroundStyle(.secondary)
                     } else {
                         Text("Not Set")
@@ -195,10 +198,13 @@ struct SettingsView: View {
         defer { isLoadingModels = false }
 
         do {
+            // Works with or without a session:
+            // - With session: uses RPC (full list including extensions)
+            // - Without session: uses REST API (built-in providers only)
             let response = try await connection.getAvailableModels()
             availableModels = response.models
 
-            // Resolve locally stored model (already synced on connect)
+            // Resolve locally stored model
             if let storedId = serverConfig.selectedModelId,
                let storedProvider = serverConfig.selectedModelProvider {
                 defaultModel = availableModels.first {
@@ -207,24 +213,24 @@ struct SettingsView: View {
             }
         } catch {
             print("[SettingsView] Failed to load models: \(error)")
+            // Fall back to placeholder if we have stored config
+            if let storedId = serverConfig.selectedModelId,
+               let storedProvider = serverConfig.selectedModelProvider {
+                defaultModel = Model(
+                    id: storedId,
+                    name: storedId,
+                    provider: storedProvider
+                )
+            }
         }
     }
 
-    private func setDefaultModel(_ model: Model) async {
-        isSyncingModel = true
-        defer { isSyncingModel = false }
-
-        do {
-            // Update server
-            _ = try await connection.setDefaultModel(provider: model.provider, modelId: model.id)
-            // Update local
-            defaultModel = model
-            serverConfig.setSelectedModel(provider: model.provider, modelId: model.id)
-            RecentSelections.addRecentModelId(model.id)
-            print("[SettingsView] Default model set to: \(model.provider)/\(model.id)")
-        } catch {
-            print("[SettingsView] Failed to set default model: \(error)")
-        }
+    private func setDefaultModel(_ model: Model) {
+        // Store locally - this becomes the default for new sessions
+        defaultModel = model
+        serverConfig.setSelectedModel(provider: model.provider, modelId: model.id)
+        RecentSelections.addRecentModelId(model.id)
+        print("[SettingsView] Default model set to: \(model.provider)/\(model.id)")
     }
 }
 
