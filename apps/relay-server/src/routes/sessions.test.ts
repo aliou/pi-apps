@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
+import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
@@ -28,6 +29,7 @@ describe("Sessions Routes", () => {
       githubService: new GitHubService(),
       sandboxManager: createTestSandboxManager(),
       secretsService: createTestSecretsService(db),
+      environmentService: new EnvironmentService(db),
     };
   });
 
@@ -114,7 +116,15 @@ describe("Sessions Routes", () => {
       expect(json.error).toBeNull();
     });
 
-    it("creates code session with repoId", async () => {
+    it("creates code session with repoId and default environment", async () => {
+      // Code sessions require an environment - create a default one
+      services.environmentService.create({
+        name: "Default",
+        sandboxType: "docker",
+        config: { image: "ghcr.io/aliou/pi-sandbox-codex-universal" },
+        isDefault: true,
+      });
+
       const app = createApp({ services });
       const res = await app.request("/api/sessions", {
         method: "POST",
@@ -126,6 +136,22 @@ describe("Sessions Routes", () => {
       const json = await res.json();
       expect(json.data.mode).toBe("code");
       expect(json.data.repoId).toBe("owner/repo");
+      expect(json.data.environmentId).toBeDefined();
+    });
+
+    it("rejects code session without environment", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "code", repoId: "owner/repo" }),
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe(
+        "No environment specified and no default configured",
+      );
     });
 
     it("rejects code session without repoId", async () => {

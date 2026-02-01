@@ -1,4 +1,5 @@
 import {
+  CubeIcon,
   GearIcon,
   GithubLogoIcon,
   ListIcon,
@@ -15,6 +16,7 @@ import { ThemeToggle, ThemeToggleCycler } from "./theme-toggle";
 
 const navItems = [
   { to: "/", label: "Sessions", icon: SquaresFourIcon },
+  { to: "/environments", label: "Environments", icon: CubeIcon },
   { to: "/github", label: "GitHub", icon: GithubLogoIcon },
   { to: "/settings", label: "Settings", icon: GearIcon },
 ];

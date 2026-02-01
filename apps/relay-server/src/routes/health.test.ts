@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
+import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
@@ -28,6 +29,7 @@ describe("Health Routes", () => {
       githubService: new GitHubService(),
       sandboxManager: createTestSandboxManager(),
       secretsService: createTestSecretsService(db),
+      environmentService: new EnvironmentService(db),
     };
   });
 

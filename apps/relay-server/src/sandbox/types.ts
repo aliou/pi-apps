@@ -15,6 +15,9 @@ export interface SandboxHandle {
   /** Container ID (Docker-specific) */
   readonly containerId?: string;
 
+  /** Image digest for reproducibility (e.g., "sha256:abc123...") */
+  readonly imageDigest?: string;
+
   /** Streams to pi running inside sandbox */
   readonly stdin: Writable;
   readonly stdout: Readable;

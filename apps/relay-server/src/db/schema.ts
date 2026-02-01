@@ -6,6 +6,19 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+// -- environments ---------------------------------------------
+export const environments = sqliteTable("environments", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  sandboxType: text("sandbox_type", { enum: ["docker"] }).notNull(),
+  config: text("config").notNull(), // JSON string: { image, resources? }
+  isDefault: integer("is_default", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // -- sessions -------------------------------------------------
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
@@ -16,6 +29,8 @@ export const sessions = sqliteTable("sessions", {
     .notNull()
     .default("creating"),
   sandboxProvider: text("sandbox_provider", { enum: ["mock", "docker"] }),
+  environmentId: text("environment_id").references(() => environments.id),
+  sandboxImageDigest: text("sandbox_image_digest"),
   repoId: text("repo_id"),
   repoPath: text("repo_path"),
   branchName: text("branch_name"),
@@ -92,6 +107,9 @@ export const secrets = sqliteTable("secrets", {
 });
 
 // Type exports
+export type Environment = typeof environments.$inferSelect;
+export type NewEnvironment = typeof environments.$inferInsert;
+
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
 

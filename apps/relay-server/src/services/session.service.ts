@@ -21,6 +21,7 @@ export interface CreateSessionParams {
   modelProvider?: string;
   modelId?: string;
   sandboxProvider?: SandboxProviderType;
+  environmentId?: string;
 }
 
 export interface UpdateSessionParams {
@@ -30,6 +31,7 @@ export interface UpdateSessionParams {
   branchName?: string;
   currentModelProvider?: string;
   currentModelId?: string;
+  sandboxImageDigest?: string;
 }
 
 export type SessionRecord = Session;
@@ -54,6 +56,8 @@ export class SessionService {
       mode: params.mode,
       status: "creating" as SessionStatus,
       sandboxProvider: params.sandboxProvider ?? null,
+      environmentId: params.environmentId ?? null,
+      sandboxImageDigest: null as string | null,
       repoId: params.repoId ?? null,
       repoPath: params.repoPath ?? null,
       branchName: params.branchName ?? null,
@@ -126,6 +130,9 @@ export class SessionService {
     }
     if (fields.currentModelId !== undefined) {
       updates.currentModelId = fields.currentModelId;
+    }
+    if (fields.sandboxImageDigest !== undefined) {
+      updates.sandboxImageDigest = fields.sandboxImageDigest;
     }
 
     this.db

@@ -22,6 +22,13 @@
       "when": 1769817871851,
       "tag": "0002_moaning_inhumans",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1769979600516,
+      "tag": "0003_brief_masque",
+      "breakpoints": true
     }
   ]
 }

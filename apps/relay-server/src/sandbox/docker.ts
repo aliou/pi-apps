@@ -180,6 +180,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Start container
     await container.start();
 
+    // Capture image digest for reproducibility
+    const imageInfo = await this.docker.getImage(this.config.image).inspect();
+    const imageDigest = imageInfo.Id; // e.g., "sha256:abc123..."
+
     // Attach to streams
     const stream = await container.attach({
       stream: true,
@@ -201,6 +205,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       stdout,
       stderr,
       volumeName,
+      imageDigest,
     );
 
     this.sandboxes.set(sessionId, handle);
@@ -385,6 +390,7 @@ class DockerSandboxHandle implements SandboxHandle {
   readonly stdin: Writable;
   readonly stdout: Readable;
   readonly stderr: Readable;
+  readonly imageDigest: string;
 
   constructor(
     readonly sessionId: string,
@@ -393,11 +399,13 @@ class DockerSandboxHandle implements SandboxHandle {
     stdoutStream: PassThrough,
     stderrStream: PassThrough,
     private _volumeName: string,
+    imageDigest: string,
   ) {
     // Cast the streams to the correct types
     this.stdin = stdinStream as Writable;
     this.stdout = stdoutStream;
     this.stderr = stderrStream;
+    this.imageDigest = imageDigest;
 
     // Monitor container state
     this.monitorContainer();

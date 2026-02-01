@@ -13,6 +13,7 @@ import {
 } from "./env";
 import { SandboxManager, type SandboxProviderType } from "./sandbox/manager";
 import { CryptoService } from "./services/crypto.service";
+import { EnvironmentService } from "./services/environment.service";
 import { EventJournal } from "./services/event-journal";
 import { GitHubService } from "./services/github.service";
 import { RepoService } from "./services/repo.service";
@@ -99,6 +100,10 @@ async function main() {
     }
   }
 
+  // Initialize environment service
+  const environmentService = new EnvironmentService(db);
+  console.log("Environment service initialized");
+
   // Prune old events on startup (7 days)
   const cutoffDate = new Date(
     Date.now() - 7 * 24 * 60 * 60 * 1000,
@@ -118,6 +123,7 @@ async function main() {
       githubService,
       sandboxManager,
       secretsService,
+      environmentService,
     },
   });
 

@@ -105,3 +105,42 @@ export interface EventsResponse {
   events: JournalEvent[];
   lastSeq: number;
 }
+
+// Environments
+export interface Environment {
+  id: string;
+  name: string;
+  sandboxType: "docker";
+  config: EnvironmentConfig;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EnvironmentConfig {
+  image: string;
+  resources?: {
+    cpuShares?: number;
+    memoryMB?: number;
+  };
+}
+
+export interface AvailableImage {
+  id: string;
+  name: string;
+  image: string;
+  description: string;
+}
+
+export interface CreateEnvironmentRequest {
+  name: string;
+  sandboxType: "docker";
+  config: EnvironmentConfig;
+  isDefault?: boolean;
+}
+
+export interface UpdateEnvironmentRequest {
+  name?: string;
+  config?: EnvironmentConfig;
+  isDefault?: boolean;
+}

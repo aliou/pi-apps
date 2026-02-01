@@ -1,15 +1,16 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import type { SandboxProviderType } from "../sandbox/manager";
+import type { DockerEnvironmentConfig } from "../services/environment.service";
 import type { SessionMode } from "../services/session.service";
 
 interface CreateSessionRequest {
   mode: SessionMode;
   repoId?: string;
+  environmentId?: string;
   modelProvider?: string;
   modelId?: string;
   systemPrompt?: string;
-  sandboxProvider?: SandboxProviderType;
 }
 
 export function sessionsRoutes(): Hono<AppEnv> {
@@ -26,6 +27,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
   app.post("/", async (c) => {
     const sessionService = c.get("sessionService");
     const sandboxManager = c.get("sandboxManager");
+    const environmentService = c.get("environmentService");
+    const repoService = c.get("repoService");
 
     let body: CreateSessionRequest;
     try {
@@ -50,30 +53,56 @@ export function sessionsRoutes(): Hono<AppEnv> {
       );
     }
 
-    // Validate sandbox provider if specified
-    const validProviders = sandboxManager.enabledProviders;
-    if (
-      body.sandboxProvider &&
-      !validProviders.includes(body.sandboxProvider)
-    ) {
-      return c.json(
-        {
-          data: null,
-          error: `Invalid sandboxProvider. Must be one of: ${validProviders.join(", ")}`,
-        },
-        400,
-      );
-    }
+    // Resolve environment, repo, and sandbox provider for code mode
+    let environmentId: string | undefined;
+    let sandboxProvider: SandboxProviderType =
+      sandboxManager.defaultProviderName;
+    let repoUrl: string | undefined;
+    let repoBranch: string | undefined;
+    let environmentConfig: DockerEnvironmentConfig | undefined;
 
-    // Use specified provider or server default
-    const sandboxProvider =
-      body.sandboxProvider ?? sandboxManager.defaultProviderName;
+    if (body.mode === "code") {
+      // Resolve environment
+      let environment: ReturnType<typeof environmentService.get>;
+      if (body.environmentId) {
+        environment = environmentService.get(body.environmentId);
+        if (!environment) {
+          return c.json({ data: null, error: "Environment not found" }, 404);
+        }
+      } else {
+        environment = environmentService.getDefault();
+        if (!environment) {
+          return c.json(
+            {
+              data: null,
+              error: "No environment specified and no default configured",
+            },
+            400,
+          );
+        }
+      }
+
+      environmentId = environment.id;
+      sandboxProvider = environment.sandboxType as SandboxProviderType;
+      environmentConfig = JSON.parse(environment.config);
+
+      // Resolve repo for cloning
+      if (body.repoId) {
+        const repo = repoService.get(body.repoId);
+        if (repo?.cloneUrl) {
+          repoUrl = repo.cloneUrl;
+          repoBranch = repo.defaultBranch ?? "main";
+        }
+      }
+    }
 
     try {
       // Create session in database
       const session = sessionService.create({
         mode: body.mode,
         repoId: body.repoId,
+        branchName: repoBranch,
+        environmentId,
         modelProvider: body.modelProvider,
         modelId: body.modelId,
         systemPrompt: body.systemPrompt,
@@ -82,9 +111,20 @@ export function sessionsRoutes(): Hono<AppEnv> {
 
       // Start sandbox provisioning (async, don't await)
       sandboxManager
-        .createForSession(session.id, undefined, sandboxProvider)
-        .then(() => {
-          sessionService.update(session.id, { status: "ready" });
+        .createForSession(
+          session.id,
+          {
+            repoUrl,
+            repoBranch,
+            resources: environmentConfig?.resources,
+          },
+          sandboxProvider,
+        )
+        .then((handle) => {
+          sessionService.update(session.id, {
+            status: "ready",
+            sandboxImageDigest: handle.imageDigest,
+          });
         })
         .catch((err) => {
           console.error(
