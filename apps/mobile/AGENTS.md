@@ -1,6 +1,6 @@
 # Pi Mobile
 
-iOS app. Connects to pi-server via `WebSocketTransport`.
+iOS app. Connects to relay server via REST + WebSocket.
 
 ## Build
 
@@ -8,6 +8,7 @@ From repo root: `nix develop`, then open via `make xcode`. Run "Pi Mobile" schem
 
 ## Key Files
 
-- `Views/MainView.swift` - server setup, session list, connection state
-- `Views/SessionView.swift` - conversation view
+- `Services/ServerConnection.swift` - REST (RelayAPIClient) + WebSocket (RemoteAgentConnection)
+- `Views/MainView.swift` - server setup, mode selection
+- `Views/ConversationView.swift` - chat interface
 - `NativeTools/` - iOS-specific tool implementations

@@ -1,12 +1,18 @@
 # Pi Desktop
 
-macOS app for the pi coding agent. Runs pi locally as a subprocess.
+macOS app for the pi coding agent. Supports local and remote modes.
 
 ## Architecture
 
+**Local mode:**
 - Spawns `pi --mode rpc` subprocess
 - Communicates via JSONL over stdin/stdout
-- Uses `SubprocessTransport` from pi-core
+- Uses `LocalConnection` with `RPCConnection` from pi-core
+
+**Remote mode:**
+- Connects to relay server
+- REST for session management, WebSocket for agent communication
+- Uses `ServerConnection` with `RelayAPIClient` and `RemoteAgentConnection`
 
 ## Structure
 
@@ -14,7 +20,7 @@ macOS app for the pi coding agent. Runs pi locally as a subprocess.
 Sources/
 ├── PiApp.swift           # app entry point
 ├── AppDelegate.swift     # lifecycle, menu bar
-├── Services/             # RPC client, subprocess management
+├── Services/             # connections, subprocess management
 ├── Views/                # SwiftUI views
 └── Models/               # view models
 ```
@@ -31,6 +37,6 @@ Build and run the "Pi Desktop" scheme.
 
 ## Dependencies
 
-- **PiCore** - RPC transport, protocol types
+- **PiCore** - RPC transport, relay client, protocol types
 - **PiUI** - Shared UI components, theme
 - **Textual** - Markdown rendering
