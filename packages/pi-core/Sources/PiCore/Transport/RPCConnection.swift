@@ -2,12 +2,12 @@
 //  RPCConnection.swift
 //  PiCore
 //
-//  Shared RPC connection logic used by both transports
+//  Shared RPC connection logic for subprocess transport
 //
 
 import Foundation
 
-/// Shared RPC connection logic used by both transports
+/// Shared RPC connection logic for subprocess transport
 public actor RPCConnection {
 
     // MARK: - Types
@@ -39,15 +39,6 @@ public actor RPCConnection {
     private var pendingRequests: [String: PendingRequest] = [:]
     private var eventsContinuation: AsyncStream<TransportEvent>.Continuation?
     private var _events: AsyncStream<TransportEvent>?
-
-    /// Last sequence number received per session (for resume)
-    public private(set) var lastSeqBySession: [String: UInt64] = [:]
-
-    /// Current connection ID
-    public private(set) var connectionId: String?
-
-    /// Server capabilities from hello
-    public private(set) var capabilities: ServerCapabilities?
 
     // MARK: - Initialization
 
@@ -108,30 +99,8 @@ public actor RPCConnection {
         }
     }
 
-    /// Process incoming raw JSON data
+    /// Process incoming raw JSON data (legacy JSONL format from subprocess)
     public func processIncoming(_ data: Data) {
-        let decoder = JSONDecoder()
-
-        // First try the new envelope format
-        if let message = try? decoder.decode(WSIncomingMessage.self, from: data) {
-            switch message.kind {
-            case .response:
-                handleResponse(message, rawData: data)
-            case .event:
-                handleEvent(message)
-            case .request:
-                // Servers don't send requests to clients
-                break
-            }
-            return
-        }
-
-        // Fall back to legacy format for subprocess compatibility
-        processLegacyMessage(data)
-    }
-
-    /// Process legacy JSONL format (for subprocess compatibility)
-    private func processLegacyMessage(_ data: Data) {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
@@ -140,7 +109,7 @@ public actor RPCConnection {
         }
 
         if rawMessage.type == "response" {
-            // Legacy response handling - use command as ID
+            // Response handling - use command as ID
             if let command = rawMessage.command {
                 if let pending = pendingRequests.removeValue(forKey: command) {
                     pending.continuation.resume(returning: data)
@@ -153,220 +122,13 @@ public actor RPCConnection {
                 }
             }
         } else {
-            // Legacy event handling - convert to TransportEvent
+            // Event handling - convert to TransportEvent
             let event = parseRPCEvent(from: rawMessage, rawData: data)
             eventsContinuation?.yield(TransportEvent(
-                sessionId: "default", // Legacy format doesn't have sessionId
+                sessionId: "default", // Subprocess format doesn't have sessionId
                 event: event,
                 seq: nil
             ))
-        }
-    }
-
-    /// Handle response message (new envelope format)
-    private func handleResponse(_ message: WSIncomingMessage, rawData: Data) {
-        guard let id = message.id,
-              let pending = pendingRequests.removeValue(forKey: id) else {
-            return
-        }
-
-        if message.ok == true {
-            pending.continuation.resume(returning: rawData)
-        } else if let error = message.error {
-            pending.continuation.resume(throwing: RPCTransportError.serverError(error))
-        } else {
-            pending.continuation.resume(
-                throwing: RPCTransportError.invalidResponse("No data in response")
-            )
-        }
-    }
-
-    /// Handle event message (new envelope format)
-    private func handleEvent(_ message: WSIncomingMessage) {
-        guard let sessionId = message.sessionId,
-              let seq = message.seq,
-              let type = message.type else {
-            return
-        }
-
-        // Update last seq for session
-        lastSeqBySession[sessionId] = seq
-
-        // Parse event payload
-        let event = parseEventPayload(type: type, payload: message.payload)
-
-        eventsContinuation?.yield(TransportEvent(
-            sessionId: sessionId,
-            event: event,
-            seq: seq
-        ))
-    }
-
-    /// Parse event payload into RPCEvent (new envelope format)
-    /// Uses Codable decoding for type safety - parse failures return .unknown instead of defaulting.
-    private func parseEventPayload(type: String, payload: AnyCodable?) -> RPCEvent {
-        // Convert payload to JSON data for Codable decoding
-        guard let payloadValue = payload?.value,
-              let payloadData = try? JSONSerialization.data(withJSONObject: payloadValue) else {
-            // No payload - return appropriate event for payloadless types
-            switch type {
-            case "agent_start": return .agentStart
-            case "turn_start": return .turnStart
-            case "turn_end": return .turnEnd
-            case "auto_compaction_start": return .autoCompactionStart
-            case "auto_compaction_end": return .autoCompactionEnd
-            default: return .unknown(type: type, raw: Data())
-            }
-        }
-
-        // Helper for dict-based parsing (events not yet converted to Codable)
-        let dict = payload?.value as? [String: Any] ?? [:]
-
-        switch type {
-        case "agent_start":
-            return .agentStart
-
-        case "agent_end":
-            // agent_end from pi-agent-core has messages array, but client tracks its own state
-            let success = dict["success"] as? Bool ?? true
-            var rpcError: RPCError?
-            if let errorDict = dict["error"] as? [String: Any] {
-                rpcError = RPCError(
-                    code: errorDict["code"] as? String,
-                    message: errorDict["message"] as? String ?? "Unknown error",
-                    details: errorDict["details"] as? String
-                )
-            }
-            return .agentEnd(success: success, error: rpcError)
-
-        case "turn_start":
-            return .turnStart
-
-        case "turn_end":
-            return .turnEnd
-
-        case "message_start":
-            let messageId = dict["messageId"] as? String
-            return .messageStart(messageId: messageId)
-
-        case "message_end":
-            let stopReason = dict["stopReason"] as? String
-            return .messageEnd(stopReason: stopReason)
-
-        case "message_update":
-            let event = parseAssistantMessageEvent(from: dict)
-            return .messageUpdate(message: nil, event: event)
-
-        case "tool_execution_start":
-            guard let parsed = try? JSONDecoder().decode(ToolExecutionStartPayload.self, from: payloadData) else {
-                print("[RPCConnection] Failed to decode tool_execution_start payload")
-                return .unknown(type: type, raw: payloadData)
-            }
-            return .toolExecutionStart(
-                toolCallId: parsed.toolCallId,
-                toolName: parsed.toolName,
-                args: parsed.args
-            )
-
-        case "tool_execution_update":
-            guard let parsed = try? JSONDecoder().decode(ToolExecutionUpdatePayload.self, from: payloadData) else {
-                print("[RPCConnection] Failed to decode tool_execution_update payload")
-                return .unknown(type: type, raw: payloadData)
-            }
-            let output = parsed.partialResult?.content
-                .compactMap { $0.text }
-                .joined() ?? ""
-            return .toolExecutionUpdate(toolCallId: parsed.toolCallId, output: output)
-
-        case "tool_execution_end":
-            guard let parsed = try? JSONDecoder().decode(ToolExecutionEndPayload.self, from: payloadData) else {
-                print("[RPCConnection] Failed to decode tool_execution_end payload")
-                return .unknown(type: type, raw: payloadData)
-            }
-            let output = parsed.result?.content
-                .compactMap { $0.text }
-                .joined()
-            let status: ToolStatus = parsed.isError ? .error : .success
-            return .toolExecutionEnd(toolCallId: parsed.toolCallId, output: output, status: status)
-
-        case "auto_compaction_start":
-            return .autoCompactionStart
-
-        case "auto_compaction_end":
-            return .autoCompactionEnd
-
-        case "auto_retry_start":
-            guard let parsed = try? JSONDecoder().decode(AutoRetryStartPayload.self, from: payloadData) else {
-                print("[RPCConnection] Failed to decode auto_retry_start payload")
-                return .unknown(type: type, raw: payloadData)
-            }
-            return .autoRetryStart(
-                attempt: parsed.attempt,
-                maxAttempts: parsed.maxAttempts,
-                delayMs: parsed.delayMs,
-                errorMessage: parsed.errorMessage
-            )
-
-        case "auto_retry_end":
-            guard let parsed = try? JSONDecoder().decode(AutoRetryEndPayload.self, from: payloadData) else {
-                print("[RPCConnection] Failed to decode auto_retry_end payload")
-                return .unknown(type: type, raw: payloadData)
-            }
-            return .autoRetryEnd(
-                success: parsed.success,
-                attempt: parsed.attempt,
-                finalError: parsed.finalError
-            )
-
-        case "hook_error":
-            let extensionPath = dict["extensionPath"] as? String
-            let eventName = dict["event"] as? String
-            let errorMsg = dict["error"] as? String
-            return .hookError(extensionPath: extensionPath, event: eventName, error: errorMsg)
-
-        case "state_update":
-            // Try to decode StateContext from payload
-            if let contextDict = dict["context"] as? [String: Any],
-               let contextData = try? JSONSerialization.data(withJSONObject: contextDict),
-               let context = try? JSONDecoder().decode(StateContext.self, from: contextData) {
-                return .stateUpdate(context: context)
-            }
-            return .stateUpdate(context: StateContext(
-                workingDirectory: nil,
-                model: nil,
-                conversationId: nil,
-                messageCount: nil,
-                isProcessing: nil
-            ))
-
-        case "model_changed":
-            guard let parsed = try? JSONDecoder().decode(ModelChangedPayload.self, from: payloadData) else {
-                print("[RPCConnection] Failed to decode model_changed payload")
-                return .unknown(type: type, raw: payloadData)
-            }
-            return .modelChanged(model: parsed.model)
-
-        case "native_tool_request":
-            guard let parsed = try? JSONDecoder().decode(NativeToolRequestPayload.self, from: payloadData) else {
-                print("[RPCConnection] Failed to decode native_tool_request payload")
-                return .unknown(type: type, raw: payloadData)
-            }
-            let args = parsed.args ?? [:]
-            return .nativeToolRequest(NativeToolRequest(
-                callId: parsed.callId,
-                toolName: parsed.toolName,
-                args: args
-            ))
-
-        case "native_tool_cancel":
-            guard let parsed = try? JSONDecoder().decode(NativeToolCancelPayload.self, from: payloadData) else {
-                print("[RPCConnection] Failed to decode native_tool_cancel payload")
-                return .unknown(type: type, raw: payloadData)
-            }
-            return .nativeToolCancel(callId: parsed.callId)
-
-        default:
-            return .unknown(type: type, raw: payloadData)
         }
     }
 
@@ -387,7 +149,7 @@ public actor RPCConnection {
         }
     }
 
-    /// Parse legacy RawRPCMessage into RPCEvent
+    /// Parse RawRPCMessage into RPCEvent
     private func parseRPCEvent(from message: RawRPCMessage, rawData: Data) -> RPCEvent {
         switch message.type {
         case "agent_start":
@@ -477,24 +239,19 @@ public actor RPCConnection {
                 isProcessing: nil
             ))
 
+        case "model_changed":
+            // Parse model from the raw message data
+            if let dataDict = message.data?.value as? [String: Any],
+               let modelDict = dataDict["model"] as? [String: Any],
+               let modelData = try? JSONSerialization.data(withJSONObject: modelDict),
+               let model = try? JSONDecoder().decode(ModelInfo.self, from: modelData) {
+                return .modelChanged(model: model)
+            }
+            return .unknown(type: message.type, raw: rawData)
+
         default:
             return .unknown(type: message.type, raw: rawData)
         }
-    }
-
-    /// Set connection info from hello response
-    public func setConnectionInfo(connectionId: String, capabilities: ServerCapabilities) {
-        self.connectionId = connectionId
-        self.capabilities = capabilities
-    }
-
-    /// Get resume info for reconnection
-    public func getResumeInfo() -> ResumeInfo? {
-        guard let connectionId else { return nil }
-        return ResumeInfo(
-            connectionId: connectionId,
-            lastSeqBySession: lastSeqBySession
-        )
     }
 
     /// Reset connection state
@@ -504,13 +261,6 @@ public actor RPCConnection {
             request.continuation.resume(throwing: RPCTransportError.connectionLost("Reset"))
         }
         pendingRequests.removeAll()
-        connectionId = nil
-        capabilities = nil
-    }
-
-    /// Reset sequence tracking (after failed resume)
-    public func resetSeqTracking() {
-        lastSeqBySession.removeAll()
     }
 
     /// Finish event stream

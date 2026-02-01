@@ -5,199 +5,6 @@
 
 import Foundation
 
-// MARK: - Protocol Envelope Types
-
-/// Protocol version
-public let piProtocolVersion = 1
-
-/// Base envelope for all WebSocket messages
-public enum WSMessageKind: String, Codable, Sendable {
-    case request
-    case response
-    case event
-}
-
-/// Request envelope (client -> server)
-public struct WSRequest: Encodable, Sendable {
-    public let v: Int
-    public let kind: WSMessageKind
-    public let id: String
-    public let sessionId: String?
-    public let method: String
-    private let paramsData: Data?
-
-    public init(
-        id: String = UUID().uuidString,
-        sessionId: String? = nil,
-        method: String,
-        params: (any Encodable & Sendable)? = nil
-    ) {
-        self.v = piProtocolVersion
-        self.kind = .request
-        self.id = id
-        self.sessionId = sessionId
-        self.method = method
-        // Pre-encode params to JSON data so we can embed it directly
-        if let params {
-            self.paramsData = try? JSONEncoder().encode(params)
-        } else {
-            self.paramsData = nil
-        }
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case v, kind, id, sessionId, method, params
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(v, forKey: .v)
-        try container.encode(kind, forKey: .kind)
-        try container.encode(id, forKey: .id)
-        try container.encodeIfPresent(sessionId, forKey: .sessionId)
-        try container.encode(method, forKey: .method)
-
-        // Encode params by decoding the pre-encoded JSON and re-encoding as raw JSON
-        if let paramsData,
-           let paramsDict = try? JSONSerialization.jsonObject(with: paramsData) {
-            try container.encode(AnyCodable(paramsDict), forKey: .params)
-        }
-    }
-}
-
-/// Response envelope (server -> client)
-public struct WSResponse: Decodable, Sendable {
-    public let v: Int
-    public let kind: WSMessageKind
-    public let id: String
-    public let sessionId: String?
-    public let ok: Bool
-    public let result: AnyCodable?
-    public let error: RPCError?
-
-    public init(
-        v: Int = piProtocolVersion,
-        kind: WSMessageKind = .response,
-        id: String,
-        sessionId: String? = nil,
-        ok: Bool,
-        result: AnyCodable? = nil,
-        error: RPCError? = nil
-    ) {
-        self.v = v
-        self.kind = kind
-        self.id = id
-        self.sessionId = sessionId
-        self.ok = ok
-        self.result = result
-        self.error = error
-    }
-}
-
-/// Event envelope (server -> client, streaming)
-public struct WSEvent: Decodable, Sendable {
-    public let v: Int
-    public let kind: WSMessageKind
-    public let sessionId: String
-    public let seq: UInt64
-    public let type: String
-    public let payload: AnyCodable?
-
-    public init(
-        v: Int = piProtocolVersion,
-        kind: WSMessageKind = .event,
-        sessionId: String,
-        seq: UInt64,
-        type: String,
-        payload: AnyCodable? = nil
-    ) {
-        self.v = v
-        self.kind = kind
-        self.sessionId = sessionId
-        self.seq = seq
-        self.type = type
-        self.payload = payload
-    }
-}
-
-/// Raw incoming message for initial parsing
-public struct WSIncomingMessage: Decodable, Sendable {
-    public let v: Int
-    public let kind: WSMessageKind
-
-    // Response fields
-    public let id: String?
-    public let ok: Bool?
-    public let result: AnyCodable?
-    public let error: RPCError?
-
-    // Event fields
-    public let sessionId: String?
-    public let seq: UInt64?
-    public let type: String?
-    public let payload: AnyCodable?
-}
-
-// MARK: - Hello/Handshake Types
-
-/// Hello request params
-public struct HelloParams: Encodable, Sendable {
-    public let client: ClientInfo
-    public let resume: ResumeInfo?
-    public let nativeTools: [NativeToolDefinition]?
-
-    public init(
-        client: ClientInfo,
-        resume: ResumeInfo? = nil,
-        nativeTools: [NativeToolDefinition]? = nil
-    ) {
-        self.client = client
-        self.resume = resume
-        self.nativeTools = nativeTools
-    }
-}
-
-/// Client identification
-public struct ClientInfo: Codable, Sendable {
-    public let name: String
-    public let version: String
-
-    public init(name: String, version: String) {
-        self.name = name
-        self.version = version
-    }
-}
-
-/// Resume info for reconnection
-public struct ResumeInfo: Codable, Sendable {
-    public let connectionId: String
-    public let lastSeqBySession: [String: UInt64]
-
-    public init(connectionId: String, lastSeqBySession: [String: UInt64]) {
-        self.connectionId = connectionId
-        self.lastSeqBySession = lastSeqBySession
-    }
-}
-
-/// Hello response result
-public struct HelloResult: Decodable, Sendable {
-    public let connectionId: String
-    public let server: ServerInfo
-    public let capabilities: ServerCapabilities
-}
-
-/// Server identification
-public struct ServerInfo: Decodable, Sendable {
-    public let name: String
-    public let version: String
-}
-
-/// Server capabilities
-public struct ServerCapabilities: Decodable, Sendable {
-    public let resume: Bool
-    public let replayWindowSec: Int?
-}
-
 // MARK: - Session Management Types
 
 /// Session create result
@@ -216,7 +23,7 @@ public enum SessionMode: String, Codable, Sendable {
     case code
 }
 
-/// Session info
+/// Session info (for legacy/local subprocess)
 public struct SessionInfo: Decodable, Sendable, Identifiable, Hashable {
     public let sessionId: String
     public let mode: SessionMode?
@@ -550,6 +357,10 @@ public struct GetStateResponse: Decodable, Sendable {
 /// Response for get_available_models command
 public struct GetAvailableModelsResponse: Decodable, Sendable {
     public let models: [Model]
+
+    public init(models: [Model]) {
+        self.models = models
+    }
 }
 
 /// Lightweight model info (used in events and session info)

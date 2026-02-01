@@ -2,7 +2,7 @@
 //  RPCTransport.swift
 //  PiCore
 //
-//  Abstraction for RPC communication - local subprocess or remote server
+//  Abstraction for RPC communication via subprocess
 //
 
 import Foundation
@@ -56,7 +56,7 @@ public struct TransportEvent: Sendable {
     }
 }
 
-/// Protocol for RPC transport implementations
+/// Protocol for RPC transport implementations (subprocess-based)
 public protocol RPCTransport: Sendable {
     /// Whether the transport is currently connected
     var isConnected: Bool { get async }
@@ -110,35 +110,25 @@ extension RPCTransport {
     }
 }
 
-/// Configuration for transport connections
+/// Configuration for subprocess transport
 public struct RPCTransportConfig: Sendable {
-    /// Working directory for the agent (used by local transport)
+    /// Working directory for the agent
     public let workingDirectory: String?
 
-    /// Remote server URL (used by remote transport)
-    public let serverURL: URL?
-
-    /// Path to executable (used by local transport)
+    /// Path to executable
     public let executablePath: String?
 
     /// Custom environment variables
     public let environment: [String: String]?
 
-    /// Client identification info
-    public let clientInfo: ClientInfo
-
     public init(
         workingDirectory: String? = nil,
-        serverURL: URL? = nil,
         executablePath: String? = nil,
-        environment: [String: String]? = nil,
-        clientInfo: ClientInfo = ClientInfo(name: "pi-client", version: "1.0")
+        environment: [String: String]? = nil
     ) {
         self.workingDirectory = workingDirectory
-        self.serverURL = serverURL
         self.executablePath = executablePath
         self.environment = environment
-        self.clientInfo = clientInfo
     }
 
     /// Configuration for local subprocess
@@ -152,10 +142,5 @@ public struct RPCTransportConfig: Sendable {
             executablePath: executablePath,
             environment: environment
         )
-    }
-
-    /// Configuration for remote server
-    public static func remote(url: URL, clientInfo: ClientInfo) -> Self {
-        Self(serverURL: url, clientInfo: clientInfo)
     }
 }
