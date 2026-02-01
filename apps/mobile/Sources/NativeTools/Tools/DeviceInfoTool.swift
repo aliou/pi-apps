@@ -80,7 +80,7 @@ public struct DeviceInfoTool: NativeToolExecutable {
         }
     }
 
-    private nonisolated func batteryStateString(_ state: UIDevice.BatteryState) -> String {
+    nonisolated private func batteryStateString(_ state: UIDevice.BatteryState) -> String {
         switch state {
         case .unknown: return "unknown"
         case .unplugged: return "unplugged"
@@ -90,7 +90,7 @@ public struct DeviceInfoTool: NativeToolExecutable {
         }
     }
 
-    private nonisolated func idiomString(_ idiom: UIUserInterfaceIdiom) -> String {
+    nonisolated private func idiomString(_ idiom: UIUserInterfaceIdiom) -> String {
         switch idiom {
         case .phone: return "iPhone"
         case .pad: return "iPad"
