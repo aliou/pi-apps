@@ -1,10 +1,11 @@
 # Pi Sandbox Image
 # Based on OpenAI's codex-universal image for multi-language support
 
-FROM ghcr.io/openai/codex-universal:latest
+ARG CODEX_IMAGE=ghcr.io/openai/codex-universal@sha256:956c2e7dd1590fc12763f172579d777464312006b9fa1f6405f5f1b78b8ea2dc
+FROM ${CODEX_IMAGE}
 
 # Install pi CLI from GitHub releases (binary, no Node required)
-ARG PI_VERSION=latest
+ARG PI_VERSION=v0.50.9
 ARG TARGETARCH
 RUN set -ex && \
     if [ "$TARGETARCH" = "arm64" ]; then ARCH="arm64"; else ARCH="x64"; fi && \

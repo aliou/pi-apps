@@ -1,15 +1,17 @@
-# Pi Sandbox Docker Image
+# Pi Sandbox: Codex Universal
 
-Docker image for running pi in isolated containers for the relay server.
+Default sandbox image for running pi in isolated containers. Based on [OpenAI's codex-universal](https://github.com/openai/codex-universal) image, which provides a multi-language environment (Node.js, Python, Go, Rust, etc.).
+
+Published to GHCR as `ghcr.io/aliou/pi-sandbox-codex-universal`.
 
 ## Building
 
 ```bash
-# Build the image
-docker build -t pi-sandbox:local .
+# Build locally
+docker build -t pi-sandbox-codex-universal:local .
 
 # Build with specific pi version
-docker build --build-arg PI_VERSION=v0.50.6 -t pi-sandbox:local .
+docker build --build-arg PI_VERSION=v0.50.6 -t pi-sandbox-codex-universal:local .
 ```
 
 ## Image Details
@@ -40,32 +42,32 @@ The entrypoint script automatically loads these files into environment variables
 
 | Method | `docker inspect` | `/proc/[pid]/environ` | Logs |
 |--------|-----------------|----------------------|------|
-| Env vars | ❌ Visible | ❌ Visible | ❌ Often leaked |
-| Mounted files | ✅ Path only | ✅ Hidden | ✅ Safer |
+| Env vars | Visible | Visible | Often leaked |
+| Mounted files | Path only | Hidden | Safer |
 
 ## Testing Locally
 
 ```bash
 # Run with pi version check
-docker run --rm pi-sandbox:local pi --version
+docker run --rm pi-sandbox-codex-universal:local pi --version
 
 # Run with mounted secrets
 echo "sk-test-key" > /tmp/anthropic_api_key
 docker run --rm \
   -v /tmp/anthropic_api_key:/run/secrets/anthropic_api_key:ro \
-  pi-sandbox:local \
+  pi-sandbox-codex-universal:local \
   bash -c 'echo "Key loaded: ${ANTHROPIC_API_KEY:0:10}..."'
 
 # Run pi in RPC mode
 docker run --rm -i \
   -v /tmp/anthropic_api_key:/run/secrets/anthropic_api_key:ro \
-  pi-sandbox:local \
+  pi-sandbox-codex-universal:local \
   pi --mode rpc --no-session
 ```
 
 ## Relay Server Integration
 
-The relay server:
+The relay server uses this image by default for sandboxed sessions:
 1. Stores API keys encrypted in SQLite (AES-256-GCM)
 2. Decrypts keys at container creation time
 3. Writes keys to temp files on host (mode 0400)
@@ -74,13 +76,8 @@ The relay server:
 
 Configure the relay:
 ```bash
-# Generate encryption key (do this once, store securely)
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-
-# Set environment
-export RELAY_ENCRYPTION_KEY="<base64-key>"
 export SANDBOX_PROVIDER=docker
-export SANDBOX_DOCKER_IMAGE=pi-sandbox:local
+export SANDBOX_DOCKER_IMAGE=ghcr.io/aliou/pi-sandbox-codex-universal:main
 ```
 
 ## Environment Variables
