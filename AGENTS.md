@@ -2,6 +2,41 @@
 
 Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agent) coding agent.
 
+## Protocol Boundaries (READ FIRST)
+
+This project has **two distinct communication layers**. Understanding when to modify each is critical.
+
+### RPC Protocol (NEVER MODIFY)
+
+The RPC protocol is defined by the upstream [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) package. We mirror these types exactly in `packages/pi-core/` - they are **read-only copies**.
+
+- **Source of truth:** `@anthropic/pi-coding-agent` npm package (see `pi-mono` repo)
+- **Our mirror:** `packages/pi-core/Sources/PiCore/RPC/` (Swift types)
+- **Rule:** NEVER add, remove, or modify RPC message types. If upstream changes, update our mirror to match.
+- **Examples:** `AgentEvent`, `ClientCommand`, `ToolCall`, `Message`, etc.
+
+The WebSocket connection (`ws://host/ws/sessions/:id`) is a **transparent proxy** for RPC messages. It does not define a new protocol - it just transports the same JSON-RPC messages that pi uses over stdin/stdout.
+
+### REST API (CAN EXTEND)
+
+The REST API (`/api/*`) is our custom relay server infrastructure. This is where we add features like environments, sessions, repos, secrets.
+
+- **Location:** `apps/relay-server/src/routes/`
+- **Types:** `apps/relay-server/src/` (TypeScript), `packages/pi-core/Sources/PiCore/Relay/` (Swift mirror)
+- **Rule:** Add new endpoints freely, but keep REST concerns separate from RPC concerns.
+- **Examples:** `/api/sessions`, `/api/environments`, `/api/github/repos`
+
+### Quick Reference
+
+| Layer | Can Modify? | Where Defined | Purpose |
+|-------|-------------|---------------|---------|
+| RPC Protocol | NO | pi-coding-agent upstream | Agent ↔ Client communication |
+| WebSocket Transport | NO | Proxy only | Carries RPC over network |
+| REST API | YES | relay-server | Session/resource management |
+| Relay Swift Types | YES | pi-core/Relay/ | Swift types for REST API |
+
+See `packages/pi-core/AGENTS.md` and `apps/relay-server/AGENTS.md` for package-specific guidance.
+
 ## What is this?
 
 An attempt at creating native macOS/iOS clients for Pi - not just as a coding agent, but also as a general-purpose chat tool for mobile.
