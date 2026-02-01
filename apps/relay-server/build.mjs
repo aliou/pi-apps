@@ -20,8 +20,13 @@ await esbuild.build({
   format: "esm",
   outfile: "dist/index.js",
   sourcemap: true,
-  // Externalize native dependencies
-  external: ["better-sqlite3"],
+  // Externalize native dependencies and heavy optional deps
+  external: [
+    "better-sqlite3",
+    "cpu-features",
+    "@smithy/node-http-handler",
+    "@aws-sdk/*",
+  ],
   // Banner to provide require() for CJS dependencies
   banner: {
     js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,

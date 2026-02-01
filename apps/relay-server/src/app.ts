@@ -4,6 +4,7 @@ import { logger } from "hono/logger";
 import type { AppDatabase } from "./db/connection";
 import { githubRoutes } from "./routes/github";
 import { healthRoutes } from "./routes/health";
+import { modelsRoutes } from "./routes/models";
 import { secretsRoutes } from "./routes/secrets";
 import { sessionsRoutes } from "./routes/sessions";
 import { settingsRoutes } from "./routes/settings";
@@ -22,6 +23,7 @@ export type AppEnv = {
     repoService: RepoService;
     githubService: GitHubService;
     sandboxManager: SandboxManager;
+    secretsService: SecretsService;
   };
 };
 
@@ -51,6 +53,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     c.set("repoService", services.repoService);
     c.set("githubService", services.githubService);
     c.set("sandboxManager", services.sandboxManager);
+    c.set("secretsService", services.secretsService);
     await next();
   });
 
@@ -67,6 +70,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
   app.route("/", healthRoutes());
   app.route("/api/sessions", sessionsRoutes());
   app.route("/api/github", githubRoutes());
+  app.route("/api/models", modelsRoutes());
   app.route("/api/settings", settingsRoutes());
   app.route("/api/secrets", secretsRoutes(services.secretsService));
 
