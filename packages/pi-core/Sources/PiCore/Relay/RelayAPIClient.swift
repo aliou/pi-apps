@@ -91,6 +91,35 @@ public actor RelayAPIClient {
         return data
     }
 
+    // MARK: - Environments
+
+    /// List all environments
+    public func listEnvironments() async throws -> [RelayEnvironment] {
+        let response: RelayResponse<[RelayEnvironment]> = try await get("/api/environments")
+        guard let data = response.data else {
+            throw RelayAPIError.serverError(response.error ?? "No data")
+        }
+        return data
+    }
+
+    /// Get available Docker images for environment creation
+    public func getAvailableImages() async throws -> [AvailableImage] {
+        let response: RelayResponse<[AvailableImage]> = try await get("/api/environments/images")
+        guard let data = response.data else {
+            throw RelayAPIError.serverError(response.error ?? "No data")
+        }
+        return data
+    }
+
+    /// Get a single environment by ID
+    public func getEnvironment(id: String) async throws -> RelayEnvironment {
+        let response: RelayResponse<RelayEnvironment> = try await get("/api/environments/\(id)")
+        guard let data = response.data else {
+            throw RelayAPIError.serverError(response.error ?? "Environment not found")
+        }
+        return data
+    }
+
     // MARK: - GitHub
 
     public func getGitHubTokenStatus() async throws -> GitHubTokenStatus {

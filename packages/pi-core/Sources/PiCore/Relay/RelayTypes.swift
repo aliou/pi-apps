@@ -29,6 +29,8 @@ public struct RelaySession: Decodable, Sendable, Identifiable, Hashable {
     public let mode: SessionMode
     public let status: SessionStatus
     public let sandboxProvider: String?
+    public let environmentId: String?
+    public let sandboxImageDigest: String?
     public let repoId: String?
     public let repoPath: String?
     public let branchName: String?
@@ -47,6 +49,8 @@ public struct RelaySession: Decodable, Sendable, Identifiable, Hashable {
         mode: SessionMode,
         status: SessionStatus,
         sandboxProvider: String? = nil,
+        environmentId: String? = nil,
+        sandboxImageDigest: String? = nil,
         repoId: String? = nil,
         repoPath: String? = nil,
         branchName: String? = nil,
@@ -62,6 +66,8 @@ public struct RelaySession: Decodable, Sendable, Identifiable, Hashable {
         self.mode = mode
         self.status = status
         self.sandboxProvider = sandboxProvider
+        self.environmentId = environmentId
+        self.sandboxImageDigest = sandboxImageDigest
         self.repoId = repoId
         self.repoPath = repoPath
         self.branchName = branchName
@@ -112,25 +118,25 @@ public enum SessionStatus: String, Codable, Sendable {
 public struct CreateSessionParams: Encodable, Sendable {
     public let mode: SessionMode
     public let repoId: String?
+    public let environmentId: String?
     public let modelProvider: String?
     public let modelId: String?
     public let systemPrompt: String?
-    public let sandboxProvider: String?
 
     public init(
         mode: SessionMode,
         repoId: String? = nil,
+        environmentId: String? = nil,
         modelProvider: String? = nil,
         modelId: String? = nil,
-        systemPrompt: String? = nil,
-        sandboxProvider: String? = nil
+        systemPrompt: String? = nil
     ) {
         self.mode = mode
         self.repoId = repoId
+        self.environmentId = environmentId
         self.modelProvider = modelProvider
         self.modelId = modelId
         self.systemPrompt = systemPrompt
-        self.sandboxProvider = sandboxProvider
     }
 }
 
@@ -152,6 +158,79 @@ public struct JournaledEvent: Decodable, Sendable {
     public let type: String
     public let payload: AnyCodable
     public let createdAt: String
+}
+
+// MARK: - Environments
+
+/// Named `RelayEnvironment` to avoid collision with `SwiftUI.Environment`.
+public struct RelayEnvironment: Decodable, Sendable, Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let sandboxType: String
+    public let config: EnvironmentConfig
+    public let isDefault: Bool
+    public let createdAt: String
+    public let updatedAt: String
+
+    public init(
+        id: String,
+        name: String,
+        sandboxType: String,
+        config: EnvironmentConfig,
+        isDefault: Bool,
+        createdAt: String,
+        updatedAt: String
+    ) {
+        self.id = id
+        self.name = name
+        self.sandboxType = sandboxType
+        self.config = config
+        self.isDefault = isDefault
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+public struct EnvironmentConfig: Decodable, Sendable {
+    public let image: String
+    public let resources: ResourceLimits?
+
+    public init(image: String, resources: ResourceLimits? = nil) {
+        self.image = image
+        self.resources = resources
+    }
+}
+
+public struct ResourceLimits: Decodable, Sendable {
+    public let cpuShares: Int?
+    public let memoryMB: Int?
+
+    public init(cpuShares: Int? = nil, memoryMB: Int? = nil) {
+        self.cpuShares = cpuShares
+        self.memoryMB = memoryMB
+    }
+}
+
+public struct AvailableImage: Decodable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+    public let image: String
+    public let description: String
+
+    public init(id: String, name: String, image: String, description: String) {
+        self.id = id
+        self.name = name
+        self.image = image
+        self.description = description
+    }
 }
 
 // MARK: - GitHub
