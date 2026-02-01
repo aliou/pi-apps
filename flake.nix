@@ -68,6 +68,16 @@
               language = "system";
               pass_filenames = false;
             };
+            swift-test = {
+              enable = true;
+              name = "swift-test";
+              description = "Run Swift package tests";
+              entry = "${pkgs.bash}/bin/bash -c 'for pkg in packages/pi-core packages/pi-ui; do if [ -f \"$pkg/Package.swift\" ] && [ -d \"$pkg/Tests\" ]; then echo \"Testing $pkg...\"; (cd \"$pkg\" && swift test) || exit 1; fi; done'";
+              files = "\\.swift$";
+              language = "system";
+              pass_filenames = false;
+              stages = [ "pre-push" ];
+            };
           };
 
           devShells.default = pkgs.mkShellNoCC {
