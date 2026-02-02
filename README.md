@@ -9,6 +9,7 @@ pi-apps/
 ├── apps/
 │   ├── desktop/           # macOS app (local subprocess or relay)
 │   ├── mobile/            # iOS app (connects to relay)
+│   ├── pi-native/         # New SwiftUI iOS + macOS app (from-scratch)
 │   ├── relay-server/      # Relay API server (Node.js/Hono/SQLite)
 │   └── relay-dashboard/   # Relay admin UI (React Router v7/Vite)
 └── packages/
@@ -47,6 +48,10 @@ make xcode        # open in xcode
 
 Connects to the relay via REST + WebSocket. Cannot run pi locally (iOS limitation).
 
+### Pi Native (iOS + macOS)
+
+Greenfield SwiftUI app that targets iOS and macOS with shared UI and modern “Liquid Glass” styling.
+
 ### Relay Server
 
 API server that wraps Pi sessions, manages repos, and bridges WebSocket clients.
@@ -84,6 +89,8 @@ Bundle IDs are developer-specific. On first `make setup`, `Config/Local.xcconfig
 ```xcconfig
 PI_DESKTOP_BUNDLE_ID = dev.yourname.pi.desktop
 PI_MOBILE_BUNDLE_ID = dev.yourname.pi.mobile
+PI_NATIVE_IOS_BUNDLE_ID = dev.yourname.pi.native.ios
+PI_NATIVE_MAC_BUNDLE_ID = dev.yourname.pi.native.mac
 ```
 
 ## Commands
