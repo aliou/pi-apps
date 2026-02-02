@@ -217,7 +217,6 @@ public actor RelayAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         request.httpBody = try encoder.encode(body)
 
         return try await execute(request)
@@ -231,7 +230,6 @@ public actor RelayAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         request.httpBody = try encoder.encode(body)
 
         return try await execute(request)
@@ -255,7 +253,6 @@ public actor RelayAPIClient {
             }
 
             if httpResponse.statusCode >= 400 {
-                // Try to parse error from response
                 if let errorResponse = try? decoder.decode(RelayResponse<String>.self, from: data),
                    let error = errorResponse.error {
                     throw RelayAPIError.serverError(error)

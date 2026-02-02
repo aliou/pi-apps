@@ -261,14 +261,9 @@ public struct RepoInfo: Decodable, Sendable, Identifiable, Hashable {
     public let defaultBranch: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name
-        case fullName = "full_name"
-        case `private`
-        case description
-        case htmlUrl = "html_url"
-        case cloneUrl = "clone_url"
-        case sshUrl = "ssh_url"
-        case defaultBranch = "default_branch"
+        case id, name, fullName
+        case `private` = "isPrivate"
+        case description, htmlUrl, cloneUrl, sshUrl, defaultBranch
     }
 
     public init(
