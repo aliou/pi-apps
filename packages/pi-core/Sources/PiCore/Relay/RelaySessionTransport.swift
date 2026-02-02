@@ -42,7 +42,6 @@ public actor RelaySessionTransport {
             throw AgentConnectionError.connectionFailed("Invalid WebSocket URL")
         }
 
-        print("[RelaySessionTransport] Connecting to \(wsURL)")
         let task = URLSession.shared.webSocketTask(with: wsURL)
         self.webSocketTask = task
         task.resume()
@@ -102,26 +101,23 @@ public actor RelaySessionTransport {
             throw AgentConnectionError.notConnected
         }
 
-        // Generate request ID if not present
-        var cmd = command
-        let requestId = (command["id"] as? String) ?? UUID().uuidString
-        cmd["id"] = requestId
+        guard let commandType = command["type"] as? String else {
+            throw AgentConnectionError.commandFailed("Command missing type")
+        }
 
-        let data = try JSONSerialization.data(withJSONObject: cmd)
+        let data = try JSONSerialization.data(withJSONObject: command)
         guard let string = String(data: data, encoding: .utf8) else {
             throw AgentConnectionError.commandFailed("Failed to encode command")
         }
 
-        // Register pending request and send
         let responseData: Data = try await withCheckedThrowingContinuation { continuation in
-            self.pendingRequests[requestId] = continuation
+            self.pendingRequests[commandType] = continuation
 
             Task {
                 do {
                     try await task.send(.string(string))
                 } catch {
-                    // Remove pending request and fail
-                    if let cont = self.pendingRequests.removeValue(forKey: requestId) {
+                    if let cont = self.pendingRequests.removeValue(forKey: commandType) {
                         cont.resume(throwing: AgentConnectionError.commandFailed(error.localizedDescription))
                     }
                 }
@@ -231,7 +227,9 @@ public actor RelaySessionTransport {
     }
 
     private func handleMessage(_ message: URLSessionWebSocketTask.Message) {
-        guard let data = message.data else { return }
+        guard let data = message.data else {
+            return
+        }
 
         // Parse the message type first
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -250,51 +248,27 @@ public actor RelaySessionTransport {
     }
 
     private func handleResponse(json: [String: Any], data: Data) {
-        // Pi responses have "command" field that matches our request type
-        // We use "command" as the correlation key
         guard let command = json["command"] as? String else {
-            print("[RelaySessionTransport] Response missing command field")
             return
         }
 
-        // Check if we have a pending request for this command
-        // Note: Pi uses command type as ID, not a UUID
-        if let continuation = pendingRequests.removeValue(forKey: command) {
-            // Extract the data portion for decoding
-            if let success = json["success"] as? Bool, success,
-               let responseData = json["data"] {
-                do {
-                    let dataJson = try JSONSerialization.data(withJSONObject: responseData)
-                    continuation.resume(returning: dataJson)
-                } catch {
-                    continuation.resume(throwing: AgentConnectionError.invalidResponse("Failed to serialize response data"))
-                }
-            } else if let error = json["error"] as? [String: Any] {
-                let message = error["message"] as? String ?? "Unknown error"
-                continuation.resume(throwing: AgentConnectionError.commandFailed(message))
-            } else {
-                continuation.resume(throwing: AgentConnectionError.invalidResponse("Invalid response format"))
-            }
+        guard let continuation = pendingRequests.removeValue(forKey: command) else {
             return
         }
 
-        // Also check by request ID if present
-        if let requestId = json["id"] as? String,
-           let continuation = pendingRequests.removeValue(forKey: requestId) {
-            if let success = json["success"] as? Bool, success,
-               let responseData = json["data"] {
-                do {
-                    let dataJson = try JSONSerialization.data(withJSONObject: responseData)
-                    continuation.resume(returning: dataJson)
-                } catch {
-                    continuation.resume(throwing: AgentConnectionError.invalidResponse("Failed to serialize response data"))
-                }
-            } else if let error = json["error"] as? [String: Any] {
-                let message = error["message"] as? String ?? "Unknown error"
-                continuation.resume(throwing: AgentConnectionError.commandFailed(message))
-            } else {
-                continuation.resume(throwing: AgentConnectionError.invalidResponse("Invalid response format"))
+        if let success = json["success"] as? Bool, success,
+           let responseData = json["data"] {
+            do {
+                let dataJson = try JSONSerialization.data(withJSONObject: responseData)
+                continuation.resume(returning: dataJson)
+            } catch {
+                continuation.resume(throwing: AgentConnectionError.invalidResponse("Failed to serialize response data"))
             }
+        } else if let error = json["error"] as? [String: Any] {
+            let message = error["message"] as? String ?? "Unknown error"
+            continuation.resume(throwing: AgentConnectionError.commandFailed(message))
+        } else {
+            continuation.resume(throwing: AgentConnectionError.invalidResponse("Invalid response format"))
         }
     }
 
@@ -500,7 +474,6 @@ public actor RelaySessionTransport {
     }
 
     private func handleConnectionError(_ error: Error) {
-        print("[RelaySessionTransport] Connection error: \(error)")
         _isConnected = false
 
         // Fail all pending requests
