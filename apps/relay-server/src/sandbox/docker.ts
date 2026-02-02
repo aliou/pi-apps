@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import process from "node:process";
 import { type Duplex, PassThrough } from "node:stream";
 import Docker from "dockerode";
 import type {
@@ -14,11 +15,21 @@ import type {
 } from "./types";
 
 /**
- * UID of the non-root "user" inside sandbox containers.
- * Both Alpine (adduser -D) and Debian (useradd -m) default to 1000
- * for the first non-root user.
+ * Get the host process UID:GID string for container User field.
+ * Containers run as the host user so bind-mounted dirs are writable.
+ * fixuid (in the image entrypoint) remaps the container's "user"
+ * to match this UID/GID.
  */
-const SANDBOX_USER_UID = 1000;
+function getHostUser(): string {
+  const uid = process.getuid?.();
+  const gid = process.getgid?.();
+  if (uid === undefined || gid === undefined) {
+    throw new Error(
+      "Docker sandbox requires a POSIX host (process.getuid/getgid unavailable)",
+    );
+  }
+  return `${uid}:${gid}`;
+}
 
 export interface DockerProviderConfig {
   /** Docker image to use */
@@ -151,18 +162,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     mkdirSync(workspaceDir, { recursive: true });
     mkdirSync(agentDir, { recursive: true });
 
-    // Make dirs writable by the container's non-root user (UID 1000)
-    const { chownSync } = await import("node:fs");
-    try {
-      chownSync(workspaceDir, SANDBOX_USER_UID, SANDBOX_USER_UID);
-      chownSync(agentDir, SANDBOX_USER_UID, SANDBOX_USER_UID);
-    } catch {
-      // chown may fail if running as non-root on the host — fall back to
-      // permissive mode so the container user can still write
-      chmodSync(workspaceDir, 0o777);
-      chmodSync(agentDir, 0o777);
-    }
-
     // If repo URL provided, clone it into the workspace dir
     if (repoUrl) {
       await this.cloneRepoIntoDir(workspaceDir, repoUrl, repoBranch);
@@ -189,10 +188,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     const memoryMB =
       resources?.memoryMB ?? this.config.defaultResources.memoryMB ?? 2048;
 
+    const hostUser = getHostUser();
+
     // Create container
     const container = await this.docker.createContainer({
       name: containerName,
       Image: this.config.image,
+      User: hostUser,
       Env: containerEnv,
       WorkingDir: "/workspace",
       AttachStdin: true,
@@ -338,12 +340,15 @@ export class DockerSandboxProvider implements SandboxProvider {
     const branchArg = branch ? `--branch ${branch}` : "";
     const cmd = `git clone ${branchArg} ${repoUrl} /workspace`;
 
+    const hostUser = getHostUser();
+
     const container = await this.docker.createContainer({
       Image: this.config.image,
       Cmd: ["bash", "-c", cmd],
+      User: hostUser,
       HostConfig: {
         Binds: [`${workspaceDir}:/workspace`],
-        AutoRemove: true,
+        NetworkMode: this.config.networkMode,
       },
     });
 
@@ -351,7 +356,30 @@ export class DockerSandboxProvider implements SandboxProvider {
     const result = await container.wait();
 
     if (result.StatusCode !== 0) {
-      throw new Error(`Failed to clone repo: exit code ${result.StatusCode}`);
+      // Capture logs before removing the container
+      let output = "";
+      try {
+        const logs = await container.logs({ stdout: true, stderr: true });
+        output = logs.toString().trim();
+      } catch {
+        // Best-effort log capture
+      }
+      try {
+        await container.remove();
+      } catch {
+        // Container may already be gone
+      }
+      const detail = output ? `\n${output}` : "";
+      throw new Error(
+        `Failed to clone repo: exit code ${result.StatusCode}${detail}`,
+      );
+    }
+
+    // Clean up on success
+    try {
+      await container.remove();
+    } catch {
+      // Container may already be gone
     }
   }
 

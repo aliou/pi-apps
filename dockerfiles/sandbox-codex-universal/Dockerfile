@@ -32,6 +32,15 @@ RUN chmod +x /entrypoint.sh
 RUN useradd -m -s /bin/bash user && \
     chown -R user:user /workspace /data/agent
 
+# Install fixuid for bind mount UID/GID remapping
+ARG TARGETARCH
+RUN FIXUID_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    curl -SsL "https://github.com/boxboat/fixuid/releases/download/v0.6.0/fixuid-0.6.0-linux-${FIXUID_ARCH}.tar.gz" | tar -C /usr/local/bin -xzf - && \
+    chown root:root /usr/local/bin/fixuid && \
+    chmod 4755 /usr/local/bin/fixuid && \
+    mkdir -p /etc/fixuid && \
+    printf "user: user\ngroup: user\npaths:\n  - /home/user\n  - /workspace\n  - /data/agent\n" > /etc/fixuid/config.yml
+
 # Set environment for runtime
 ENV PI_CODING_AGENT_DIR=/data/agent
 ENV HOME=/home/user
@@ -39,5 +48,5 @@ ENV HOME=/home/user
 WORKDIR /workspace
 USER user
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["fixuid", "-q", "/entrypoint.sh"]
 CMD ["pi", "--mode", "rpc"]
