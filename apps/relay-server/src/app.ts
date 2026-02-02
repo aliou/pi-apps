@@ -27,6 +27,7 @@ export type AppEnv = {
     sandboxManager: SandboxManager;
     secretsService: SecretsService;
     environmentService: EnvironmentService;
+    sessionDataDir: string;
   };
 };
 
@@ -39,6 +40,7 @@ export interface AppServices {
   sandboxManager: SandboxManager;
   secretsService: SecretsService;
   environmentService: EnvironmentService;
+  sessionDataDir: string;
 }
 
 export interface CreateAppOptions {
@@ -59,6 +61,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     c.set("sandboxManager", services.sandboxManager);
     c.set("secretsService", services.secretsService);
     c.set("environmentService", services.environmentService);
+    c.set("sessionDataDir", services.sessionDataDir);
     await next();
   });
 

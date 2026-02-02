@@ -13,15 +13,19 @@ import type {
   SandboxStreams,
 } from "./types";
 
+/**
+ * UID of the non-root "user" inside sandbox containers.
+ * Both Alpine (adduser -D) and Debian (useradd -m) default to 1000
+ * for the first non-root user.
+ */
+const SANDBOX_USER_UID = 1000;
+
 export interface DockerProviderConfig {
   /** Docker image to use */
   image: string;
 
   /** Network mode (default: bridge) */
   networkMode?: string;
-
-  /** Volume name prefix (default: pi-session) */
-  volumePrefix?: string;
 
   /** Container name prefix (default: pi-sandbox) */
   containerPrefix?: string;
@@ -36,6 +40,13 @@ export interface DockerProviderConfig {
   };
 
   /**
+   * Base directory for per-session data on the host.
+   * Each session gets a subdirectory with workspace/ and agent/ dirs.
+   * Must be accessible to Docker (not /tmp on Lima/Docker Desktop).
+   */
+  sessionDataDir: string;
+
+  /**
    * Base directory for temporary secrets files.
    * Must be accessible to Docker (not /tmp on Lima/Docker Desktop).
    * Defaults to os.tmpdir() - override for Lima compatibility.
@@ -46,7 +57,6 @@ export interface DockerProviderConfig {
 const DEFAULT_CONFIG = {
   image: "pi-sandbox:local",
   networkMode: "bridge",
-  volumePrefix: "pi-session",
   containerPrefix: "pi-sandbox",
   defaultResources: {
     cpuShares: 1024,
@@ -56,17 +66,19 @@ const DEFAULT_CONFIG = {
 
 /**
  * Docker-based sandbox provider that runs pi inside isolated containers.
+ *
+ * Per-session directory structure on the host:
+ *   <sessionDataDir>/<sessionId>/workspace/  -> /workspace (container)
+ *   <sessionDataDir>/<sessionId>/agent/      -> /data/agent (container)
  */
 export class DockerSandboxProvider implements SandboxProvider {
   readonly name = "docker";
   private docker: Docker;
   private config: Required<
-    Pick<
-      DockerProviderConfig,
-      "image" | "networkMode" | "volumePrefix" | "containerPrefix"
-    >
+    Pick<DockerProviderConfig, "image" | "networkMode" | "containerPrefix">
   > & {
     defaultResources: { cpuShares: number; memoryMB: number };
+    sessionDataDir: string;
     secretsBaseDir?: string;
   };
   /** Optional cache of handles — Docker is always the source of truth. */
@@ -74,7 +86,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   /** Track secrets directories for cleanup */
   private secretsDirs = new Map<string, string>();
 
-  constructor(config: DockerProviderConfig = { image: DEFAULT_CONFIG.image }) {
+  constructor(config: DockerProviderConfig) {
     const socketPath = config.socketPath ?? this.resolveDockerSocket();
     this.docker = new Docker({ socketPath });
     this.config = {
@@ -106,6 +118,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
   }
 
+  /**
+   * Get the host path for a session's data directory.
+   */
+  getSessionDataPath(sessionId: string): string {
+    return join(this.config.sessionDataDir, sessionId);
+  }
+
   async createSandbox(options: CreateSandboxOptions): Promise<SandboxHandle> {
     const {
       sessionId,
@@ -122,16 +141,31 @@ export class DockerSandboxProvider implements SandboxProvider {
       return cached;
     }
 
-    // Volume name for this session's workspace
-    const volumeName = `${this.config.volumePrefix}-${sessionId}-workspace`;
     const containerName = `${this.config.containerPrefix}-${sessionId}`;
 
-    // Create volume if it doesn't exist
-    await this.ensureVolume(volumeName);
+    // Create per-session host directories
+    const sessionDir = this.getSessionDataPath(sessionId);
+    const workspaceDir = join(sessionDir, "workspace");
+    const agentDir = join(sessionDir, "agent");
 
-    // If repo URL provided, clone it into the volume
+    mkdirSync(workspaceDir, { recursive: true });
+    mkdirSync(agentDir, { recursive: true });
+
+    // Make dirs writable by the container's non-root user (UID 1000)
+    const { chownSync } = await import("node:fs");
+    try {
+      chownSync(workspaceDir, SANDBOX_USER_UID, SANDBOX_USER_UID);
+      chownSync(agentDir, SANDBOX_USER_UID, SANDBOX_USER_UID);
+    } catch {
+      // chown may fail if running as non-root on the host — fall back to
+      // permissive mode so the container user can still write
+      chmodSync(workspaceDir, 0o777);
+      chmodSync(agentDir, 0o777);
+    }
+
+    // If repo URL provided, clone it into the workspace dir
     if (repoUrl) {
-      await this.cloneRepoIntoVolume(volumeName, repoUrl, repoBranch);
+      await this.cloneRepoIntoDir(workspaceDir, repoUrl, repoBranch);
     }
 
     // Build environment variables (non-secret config only)
@@ -142,7 +176,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // Create secrets directory on host and write secret files
     const secretsDir = this.writeSecretsDir(sessionId, secrets);
-    const binds = [`${volumeName}:/workspace`];
+    const binds = [`${workspaceDir}:/workspace`, `${agentDir}:/data/agent`];
 
     if (secretsDir) {
       binds.push(`${secretsDir}:/run/secrets:ro`);
@@ -186,7 +220,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     const handle = new DockerSandboxHandle(
       sessionId,
       container,
-      volumeName,
       imageDigest,
       (sid, s) => this.writeSecretsDir(sid, s),
     );
@@ -230,12 +263,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Build handle from inspected state
     const status = this.dockerStateToStatus(info.State.Status);
     const imageDigest = info.Image;
-    const volumeName = `${this.config.volumePrefix}-${sessionId}-workspace`;
 
     const handle = new DockerSandboxHandle(
       sessionId,
       container,
-      volumeName,
       imageDigest,
       (sid, s) => this.writeSecretsDir(sid, s),
     );
@@ -299,16 +330,8 @@ export class DockerSandboxProvider implements SandboxProvider {
 
   // --- Private helpers ---
 
-  private async ensureVolume(name: string): Promise<void> {
-    try {
-      await this.docker.getVolume(name).inspect();
-    } catch {
-      await this.docker.createVolume({ Name: name });
-    }
-  }
-
-  private async cloneRepoIntoVolume(
-    volumeName: string,
+  private async cloneRepoIntoDir(
+    workspaceDir: string,
     repoUrl: string,
     branch?: string,
   ): Promise<void> {
@@ -319,7 +342,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       Image: this.config.image,
       Cmd: ["bash", "-c", cmd],
       HostConfig: {
-        Binds: [`${volumeName}:/workspace`],
+        Binds: [`${workspaceDir}:/workspace`],
         AutoRemove: true,
       },
     });
@@ -409,7 +432,6 @@ class DockerSandboxHandle implements SandboxHandle {
   constructor(
     readonly sessionId: string,
     private container: Docker.Container,
-    private _volumeName: string,
     private _imageDigest: string,
     private writeSecrets?: (
       sessionId: string,
@@ -427,10 +449,6 @@ class DockerSandboxHandle implements SandboxHandle {
 
   get imageDigest(): string {
     return this._imageDigest;
-  }
-
-  get volumeName(): string {
-    return this._volumeName;
   }
 
   /** Used by provider when reconstructing handle from Docker inspect. */

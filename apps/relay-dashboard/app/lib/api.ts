@@ -106,6 +106,23 @@ export interface EventsResponse {
   lastSeq: number;
 }
 
+export interface SessionHistoryResponse {
+  entries: SessionHistoryEntry[];
+}
+
+/**
+ * An entry from pi's JSONL session file.
+ * Typed loosely — the UI renders based on `type` and known fields,
+ * falling back to raw JSON for unknown types.
+ */
+export interface SessionHistoryEntry {
+  type: string;
+  id?: string;
+  parentId?: string | null;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
 // Environments
 export interface Environment {
   id: string;

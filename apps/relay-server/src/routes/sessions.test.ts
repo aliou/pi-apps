@@ -30,6 +30,7 @@ describe("Sessions Routes", () => {
       sandboxManager: createTestSandboxManager(),
       secretsService: createTestSecretsService(db),
       environmentService: new EnvironmentService(db),
+      sessionDataDir: "/tmp/test-session-data",
     };
   });
 

@@ -40,4 +40,4 @@ WORKDIR /workspace
 USER user
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["pi", "--mode", "rpc", "--no-session"]
+CMD ["pi", "--mode", "rpc"]

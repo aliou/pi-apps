@@ -16,8 +16,10 @@ import {
   type JournalEvent,
   RELAY_URL,
   type Session,
+  type SessionHistoryResponse,
 } from "../lib/api";
-import { parseEventsToConversation } from "../lib/conversation";
+import type { HistoryItem } from "../lib/history";
+import { parseHistoryToConversation } from "../lib/history";
 import { useSidebar } from "../lib/sidebar";
 import { cn } from "../lib/utils";
 
@@ -90,10 +92,24 @@ function ViewToggle({
   );
 }
 
+/**
+ * Fetch session history from the JSONL file on the server.
+ */
+async function fetchHistory(sessionId: string): Promise<HistoryItem[]> {
+  const res = await api.get<SessionHistoryResponse>(
+    `/sessions/${sessionId}/history`,
+  );
+  if (res.data) {
+    return parseHistoryToConversation(res.data.entries);
+  }
+  return [];
+}
+
 export default function SessionPage() {
   const { id } = useParams();
   const { collapsed } = useSidebar();
   const [session, setSession] = useState<Session | null>(null);
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [events, setEvents] = useState<JournalEvent[]>([]);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("disconnected");
@@ -107,8 +123,8 @@ export default function SessionPage() {
   const reconnectTimeoutRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Parse events to conversation items
-  const conversationItems = parseEventsToConversation(events);
+  // The conversation view shows history items from the JSONL file
+  const conversationItems = historyItems;
 
   // Fetch session metadata
   useEffect(() => {
@@ -123,7 +139,13 @@ export default function SessionPage() {
     });
   }, [id]);
 
-  // Fetch initial events via REST
+  // Fetch initial session history from JSONL file
+  useEffect(() => {
+    if (!id) return;
+    fetchHistory(id).then(setHistoryItems);
+  }, [id]);
+
+  // Also fetch initial events for the debug view
   useEffect(() => {
     if (!id) return;
 
@@ -133,6 +155,12 @@ export default function SessionPage() {
         lastSeqRef.current = res.data.lastSeq;
       }
     });
+  }, [id]);
+
+  // Re-fetch history when a turn ends (full messages available in JSONL)
+  const refreshHistory = useCallback(() => {
+    if (!id) return;
+    fetchHistory(id).then(setHistoryItems);
   }, [id]);
 
   // Connect WebSocket for live updates
@@ -186,7 +214,7 @@ export default function SessionPage() {
           return;
         }
 
-        // Append to events list
+        // Append to events list (for debug view)
         const seq = (event.seq as number) ?? lastSeqRef.current + 1;
         const newEvent: JournalEvent = {
           seq,
@@ -196,11 +224,20 @@ export default function SessionPage() {
         };
         setEvents((prev) => [...prev, newEvent]);
         lastSeqRef.current = seq;
+
+        // Re-fetch history on turn boundaries (full messages now in JSONL)
+        if (
+          event.type === "turn_end" ||
+          event.type === "agent_end" ||
+          event.type === "message_end"
+        ) {
+          refreshHistory();
+        }
       } catch {
         // Ignore parse errors
       }
     };
-  }, [id]);
+  }, [id, refreshHistory]);
 
   useEffect(() => {
     connectWebSocket();
@@ -233,7 +270,19 @@ export default function SessionPage() {
       }),
     );
 
-    // Add optimistic user message event
+    // Add optimistic user message to conversation
+    const optimisticId = `optimistic-${Date.now()}`;
+    setHistoryItems((prev) => [
+      ...prev,
+      {
+        type: "user" as const,
+        id: optimisticId,
+        text: message,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    // Also add to debug events
     const seq = lastSeqRef.current + 1;
     setEvents((prev) => [
       ...prev,

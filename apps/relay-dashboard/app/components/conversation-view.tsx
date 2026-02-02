@@ -2,18 +2,17 @@ import {
   CaretDownIcon,
   CaretRightIcon,
   CheckCircleIcon,
-  CircleNotchIcon,
   CopyIcon,
   UserIcon,
   WarningCircleIcon,
   WrenchIcon,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import type { ConversationItem } from "../lib/conversation";
+import type { HistoryItem } from "../lib/history";
 import { cn } from "../lib/utils";
 
 interface ConversationViewProps {
-  items: ConversationItem[];
+  items: HistoryItem[];
   autoScroll?: boolean;
 }
 
@@ -53,6 +52,8 @@ export function ConversationView({
             return <ToolCallItem key={item.id} item={item} />;
           case "system":
             return <SystemMessage key={item.id} item={item} />;
+          case "raw":
+            return <RawEntryItem key={item.id} item={item} />;
           default:
             return null;
         }
@@ -66,7 +67,7 @@ export function ConversationView({
 function UserMessage({
   item,
 }: {
-  item: Extract<ConversationItem, { type: "user" }>;
+  item: Extract<HistoryItem, { type: "user" }>;
 }) {
   return (
     <div className="flex justify-end">
@@ -86,7 +87,7 @@ function UserMessage({
 function AssistantMessage({
   item,
 }: {
-  item: Extract<ConversationItem, { type: "assistant" }>;
+  item: Extract<HistoryItem, { type: "assistant" }>;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -103,12 +104,7 @@ function AssistantMessage({
           <span className="text-xs font-semibold text-muted">Pi</span>
         </div>
         <div className="bg-surface border border-border rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm group relative">
-          <p className="text-sm whitespace-pre-wrap text-fg">
-            {item.text}
-            {item.streaming && (
-              <span className="inline-block w-1.5 h-4 bg-accent ml-0.5 animate-pulse" />
-            )}
-          </p>
+          <p className="text-sm whitespace-pre-wrap text-fg">{item.text}</p>
           <button
             type="button"
             onClick={handleCopy}
@@ -132,14 +128,12 @@ function AssistantMessage({
 function ToolCallItem({
   item,
 }: {
-  item: Extract<ConversationItem, { type: "tool" }>;
+  item: Extract<HistoryItem, { type: "tool" }>;
 }) {
   const [expanded, setExpanded] = useState(false);
 
   const statusIcon =
-    item.status === "running" ? (
-      <CircleNotchIcon className="w-4 h-4 text-status-info animate-spin" />
-    ) : item.status === "success" ? (
+    item.status === "success" ? (
       <CheckCircleIcon className="w-4 h-4 text-status-ok" weight="fill" />
     ) : (
       <WarningCircleIcon className="w-4 h-4 text-status-err" weight="fill" />
@@ -202,13 +196,88 @@ function ToolCallItem({
 function SystemMessage({
   item,
 }: {
-  item: Extract<ConversationItem, { type: "system" }>;
+  item: Extract<HistoryItem, { type: "system" }>;
 }) {
   return (
     <div className="flex justify-center">
-      <div className="text-xs text-muted bg-bg-deep px-3 py-1 rounded-full">
+      <div className="text-xs text-muted bg-bg-deep px-3 py-1 rounded-full max-w-[80%] truncate">
         {item.text}
       </div>
+    </div>
+  );
+}
+
+// Raw entry (unknown type) — collapsible with JSON
+function RawEntryItem({
+  item,
+}: {
+  item: Extract<HistoryItem, { type: "raw" }>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+
+  const jsonString = JSON.stringify(item.entry, null, 2);
+  const entryType = item.entry.type ?? "unknown";
+
+  useEffect(() => {
+    if (!expanded || highlightedHtml) return;
+
+    // Lazy-load shiki for syntax highlighting
+    let cancelled = false;
+    import("shiki")
+      .then(({ codeToHtml }) =>
+        codeToHtml(jsonString, {
+          lang: "json",
+          theme: "github-dark",
+        }),
+      )
+      .then((html) => {
+        if (!cancelled) setHighlightedHtml(html);
+      })
+      .catch(() => {
+        // Fall back to plain pre
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, highlightedHtml, jsonString]);
+
+  return (
+    <div className="ml-10 my-1">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className={cn(
+          "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors w-full text-left",
+          "bg-surface border border-border hover:bg-surface-hover",
+        )}
+      >
+        {expanded ? (
+          <CaretDownIcon className="w-3 h-3 text-muted" />
+        ) : (
+          <CaretRightIcon className="w-3 h-3 text-muted" />
+        )}
+        <span className="text-muted font-mono">{entryType}</span>
+        <span className="text-muted/50 ml-1">
+          {item.entry.id ? `(${item.entry.id})` : ""}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="mt-2 ml-4">
+          {highlightedHtml ? (
+            <div
+              className="rounded overflow-x-auto max-h-80 overflow-y-auto text-xs [&_pre]:!p-3 [&_pre]:!rounded [&_pre]:!m-0"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki output is trusted
+              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+            />
+          ) : (
+            <pre className="bg-bg-deep rounded p-3 overflow-x-auto text-xs text-fg max-h-80 overflow-y-auto">
+              {jsonString}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }

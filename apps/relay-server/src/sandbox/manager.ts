@@ -37,7 +37,7 @@ export class SandboxManager {
     if (enabled.includes("mock")) {
       this.providers.set("mock", new MockSandboxProvider());
     }
-    if (enabled.includes("docker")) {
+    if (enabled.includes("docker") && config.docker) {
       this.providers.set("docker", new DockerSandboxProvider(config.docker));
     }
   }

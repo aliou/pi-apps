@@ -30,6 +30,7 @@ describe("Session Protocol Integration", () => {
       sandboxManager: new SandboxManager({ defaultProvider: "mock" }),
       secretsService: createTestSecretsService(db),
       environmentService: new EnvironmentService(db),
+      sessionDataDir: "/tmp/test-session-data",
     };
   });
 

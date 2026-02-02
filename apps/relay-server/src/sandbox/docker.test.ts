@@ -20,6 +20,7 @@ describe("DockerSandboxProvider", () => {
       image: process.env.PI_SANDBOX_IMAGE ?? "pi-sandbox:local",
       // Lima only mounts ~/; /tmp is not shared with Docker VM
       secretsBaseDir: process.env.PI_SECRETS_BASE_DIR,
+      sessionDataDir: "/tmp/test-session-data",
     });
     dockerAvailable = await provider.isAvailable();
     if (!dockerAvailable) {

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
@@ -5,6 +6,7 @@ import { settings } from "../db/schema";
 import type { SandboxProviderType } from "../sandbox/manager";
 import type { DockerEnvironmentConfig } from "../services/environment.service";
 import type { SessionMode } from "../services/session.service";
+import { readSessionHistory } from "../services/session-history";
 
 interface CreateSessionRequest {
   mode: SessionMode;
@@ -333,6 +335,28 @@ export function sessionsRoutes(): Hono<AppEnv> {
           createdAt: e.createdAt,
         })),
         lastSeq: lastEvent ? lastEvent.seq : afterSeq,
+      },
+      error: null,
+    });
+  });
+
+  // Get session history from JSONL file (pi's persisted session entries)
+  app.get("/:id/history", (c) => {
+    const sessionService = c.get("sessionService");
+    const sessionDataDir = c.get("sessionDataDir");
+    const id = c.req.param("id");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    const agentDir = join(sessionDataDir, id, "agent");
+    const entries = readSessionHistory(agentDir);
+
+    return c.json({
+      data: {
+        entries: entries ?? [],
       },
       error: null,
     });

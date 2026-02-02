@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createApp } from "./app";
@@ -71,10 +72,12 @@ async function main() {
 
   // Initialize sandbox manager based on config
   const sandboxProvider = getSandboxProvider();
+  const sessionDataDir = join(paths.stateDir, "sessions");
   const sandboxManager = new SandboxManager({
     defaultProvider: sandboxProvider as SandboxProviderType,
     docker: {
       image: getSandboxDockerImage(),
+      sessionDataDir, // Per-session host dirs for workspace + agent data
       secretsBaseDir: paths.stateDir, // Use state dir for temp secrets (Lima-compatible)
     },
   });
@@ -118,6 +121,7 @@ async function main() {
       sandboxManager,
       secretsService,
       environmentService,
+      sessionDataDir,
     },
   });
 

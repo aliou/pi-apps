@@ -60,6 +60,11 @@ export class WebSocketConnection {
   handleCommand(command: ClientCommand): void {
     if (this.closed) return;
 
+    // Journal prompt commands so they appear in event history
+    if (command.type === "prompt") {
+      this.journal.append(this.sessionId, command.type, command);
+    }
+
     // Forward to sandbox stdin as JSON line
     this.streams.stdin.write(`${JSON.stringify(command)}\n`);
   }
