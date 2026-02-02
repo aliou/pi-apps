@@ -35,6 +35,20 @@ Sessions follow this state machine: `creating → active → suspended → delet
 
 **Sandbox manager is stateless.** The DB stores `sandboxProvider` and `sandboxProviderId` per session. The manager delegates to the provider (Docker/mock) and inspects real state (e.g., Docker API) rather than maintaining in-memory maps.
 
+## Per-Session Host Storage
+
+Each Docker sandbox session gets a dedicated directory on the host:
+
+```
+<stateDir>/sessions/<sessionId>/
+  workspace/   → /workspace    (bind mount, repo clone + working files)
+  agent/       → /data/agent   (bind mount, pi's JSONL session files)
+```
+
+Pi writes JSONL session files to `/data/agent/sessions/`. These are available on the host for the history endpoint to read without exec-ing into the container.
+
+Secrets remain in a separate directory (`<stateDir>/pi-secrets-<sessionId>/`) and are bind-mounted read-only.
+
 ## Two Communication Layers
 
 ### REST API (Custom, Extendable)
@@ -45,6 +59,7 @@ The REST API is our custom infrastructure for managing resources. Add new endpoi
 
 **Current endpoints:**
 - `/api/sessions` - Session lifecycle
+- `/api/sessions/:id/history` - Session conversation from JSONL
 - `/api/environments` - Environment configuration
 - `/api/github/*` - GitHub integration
 - `/api/secrets` - Provider API keys
@@ -99,6 +114,7 @@ src/
 │   ├── session.service.ts
 │   ├── environment.service.ts
 │   ├── event-journal.ts   # Event persistence for replay
+│   ├── session-history.ts # JSONL parser + file finder for pi session files
 │   ├── github.service.ts
 │   ├── repo.service.ts
 │   ├── secrets.service.ts
@@ -178,6 +194,7 @@ Environment variables:
 - `DOCKER_HOST` — Docker socket path (auto-detected from env by the provider)
 - `PI_SANDBOX_IMAGE` — image to test with (default: `pi-sandbox:local`)
 - `PI_SECRETS_BASE_DIR` — host dir for secrets bind mount (default: `os.tmpdir()`, must be Docker-accessible)
+- `PI_SESSION_DATA_DIR` — host dir for per-session data (workspace + agent dirs)
 
 ## Service Pattern
 
