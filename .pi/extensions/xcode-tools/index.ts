@@ -70,7 +70,7 @@ export default function (pi: ExtensionAPI) {
     description:
       "Check Xcode environment: installation, XCLogParser, JXA availability",
     parameters: Type.Object({}),
-    async execute(_toolCallId, _params, _onUpdate, _ctx, signal) {
+    async execute(_toolCallId, _params, signal, _onUpdate, _ctx) {
       const result = await runXcode(["health-check"], signal);
       return {
         content: [{ type: "text", text: formatResult(result) }],
@@ -98,7 +98,7 @@ export default function (pi: ExtensionAPI) {
         }),
       ),
     }),
-    async execute(_toolCallId, params, onUpdate, _ctx, signal) {
+    async execute(_toolCallId, params, signal, onUpdate, _ctx) {
       const args = ["build"];
       if (params.xcodeproj) args.push("--xcodeproj", params.xcodeproj);
       if (params.workspace) args.push("--workspace", params.workspace);
@@ -127,7 +127,7 @@ export default function (pi: ExtensionAPI) {
         Type.String({ description: "Path to .xcworkspace" }),
       ),
     }),
-    async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
       const args = ["clean"];
       if (params.xcodeproj) args.push("--xcodeproj", params.xcodeproj);
       if (params.workspace) args.push("--workspace", params.workspace);
@@ -157,7 +157,7 @@ export default function (pi: ExtensionAPI) {
         Type.String({ description: "Test destination" }),
       ),
     }),
-    async execute(_toolCallId, params, onUpdate, _ctx, signal) {
+    async execute(_toolCallId, params, signal, onUpdate, _ctx) {
       const args = ["test"];
       if (params.xcodeproj) args.push("--xcodeproj", params.xcodeproj);
       if (params.workspace) args.push("--workspace", params.workspace);
@@ -187,7 +187,7 @@ export default function (pi: ExtensionAPI) {
       ),
       scheme: Type.Optional(Type.String({ description: "Scheme to run" })),
     }),
-    async execute(_toolCallId, params, onUpdate, _ctx, signal) {
+    async execute(_toolCallId, params, signal, onUpdate, _ctx) {
       const args = ["run"];
       if (params.xcodeproj) args.push("--xcodeproj", params.xcodeproj);
       if (params.workspace) args.push("--workspace", params.workspace);
@@ -217,7 +217,7 @@ export default function (pi: ExtensionAPI) {
         Type.String({ description: "Path to .xcworkspace" }),
       ),
     }),
-    async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
       const args = ["get-schemes"];
       if (params.xcodeproj) args.push("--xcodeproj", params.xcodeproj);
       if (params.workspace) args.push("--workspace", params.workspace);
@@ -243,7 +243,7 @@ export default function (pi: ExtensionAPI) {
         Type.String({ description: "Path to .xcworkspace" }),
       ),
     }),
-    async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
       const args = ["get-run-destinations"];
       if (params.xcodeproj) args.push("--xcodeproj", params.xcodeproj);
       if (params.workspace) args.push("--workspace", params.workspace);
@@ -269,7 +269,7 @@ export default function (pi: ExtensionAPI) {
         Type.String({ description: "Path to .xcworkspace" }),
       ),
     }),
-    async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
       const args = ["stop"];
       if (params.xcodeproj) args.push("--xcodeproj", params.xcodeproj);
       if (params.workspace) args.push("--workspace", params.workspace);
