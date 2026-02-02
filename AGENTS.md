@@ -135,6 +135,20 @@ The mobile app exposes native iOS capabilities as tools the LLM can invoke. Tool
 
 **TypeScript:** pnpm workspace monorepo with turbo. Biome for lint/format (config at repo root, sub-packages extend with `"root": false`). Turbo orchestrates build/dev/lint/typecheck/test across packages.
 
+## Local Dev Paths (Relay)
+
+The nix dev shell (`nix develop`) sets environment variables that isolate relay server data under `.dev/` in the repo root. This prevents dev data from polluting system XDG directories (`~/.local/share`, `~/.config`, etc.).
+
+```
+.dev/relay/
+├── data/       # PI_RELAY_DATA_DIR (SQLite DB, cloned repos)
+├── config/     # PI_RELAY_CONFIG_DIR (secrets, settings)
+├── cache/      # PI_RELAY_CACHE_DIR
+└── state/      # PI_RELAY_STATE_DIR
+```
+
+These are set in `flake.nix` shellHook. To reset relay state locally, delete `.dev/`.
+
 ## Desktop App Paths
 
 **IMPORTANT:** The desktop app does NOT use `~/.pi/agent/`. It uses Application Support:
