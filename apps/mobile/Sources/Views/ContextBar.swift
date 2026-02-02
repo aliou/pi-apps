@@ -2,26 +2,26 @@
 //  ContextBar.swift
 //  Pi
 //
-//  Context bar for Code mode showing Sandbox, Repository, and Branch.
+//  Context bar for Code mode showing Environment, Repository, and Branch.
 //
 
 import SwiftUI
 
 struct ContextBar: View {
-    let sandboxName: String?
+    let environmentName: String?
     let repoName: String?
     let branchName: String?
 
-    let onSandboxTap: () -> Void
+    let onEnvironmentTap: () -> Void
     let onRepoTap: () -> Void
     let onBranchTap: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
             ContextChip(
-                icon: "shippingbox",
-                title: sandboxName ?? "Sandbox",
-                action: onSandboxTap
+                icon: "cube.box",
+                title: environmentName ?? "Environment",
+                action: onEnvironmentTap
             )
 
             ContextDivider()
@@ -83,10 +83,10 @@ private struct ContextDivider: View {
     VStack {
         Spacer()
         ContextBar(
-            sandboxName: "dev-sandbox",
+            environmentName: "Codex Universal",
             repoName: "aliou/pi-apps",
             branchName: "main",
-            onSandboxTap: {},
+            onEnvironmentTap: {},
             onRepoTap: {},
             onBranchTap: {}
         )
@@ -98,10 +98,10 @@ private struct ContextDivider: View {
     VStack {
         Spacer()
         ContextBar(
-            sandboxName: nil,
+            environmentName: nil,
             repoName: nil,
             branchName: nil,
-            onSandboxTap: {},
+            onEnvironmentTap: {},
             onRepoTap: {},
             onBranchTap: {}
         )
@@ -113,10 +113,10 @@ private struct ContextDivider: View {
     VStack {
         Spacer()
         ContextBar(
-            sandboxName: nil,
+            environmentName: nil,
             repoName: "anthropic/claude-code",
             branchName: nil,
-            onSandboxTap: {},
+            onEnvironmentTap: {},
             onRepoTap: {},
             onBranchTap: {}
         )

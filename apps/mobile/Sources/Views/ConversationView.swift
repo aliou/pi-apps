@@ -25,6 +25,12 @@ struct ConversationView: View {
     @State private var repos: [RepoInfo] = []
     @State private var sessions: [RelaySession] = []
 
+    // Environment state
+    @State private var environments: [RelayEnvironment] = []
+    @State private var selectedEnvironment: RelayEnvironment?
+    @State private var isLoadingEnvironments = false
+    @State private var selectedRepo: RepoInfo?
+
     // UI state
     @State private var errorMessage: String?
     @State private var isLoadingModels = false
@@ -37,7 +43,7 @@ struct ConversationView: View {
     @State private var showCodeSessions = false
     @State private var showModelSelector = false
     @State private var showRepoSelector = false
-    @State private var showSandboxSelector = false
+    @State private var showEnvironmentSelector = false
     @State private var showBranchSelector = false
 
     // Input state
@@ -72,6 +78,24 @@ struct ConversationView: View {
             }?.name
         }
         return nil
+    }
+
+    /// Whether the send button should be enabled
+    private var canSendMessage: Bool {
+        guard !trimmedInputText.isEmpty else { return false }
+
+        // If session exists, can always send
+        if currentSession != nil {
+            return true
+        }
+
+        // In code mode without session, require environment + repo
+        if currentMode == .code {
+            return selectedEnvironment != nil && selectedRepo != nil
+        }
+
+        // Chat mode can send without pre-selection
+        return true
     }
 
     private var repoName: String? {
@@ -122,12 +146,12 @@ struct ConversationView: View {
                     }
                 }
 
-                if currentMode == .code {
+                if currentMode == .code && currentSession == nil {
                     ContextBar(
-                        sandboxName: nil,
-                        repoName: repoName,
-                        branchName: nil,
-                        onSandboxTap: { showSandboxSelector = true },
+                        environmentName: selectedEnvironment?.name,
+                        repoName: selectedRepo?.fullName,
+                        branchName: selectedRepo != nil ? (selectedRepo?.defaultBranch ?? "main") : nil,
+                        onEnvironmentTap: { showEnvironmentSelector = true },
                         onRepoTap: { showRepoSelector = true },
                         onBranchTap: { showBranchSelector = true }
                     )
@@ -220,8 +244,10 @@ struct ConversationView: View {
                 Task { await handleRepoSelection(repo) }
             }
         }
-        .sheet(isPresented: $showSandboxSelector) {
-            sandboxUnavailableSheet
+        .sheet(isPresented: $showEnvironmentSelector) {
+            EnvironmentSelectorSheet(environments: environments) { env in
+                selectedEnvironment = env
+            }
         }
         .sheet(isPresented: $showBranchSelector) {
             branchUnavailableSheet
@@ -255,8 +281,15 @@ struct ConversationView: View {
                 onNewChat: { Task { await startNewChat() } },
                 onNewCodeSession: {
                     pendingPrompt = nil
+                    selectedEnvironment = nil
+                    selectedRepo = nil
                     currentMode = .code
-                    showRepoSelector = true
+                    currentSession = nil
+                    engine.clearMessages()
+                    Task {
+                        await loadEnvironments()
+                        await loadRepos()
+                    }
                 }
             )
         }
@@ -375,7 +408,7 @@ struct ConversationView: View {
 
             Button {
                 let text = trimmedInputText
-                guard !text.isEmpty else { return }
+                guard canSendMessage else { return }
                 inputText = ""
                 isInputFocused = false
                 autoScrollEnabled = true
@@ -384,30 +417,12 @@ struct ConversationView: View {
                 Image(systemName: "arrow.up")
                     .fontWeight(.semibold)
             }
-            .buttonStyle(CircleButtonStyle(filled: !trimmedInputText.isEmpty))
-            .disabled(trimmedInputText.isEmpty)
+            .buttonStyle(CircleButtonStyle(filled: canSendMessage))
+            .disabled(!canSendMessage)
         }
     }
 
     // MARK: - Sheets
-
-    private var sandboxUnavailableSheet: some View {
-        NavigationStack {
-            ContentUnavailableView(
-                "Sandboxes Coming Soon",
-                systemImage: "shippingbox",
-                description: Text("Remote sandbox environments are not yet available.")
-            )
-            .navigationTitle("Sandbox")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { showSandboxSelector = false }
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
 
     private var branchUnavailableSheet: some View {
         NavigationStack {
@@ -433,18 +448,37 @@ struct ConversationView: View {
 extension ConversationView {
     private func reloadData() async {
         await loadSessions()
+        await loadEnvironments()
         // Models are loaded when model selector is opened
     }
 
+    private func loadEnvironments() async {
+        guard !isLoadingEnvironments else { return }
+        isLoadingEnvironments = true
+        defer { isLoadingEnvironments = false }
+
+        do {
+            environments = try await connection.listEnvironments()
+            errorMessage = nil
+
+            // Auto-select default environment if none selected
+            if selectedEnvironment == nil {
+                selectedEnvironment = environments.first { $0.isDefault }
+            }
+        } catch {
+            print("[ConversationView] Failed to load environments: \(error)")
+            // Don't show error banner - environments may not be configured yet
+        }
+    }
+
     private func loadModels() async {
-        guard !isLoadingModels else { return }
+        guard !isLoadingModels else {
+            return
+        }
         isLoadingModels = true
         defer { isLoadingModels = false }
 
         do {
-            // Works with or without a session:
-            // - With session: uses RPC (full list including extensions)
-            // - Without session: uses REST API (built-in providers only)
             let response = try await connection.getAvailableModels()
             availableModels = response.models
             errorMessage = nil
@@ -493,12 +527,13 @@ extension ConversationView {
 
     private func handleRepoSelection(_ repo: RepoInfo) async {
         RecentSelections.addRecentRepoId(String(repo.id))
+        selectedRepo = repo
+
         if let prompt = pendingPrompt {
             pendingPrompt = nil
             await createCodeSession(repoId: String(repo.id), initialPrompt: prompt)
-        } else {
-            await createCodeSession(repoId: String(repo.id), initialPrompt: nil)
         }
+        // Don't auto-create session - wait for user to send message
     }
 
     private func createChatSession(initialPrompt: String?) async {
@@ -524,10 +559,16 @@ extension ConversationView {
     }
 
     private func createCodeSession(repoId: String, initialPrompt: String?) async {
+        guard let environment = selectedEnvironment else {
+            errorMessage = "Please select an environment first"
+            return
+        }
+
         do {
             let session = try await connection.createSession(
                 mode: .code,
                 repoId: repoId,
+                environmentId: environment.id,
                 modelProvider: serverConfig.selectedModelProvider,
                 modelId: serverConfig.selectedModelId
             )
@@ -535,6 +576,10 @@ extension ConversationView {
             currentMode = .code
             await loadSessions()
             await connectToSession(session)
+
+            // Clear selection state after session created
+            selectedEnvironment = nil
+            selectedRepo = nil
 
             if let initialPrompt {
                 await engine.send(initialPrompt, defaultStreamingBehavior: settings.streamingBehavior)
@@ -567,10 +612,15 @@ extension ConversationView {
             currentSession = session
             currentMode = session.mode
 
-            // Get model info from session
-            if let provider = session.currentModelProvider,
-               let modelId = session.currentModelId {
+            // Set the user's preferred model on the pi process
+            if let provider = serverConfig.selectedModelProvider,
+               let modelId = serverConfig.selectedModelId {
                 currentModel = ModelInfo(id: modelId, name: modelId, provider: provider)
+                do {
+                    try await connection.setModel(provider: provider, modelId: modelId)
+                } catch {
+                    print("[ConversationView] Failed to set model on session: \(error)")
+                }
             }
 
             startEventSubscription()
@@ -648,18 +698,25 @@ extension ConversationView {
     private func sendMessage(_ text: String) async {
         guard !text.isEmpty else { return }
 
+        // If session exists, send directly
         if currentSession != nil {
             configureEngineIfNeeded()
             await engine.send(text, defaultStreamingBehavior: settings.streamingBehavior)
             return
         }
 
+        // Code mode: create session with environment + repo
         if currentMode == .code {
-            pendingPrompt = text
-            showRepoSelector = true
+            guard let repo = selectedRepo else {
+                pendingPrompt = text
+                showRepoSelector = true
+                return
+            }
+            await createCodeSession(repoId: String(repo.id), initialPrompt: text)
             return
         }
 
+        // Chat mode: create session
         await createChatSession(initialPrompt: text)
     }
 

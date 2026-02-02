@@ -143,6 +143,16 @@ public final class ServerConnection {
         eventSubscribers.removeAll()
     }
 
+    // MARK: - Environments (REST)
+
+    public func listEnvironments() async throws -> [RelayEnvironment] {
+        do {
+            return try await api.listEnvironments()
+        } catch let error as RelayAPIError {
+            throw ServerConnectionError.apiError(error)
+        }
+    }
+
     // MARK: - Session Management (REST)
 
     public func listSessions() async throws -> [RelaySession] {
@@ -156,6 +166,7 @@ public final class ServerConnection {
     public func createSession(
         mode: SessionMode,
         repoId: String? = nil,
+        environmentId: String? = nil,
         modelProvider: String? = nil,
         modelId: String? = nil,
         systemPrompt: String? = nil
@@ -163,6 +174,7 @@ public final class ServerConnection {
         let params = CreateSessionParams(
             mode: mode,
             repoId: repoId,
+            environmentId: environmentId,
             modelProvider: modelProvider,
             modelId: modelId,
             systemPrompt: systemPrompt
