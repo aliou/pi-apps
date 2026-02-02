@@ -64,6 +64,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
       sandboxManager.defaultProviderName;
     let repoUrl: string | undefined;
     let repoBranch: string | undefined;
+    let githubToken: string | undefined;
     let environmentConfig: DockerEnvironmentConfig | undefined;
 
     if (body.mode === "code") {
@@ -91,44 +92,45 @@ export function sessionsRoutes(): Hono<AppEnv> {
       sandboxProvider = environment.sandboxType as SandboxProviderType;
       environmentConfig = JSON.parse(environment.config);
 
+      // Read GitHub token for repo resolution and sandbox git auth
+      const db = c.get("db");
+      const tokenSetting = db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, "github_repos_access_token"))
+        .get();
+      if (tokenSetting) {
+        githubToken = JSON.parse(tokenSetting.value) as string;
+      }
+
       // Resolve repo for cloning — fetch live from GitHub, persist on use
       if (body.repoId) {
         let repo = repoService.get(body.repoId);
-        if (!repo) {
-          const db = c.get("db");
+        if (!repo && githubToken) {
           const githubService = c.get("githubService");
-          const setting = db
-            .select()
-            .from(settings)
-            .where(eq(settings.key, "github_repos_access_token"))
-            .get();
-
-          if (setting) {
-            try {
-              const token = JSON.parse(setting.value) as string;
-              const ghRepo = await githubService.getRepoById(
-                token,
-                body.repoId,
-              );
-              repoService.upsert({
-                id: String(ghRepo.id),
-                name: ghRepo.name,
-                fullName: ghRepo.fullName,
-                owner: ghRepo.owner,
-                isPrivate: ghRepo.isPrivate,
-                description: ghRepo.description,
-                htmlUrl: ghRepo.htmlUrl,
-                cloneUrl: ghRepo.cloneUrl,
-                sshUrl: ghRepo.sshUrl,
-                defaultBranch: ghRepo.defaultBranch,
-              });
-              repo = repoService.get(body.repoId);
-            } catch (err) {
-              console.error(
-                `Failed to fetch repo ${body.repoId} from GitHub:`,
-                err,
-              );
-            }
+          try {
+            const ghRepo = await githubService.getRepoById(
+              githubToken,
+              body.repoId,
+            );
+            repoService.upsert({
+              id: String(ghRepo.id),
+              name: ghRepo.name,
+              fullName: ghRepo.fullName,
+              owner: ghRepo.owner,
+              isPrivate: ghRepo.isPrivate,
+              description: ghRepo.description,
+              htmlUrl: ghRepo.htmlUrl,
+              cloneUrl: ghRepo.cloneUrl,
+              sshUrl: ghRepo.sshUrl,
+              defaultBranch: ghRepo.defaultBranch,
+            });
+            repo = repoService.get(body.repoId);
+          } catch (err) {
+            console.error(
+              `Failed to fetch repo ${body.repoId} from GitHub:`,
+              err,
+            );
           }
         }
 
@@ -162,6 +164,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
           {
             repoUrl,
             repoBranch,
+            githubToken,
             secrets,
             resources: environmentConfig?.resources,
           },
@@ -212,6 +215,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
   // Activate session: ensure sandbox is running, block until ready.
   // Client calls this before opening WebSocket.
   app.post("/:id/activate", async (c) => {
+    const db = c.get("db");
     const sessionService = c.get("sessionService");
     const eventJournal = c.get("eventJournal");
     const sandboxManager = c.get("sandboxManager");
@@ -256,6 +260,15 @@ export function sessionsRoutes(): Hono<AppEnv> {
             `[activate] session=${id} provider=${current.sandboxProvider} providerId=${current.sandboxProviderId} status=${current.status}`,
           );
           const secrets = await secretsService.getAllAsEnv();
+          // Read GitHub token for git credential refresh
+          const tokenSetting = db
+            .select()
+            .from(settings)
+            .where(eq(settings.key, "github_repos_access_token"))
+            .get();
+          const ghToken = tokenSetting
+            ? (JSON.parse(tokenSetting.value) as string)
+            : undefined;
           console.log(
             `[activate] session=${id} secrets=${Object.keys(secrets).length} keys=[${Object.keys(secrets).join(",")}]`,
           );
@@ -263,6 +276,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
             current.sandboxProvider as SandboxProviderType,
             current.sandboxProviderId,
             secrets,
+            ghToken,
           );
           console.log(
             `[activate] session=${id} resumed, sandboxStatus=${handle.status}`,

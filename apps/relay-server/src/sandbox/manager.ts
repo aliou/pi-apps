@@ -125,9 +125,10 @@ export class SandboxManager {
     providerType: SandboxProviderType,
     providerId: string,
     secrets?: Record<string, string>,
+    githubToken?: string,
   ): Promise<SandboxHandle> {
     const handle = await this.getHandle(providerType, providerId);
-    await handle.resume(secrets);
+    await handle.resume(secrets, githubToken);
     return handle;
   }
 

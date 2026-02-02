@@ -55,7 +55,7 @@ export interface SandboxHandle {
    * If secrets provided, refreshes the secrets files on the host
    * before resuming (bind mount makes them visible to the container).
    */
-  resume(secrets?: Record<string, string>): Promise<void>;
+  resume(secrets?: Record<string, string>, githubToken?: string): Promise<void>;
 
   /**
    * Get live streams to the pi process.
@@ -86,6 +86,9 @@ export interface CreateSandboxOptions {
   /** Git repo to clone into workspace (optional) */
   repoUrl?: string;
   repoBranch?: string;
+
+  /** GitHub PAT for git push and private repo clone */
+  githubToken?: string;
 
   /** Resource limits */
   resources?: {

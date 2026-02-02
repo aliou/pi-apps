@@ -69,7 +69,10 @@ class MockSandboxHandle implements SandboxHandle {
     return this._status;
   }
 
-  async resume(): Promise<void> {
+  async resume(
+    _secrets?: Record<string, string>,
+    _githubToken?: string,
+  ): Promise<void> {
     if (this._status === "paused") {
       this.setStatus("running");
     } else if (this._status === "stopped") {

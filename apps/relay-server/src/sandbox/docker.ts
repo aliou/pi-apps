@@ -143,6 +143,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       secrets,
       repoUrl,
       repoBranch,
+      githubToken,
       resources,
     } = options;
 
@@ -162,20 +163,34 @@ export class DockerSandboxProvider implements SandboxProvider {
     mkdirSync(workspaceDir, { recursive: true });
     mkdirSync(agentDir, { recursive: true });
 
+    // Set up git configuration (credentials + user identity)
+    const gitDir = join(sessionDir, "git");
+    this.setupGitConfig(gitDir, githubToken);
+
     // If repo URL provided, clone it into the workspace dir
     if (repoUrl) {
-      await this.cloneRepoIntoDir(workspaceDir, repoUrl, repoBranch);
+      await this.cloneRepoIntoDir(
+        workspaceDir,
+        repoUrl,
+        repoBranch,
+        githubToken,
+      );
     }
 
     // Build environment variables (non-secret config only)
     const containerEnv = [
       ...Object.entries(env).map(([k, v]) => `${k}=${v}`),
       `PI_SESSION_ID=${sessionId}`,
+      "GIT_CONFIG_GLOBAL=/data/git/gitconfig",
     ];
 
     // Create secrets directory on host and write secret files
     const secretsDir = this.writeSecretsDir(sessionId, secrets);
-    const binds = [`${workspaceDir}:/workspace`, `${agentDir}:/data/agent`];
+    const binds = [
+      `${workspaceDir}:/workspace`,
+      `${agentDir}:/data/agent`,
+      `${gitDir}:/data/git:ro`,
+    ];
 
     if (secretsDir) {
       binds.push(`${secretsDir}:/run/secrets:ro`);
@@ -224,6 +239,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       container,
       imageDigest,
       (sid, s) => this.writeSecretsDir(sid, s),
+      (sid, t) => this.writeGitConfigForSession(sid, t),
     );
 
     this.handleCache.set(sessionId, handle);
@@ -271,6 +287,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       container,
       imageDigest,
       (sid, s) => this.writeSecretsDir(sid, s),
+      (sid, t) => this.writeGitConfigForSession(sid, t),
     );
     handle.setInitialStatus(status);
 
@@ -332,13 +349,68 @@ export class DockerSandboxProvider implements SandboxProvider {
 
   // --- Private helpers ---
 
+  /**
+   * Write git credential helper and gitconfig to a directory.
+   * The directory is bind-mounted read-only into the container at /data/git.
+   * GIT_CONFIG_GLOBAL=/data/git/gitconfig points git to the config.
+   */
+  /**
+   * Write git config for a session. Called at creation and on resume.
+   */
+  private writeGitConfigForSession(
+    sessionId: string,
+    githubToken?: string,
+  ): void {
+    const gitDir = join(this.getSessionDataPath(sessionId), "git");
+    this.setupGitConfig(gitDir, githubToken);
+  }
+
+  private setupGitConfig(gitDir: string, githubToken?: string): void {
+    mkdirSync(gitDir, { recursive: true });
+
+    // Credential helper script: echoes the GitHub token for github.com
+    const helperScript = githubToken
+      ? `#!/bin/sh\necho "protocol=https\nhost=github.com\nusername=x-access-token\npassword=${githubToken}"\n`
+      : "#!/bin/sh\n";
+    const helperPath = join(gitDir, "git-credential-helper");
+    writeFileSync(helperPath, helperScript, { mode: 0o700 });
+
+    // gitconfig
+    const lines = [
+      "[user]",
+      '\tname = "pi-sandbox"',
+      '\temail = "pi-sandbox@noreply.github.com"',
+    ];
+    if (githubToken) {
+      lines.push("[credential]", "\thelper = /data/git/git-credential-helper");
+    }
+    writeFileSync(join(gitDir, "gitconfig"), `${lines.join("\n")}\n`);
+  }
+
   private async cloneRepoIntoDir(
     workspaceDir: string,
     repoUrl: string,
     branch?: string,
+    githubToken?: string,
   ): Promise<void> {
+    // For private repos, embed token in the clone URL so the ephemeral
+    // clone container doesn't need the full git config setup.
+    const effectiveUrl =
+      githubToken && repoUrl.startsWith("https://github.com/")
+        ? repoUrl.replace(
+            "https://github.com/",
+            `https://x-access-token:${githubToken}@github.com/`,
+          )
+        : repoUrl;
+
     const branchArg = branch ? `--branch ${branch}` : "";
-    const cmd = `git clone ${branchArg} ${repoUrl} /workspace`;
+    // Clone with the (possibly token-embedded) URL, then reset the remote
+    // to the clean URL so the token doesn't persist in .git/config.
+    const resetRemote =
+      effectiveUrl !== repoUrl
+        ? ` && git -C /workspace remote set-url origin '${repoUrl}'`
+        : "";
+    const cmd = `git clone ${branchArg} ${effectiveUrl} /workspace${resetRemote}`;
 
     const hostUser = getHostUser();
 
@@ -465,6 +537,7 @@ class DockerSandboxHandle implements SandboxHandle {
       sessionId: string,
       secrets?: Record<string, string>,
     ) => string | null,
+    private writeGitConfig?: (sessionId: string, githubToken?: string) => void,
   ) {}
 
   get providerId(): string {
@@ -484,10 +557,17 @@ class DockerSandboxHandle implements SandboxHandle {
     this._status = status;
   }
 
-  async resume(secrets?: Record<string, string>): Promise<void> {
-    // Refresh secrets on host before resuming (bind mount picks them up)
+  async resume(
+    secrets?: Record<string, string>,
+    githubToken?: string,
+  ): Promise<void> {
+    // Refresh secrets and git config on host before resuming
+    // (bind mounts pick them up)
     if (secrets && this.writeSecrets) {
       this.writeSecrets(this.sessionId, secrets);
+    }
+    if (this.writeGitConfig) {
+      this.writeGitConfig(this.sessionId, githubToken);
     }
 
     // Handle state transitions to get to running state
