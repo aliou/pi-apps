@@ -177,13 +177,21 @@ final class SessionManager {
     }
 
     /// Create a remote code session
-    func createRemoteCodeSession(serverURL: URL, repoId: String, repoName: String) async throws -> DesktopSession {
+    func createRemoteCodeSession(
+        serverURL: URL,
+        repoId: String,
+        repoName: String,
+        environmentId: String,
+        environmentName: String
+    ) async throws -> DesktopSession {
         let session = DesktopSession.remote(
             mode: .code,
             serverSessionId: "", // Will be set during connection
             serverURL: serverURL.absoluteString,
             repoId: repoId,
-            repoName: repoName
+            repoName: repoName,
+            environmentId: environmentId,
+            environmentName: environmentName
         )
 
         sessions.insert(session, at: 0)
@@ -477,7 +485,11 @@ final class SessionManager {
                 if session.mode == .chat {
                     relaySession = try await conn.createSession(mode: .chat)
                 } else if let repoId = session.repoId {
-                    relaySession = try await conn.createSession(mode: .code, repoId: repoId)
+                    relaySession = try await conn.createSession(
+                        mode: .code,
+                        repoId: repoId,
+                        environmentId: session.environmentId
+                    )
                 } else {
                     throw SessionManagerError.invalidConfiguration
                 }

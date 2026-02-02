@@ -13,5 +13,5 @@ enum SessionCreationRequest: Sendable {
     case localChat(initialPrompt: String?)
     case localCode(folderPath: String, initialPrompt: String?)
     case remoteChat(initialPrompt: String?)
-    case remoteCode(repo: RepoInfo, initialPrompt: String?)
+    case remoteCode(repo: RepoInfo, environment: RelayEnvironment, initialPrompt: String?)
 }

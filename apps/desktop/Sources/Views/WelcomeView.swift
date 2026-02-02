@@ -9,20 +9,14 @@ import SwiftUI
 import PiCore
 import PiUI
 
-/// Environment selection for session creation
-enum SessionEnvironment: String, CaseIterable, Identifiable, Sendable {
-    case local = "Local"
-    case remote = "Remote"
-
-    var id: String { rawValue }
-}
-
 struct WelcomeView: View {
     let mode: SidebarMode
     let onCreateSession: (SessionCreationRequest) -> Void
 
     @State private var serverConfig = ServerConfig.shared
-    @State private var selectedEnvironment: SessionEnvironment = .local
+
+    // Environment selection (local or a specific remote environment)
+    @State private var selectedEnvironment: SessionEnvironmentSelection = .local
 
     // Context selection
     @State private var selectedFolderPath: String?
@@ -31,10 +25,17 @@ struct WelcomeView: View {
     // Input
     @State private var promptText = ""
 
-    // Remote state
+    // Remote environment state
+    @State private var environments: [RelayEnvironment] = []
+    @State private var isLoadingEnvironments = false
+    @State private var environmentError: String?
+
+    // Remote repo state
     @State private var repos: [RepoInfo] = []
     @State private var isLoadingRepos = false
     @State private var repoError: String?
+
+    // Shared temp connection for API calls
     @State private var tempConnection: ServerConnection?
 
     // Folder picker sheet
@@ -48,19 +49,19 @@ struct WelcomeView: View {
             HStack(spacing: 10) {
                 Image(systemName: mode == .chat ? "sparkle" : "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: 28))
-                    .foregroundStyle(mode == .chat ? Theme.accent : Theme.accent)
+                    .foregroundStyle(Theme.accent)
                 Text(greeting)
                     .font(.system(size: 28, weight: .regular))
                     .foregroundStyle(.primary)
             }
 
             if mode == .code {
-                // Two dropdowns row - adjacent, centered, matching Claude proportions
+                // Two dropdowns row
                 HStack(spacing: 12) {
-                    // Left: Context picker (wider ~60%)
+                    // Left: Context picker (folder or repo)
                     ContextPickerDropdown(
                         mode: mode,
-                        environment: selectedEnvironment,
+                        isRemote: selectedEnvironment.isRemote,
                         recentFolders: recentFolders,
                         onSelectFolder: { path in
                             selectedFolderPath = path
@@ -82,16 +83,19 @@ struct WelcomeView: View {
                     )
                     .frame(width: 320)
 
-                    // Right: Environment picker (~40%)
+                    // Right: Environment picker (local + remote environments)
                     EnvironmentPickerDropdown(
-                        selectedEnvironment: $selectedEnvironment,
-                        serverConfig: serverConfig
-                    )
+                        selection: $selectedEnvironment,
+                        environments: environments,
+                        isLoading: isLoadingEnvironments,
+                        error: environmentError,
+                        serverConfigured: serverConfig.isConfigured
+                    ) { Task { await loadEnvironments() } }
                     .frame(width: 220)
                 }
             }
 
-            // Input field (always visible)
+            // Input field
             PromptInputField(
                 text: $promptText,
                 placeholder: mode == .chat
@@ -111,12 +115,18 @@ struct WelcomeView: View {
                 ServerConfig.shared.addRecentFolder(path)
             }
         }
+        .task {
+            // Load environments on appear if server is configured
+            if serverConfig.isConfigured {
+                await loadEnvironments()
+            }
+        }
         .onChange(of: selectedEnvironment) { _, newValue in
-            // Clear selection when switching environments
+            // Clear context selection when switching environment
             selectedFolderPath = nil
             selectedRepo = nil
 
-            if newValue == .remote {
+            if newValue.isRemote {
                 Task { await loadRepos() }
             }
         }
@@ -125,7 +135,6 @@ struct WelcomeView: View {
     // MARK: - Computed Properties
 
     private var canSubmit: Bool {
-        // Always need some text
         guard !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
@@ -134,17 +143,20 @@ struct WelcomeView: View {
             return true
         }
 
-        // Code mode: also needs context selected
-        if selectedEnvironment == .local {
+        // Code mode: needs context selected
+        if selectedEnvironment.isLocal {
             return selectedFolderPath != nil
         }
 
+        // Remote code: needs both environment (already selected via type) and repo
         return selectedRepo != nil
     }
 
     private var recentFolders: [String] {
         ServerConfig.shared.recentFolders
     }
+
+    // MARK: - Greetings
 
     private static let chatGreetings = [
         "What's on your mind?",
@@ -201,22 +213,57 @@ struct WelcomeView: View {
         let request: SessionCreationRequest
 
         if mode == .chat {
-            if selectedEnvironment == .local {
+            if selectedEnvironment.isLocal {
                 request = .localChat(initialPrompt: promptText.isEmpty ? nil : promptText)
             } else {
                 request = .remoteChat(initialPrompt: promptText.isEmpty ? nil : promptText)
             }
         } else {
-            if selectedEnvironment == .local {
+            if selectedEnvironment.isLocal {
                 guard let path = selectedFolderPath else { return }
                 request = .localCode(folderPath: path, initialPrompt: promptText.isEmpty ? nil : promptText)
             } else {
-                guard let repo = selectedRepo else { return }
-                request = .remoteCode(repo: repo, initialPrompt: promptText.isEmpty ? nil : promptText)
+                guard let repo = selectedRepo,
+                      let environment = selectedEnvironment.relayEnvironment else { return }
+                request = .remoteCode(
+                    repo: repo,
+                    environment: environment,
+                    initialPrompt: promptText.isEmpty ? nil : promptText
+                )
             }
         }
 
         onCreateSession(request)
+    }
+
+    // MARK: - Environment Loading
+
+    private func loadEnvironments() async {
+        guard serverConfig.isConfigured,
+              let serverURL = serverConfig.serverURL else {
+            return
+        }
+
+        guard !isLoadingEnvironments else { return }
+
+        isLoadingEnvironments = true
+        environmentError = nil
+
+        do {
+            let connection = ensureTempConnection(serverURL: serverURL)
+
+            if !connection.isServerReachable {
+                try await connection.checkHealth()
+            }
+
+            environments = try await connection.listEnvironments()
+            environmentError = nil
+        } catch {
+            environmentError = error.localizedDescription
+            environments = []
+        }
+
+        isLoadingEnvironments = false
     }
 
     // MARK: - Repo Loading
@@ -227,28 +274,18 @@ struct WelcomeView: View {
             return
         }
 
-        // Avoid multiple simultaneous loads
         guard !isLoadingRepos else { return }
 
         isLoadingRepos = true
         repoError = nil
 
         do {
-            // Create temporary connection if needed
-            if tempConnection == nil {
-                tempConnection = ServerConnection(serverURL: serverURL)
-            }
+            let connection = ensureTempConnection(serverURL: serverURL)
 
-            guard let connection = tempConnection else {
-                throw ServerConnectionError.notConnected
-            }
-
-            // Check server health if not already connected
             if !connection.isServerReachable {
                 try await connection.checkHealth()
             }
 
-            // Fetch repos
             repos = try await connection.listRepos()
             repoError = nil
         } catch {
@@ -258,16 +295,27 @@ struct WelcomeView: View {
 
         isLoadingRepos = false
     }
+
+    // MARK: - Helpers
+
+    private func ensureTempConnection(serverURL: URL) -> ServerConnection {
+        if let existing = tempConnection {
+            return existing
+        }
+        let connection = ServerConnection(serverURL: serverURL)
+        tempConnection = connection
+        return connection
+    }
 }
 
 // MARK: - Preview
 
-#Preview("Chat Mode - Local") {
+#Preview("Chat Mode") {
     WelcomeView(mode: .chat) { _ in }
         .frame(width: 600, height: 500)
 }
 
-#Preview("Code Mode - Local") {
+#Preview("Code Mode") {
     WelcomeView(mode: .code) { _ in }
         .frame(width: 600, height: 500)
 }

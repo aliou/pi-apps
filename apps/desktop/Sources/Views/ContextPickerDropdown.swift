@@ -11,7 +11,7 @@ import PiCore
 
 struct ContextPickerDropdown: View {
     let mode: SidebarMode
-    let environment: SessionEnvironment
+    let isRemote: Bool
 
     // Local mode state
     let recentFolders: [String]
@@ -33,10 +33,10 @@ struct ContextPickerDropdown: View {
     @State private var isExpanded = false
 
     var body: some View {
-        if environment == .local {
-            localFolderDropdown
-        } else {
+        if isRemote {
             remoteRepoDropdown
+        } else {
+            localFolderDropdown
         }
     }
 
@@ -244,7 +244,7 @@ struct ContextPickerDropdown: View {
 #Preview("Local - No Selection") {
     ContextPickerDropdown(
         mode: .code,
-        environment: .local,
+        isRemote: false,
         recentFolders: [
             "/Users/dev/projects/my-app",
             "/Users/dev/projects/another-project"
@@ -267,7 +267,7 @@ struct ContextPickerDropdown: View {
 #Preview("Local - With Selection") {
     ContextPickerDropdown(
         mode: .code,
-        environment: .local,
+        isRemote: false,
         recentFolders: [
             "/Users/dev/projects/my-app",
             "/Users/dev/projects/another-project"
@@ -290,7 +290,7 @@ struct ContextPickerDropdown: View {
 #Preview("Remote - With Repos") {
     ContextPickerDropdown(
         mode: .code,
-        environment: .remote,
+        isRemote: true,
         recentFolders: [],
         onSelectFolder: { _ in },
         onChooseDifferentFolder: {},
@@ -327,7 +327,7 @@ struct ContextPickerDropdown: View {
 #Preview("Remote - Loading") {
     ContextPickerDropdown(
         mode: .code,
-        environment: .remote,
+        isRemote: true,
         recentFolders: [],
         onSelectFolder: { _ in },
         onChooseDifferentFolder: {},

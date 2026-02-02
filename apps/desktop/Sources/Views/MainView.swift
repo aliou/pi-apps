@@ -153,36 +153,43 @@ struct MainView: View {
         Task {
             do {
                 let session: DesktopSession
+                let initialPrompt: String?
+
                 switch request {
-                case .localChat(let initialPrompt):
+                case .localChat(let prompt):
                     session = try await sessionManager.createLocalChatSession()
-                    // TODO: Send initial prompt if provided
-                    _ = initialPrompt
+                    initialPrompt = prompt
 
-                case .localCode(let folderPath, let initialPrompt):
+                case .localCode(let folderPath, let prompt):
                     session = try await sessionManager.createLocalCodeSession(selectedPath: folderPath)
-                    // TODO: Send initial prompt if provided
-                    _ = initialPrompt
+                    initialPrompt = prompt
 
-                case .remoteChat(let initialPrompt):
+                case .remoteChat(let prompt):
                     guard let serverURL = ServerConfig.shared.serverURL else { return }
                     session = try await sessionManager.createRemoteChatSession(serverURL: serverURL)
-                    // TODO: Send initial prompt if provided
-                    _ = initialPrompt
+                    initialPrompt = prompt
 
-                case .remoteCode(let repo, let initialPrompt):
+                case .remoteCode(let repo, let environment, let prompt):
                     guard let serverURL = ServerConfig.shared.serverURL else { return }
                     ServerConfig.shared.addRecentRepo(String(repo.id))
                     session = try await sessionManager.createRemoteCodeSession(
                         serverURL: serverURL,
                         repoId: String(repo.id),
-                        repoName: repo.name
+                        repoName: repo.name,
+                        environmentId: environment.id,
+                        environmentName: environment.name
                     )
-                    // TODO: Send initial prompt if provided
-                    _ = initialPrompt
+                    initialPrompt = prompt
                 }
 
                 await sessionManager.selectSession(session.id)
+
+                // Only send initial prompt if connection succeeded
+                if sessionManager.activeConnectionState == .connected,
+                   let prompt = initialPrompt,
+                   !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    await sessionManager.sendInitialPrompt(for: session.id, prompt: prompt)
+                }
             } catch {
                 print("Failed to create session: \(error)")
             }

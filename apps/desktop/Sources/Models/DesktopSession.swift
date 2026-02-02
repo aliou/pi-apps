@@ -34,6 +34,8 @@ struct DesktopSession: Identifiable, Codable, Sendable, Equatable {
     var serverSessionId: String?
     var repoId: String?
     var repoName: String?
+    var environmentId: String?
+    var environmentName: String?
     var serverURL: String?
 
     /// Display name for the session
@@ -113,7 +115,9 @@ struct DesktopSession: Identifiable, Codable, Sendable, Equatable {
         serverSessionId: String,
         serverURL: String,
         repoId: String? = nil,
-        repoName: String? = nil
+        repoName: String? = nil,
+        environmentId: String? = nil,
+        environmentName: String? = nil
     ) -> Self {
         Self(
             id: UUID(),
@@ -125,6 +129,8 @@ struct DesktopSession: Identifiable, Codable, Sendable, Equatable {
             serverSessionId: serverSessionId,
             repoId: repoId,
             repoName: repoName,
+            environmentId: environmentId,
+            environmentName: environmentName,
             serverURL: serverURL
         )
     }
