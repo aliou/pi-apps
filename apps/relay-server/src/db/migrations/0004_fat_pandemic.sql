@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `sandbox_provider_id` text;

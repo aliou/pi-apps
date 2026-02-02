@@ -111,6 +111,23 @@ export class GitHubService {
     return this.mapRepo(repo);
   }
 
+  /**
+   * Get a single repo by numeric GitHub ID.
+   */
+  async getRepoById(token: string, id: string): Promise<GitHubRepo> {
+    const response = await fetch(`${API_BASE}/repositories/${id}`, {
+      headers: this.headers(token),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`GitHub API error: ${response.status} ${text}`);
+    }
+
+    const repo = (await response.json()) as Record<string, unknown>;
+    return this.mapRepo(repo);
+  }
+
   private headers(token: string): HeadersInit {
     return {
       Authorization: `Bearer ${token}`,

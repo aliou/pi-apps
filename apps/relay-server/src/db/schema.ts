@@ -24,11 +24,12 @@ export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
   mode: text("mode", { enum: ["chat", "code"] }).notNull(),
   status: text("status", {
-    enum: ["creating", "ready", "running", "stopped", "error", "deleted"],
+    enum: ["creating", "active", "suspended", "error", "deleted"],
   })
     .notNull()
     .default("creating"),
   sandboxProvider: text("sandbox_provider", { enum: ["mock", "docker"] }),
+  sandboxProviderId: text("sandbox_provider_id"),
   environmentId: text("environment_id").references(() => environments.id),
   sandboxImageDigest: text("sandbox_image_digest"),
   repoId: text("repo_id"),

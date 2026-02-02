@@ -113,7 +113,7 @@ export class EventJournal {
     const prunableSessions = this.db
       .select({ id: sessions.id })
       .from(sessions)
-      .where(inArray(sessions.status, ["stopped", "deleted"]))
+      .where(inArray(sessions.status, ["deleted"]))
       .all();
 
     if (prunableSessions.length === 0) {

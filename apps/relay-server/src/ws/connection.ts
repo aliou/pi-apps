@@ -1,14 +1,14 @@
 import readline from "node:readline";
 import type { WSContext } from "hono/ws";
-import type { SandboxHandle } from "../sandbox/types";
+import type { SandboxStreams } from "../sandbox/types";
 import type { EventJournal } from "../services/event-journal";
 import type { ClientCommand, PiEvent, ServerEvent } from "./types";
 
 /**
  * Manages a WebSocket connection to a session.
  * Handles:
- * - Forwarding commands from client to sandbox
- * - Forwarding events from sandbox to client
+ * - Forwarding commands from client to sandbox streams
+ * - Forwarding events from sandbox streams to client
  * - Event replay on reconnection
  * - Journaling events for durability
  */
@@ -20,7 +20,7 @@ export class WebSocketConnection {
   constructor(
     private ws: WSContext,
     private sessionId: string,
-    private sandbox: SandboxHandle,
+    private streams: SandboxStreams,
     private journal: EventJournal,
     initialSeq = 0,
   ) {
@@ -61,7 +61,7 @@ export class WebSocketConnection {
     if (this.closed) return;
 
     // Forward to sandbox stdin as JSON line
-    this.sandbox.stdin.write(`${JSON.stringify(command)}\n`);
+    this.streams.stdin.write(`${JSON.stringify(command)}\n`);
   }
 
   /**
@@ -102,6 +102,7 @@ export class WebSocketConnection {
     this.closed = true;
     this.rl?.close();
     this.rl = null;
+    this.streams.detach();
   }
 
   get currentSeq(): number {
@@ -110,7 +111,7 @@ export class WebSocketConnection {
 
   private setupSandboxListener(): void {
     // Parse sandbox stdout (JSON lines)
-    this.rl = readline.createInterface({ input: this.sandbox.stdout });
+    this.rl = readline.createInterface({ input: this.streams.stdout });
 
     this.rl.on("line", (line) => {
       try {

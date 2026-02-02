@@ -45,7 +45,7 @@ The `Relay/` directory contains types for our custom REST API. These are NOT par
 
 **Rules:**
 - Add new types as needed for REST endpoints
-- Keep property names matching the JSON from relay-server (snake_case in JSON, camelCase in Swift via `keyDecodingStrategy`)
+- Keep property names matching the JSON from relay-server (server sends camelCase)
 - Update when relay-server REST responses change
 
 **Examples of Relay types:**

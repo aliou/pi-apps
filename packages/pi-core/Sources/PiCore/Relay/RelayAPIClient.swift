@@ -52,10 +52,13 @@ public actor RelayAPIClient {
         return data
     }
 
-    public func getConnectionInfo(sessionId: String) async throws -> ConnectionInfo {
-        let response: RelayResponse<ConnectionInfo> = try await get("/api/sessions/\(sessionId)/connect")
+    public func activateSession(id: String) async throws -> ActivateResponse {
+        let response: RelayResponse<ActivateResponse> = try await post(
+            "/api/sessions/\(id)/activate",
+            body: EmptyBody()
+        )
         guard let data = response.data else {
-            throw RelayAPIError.serverError(response.error ?? "No data")
+            throw RelayAPIError.serverError(response.error ?? "Activation failed")
         }
         return data
     }

@@ -1,27 +1,19 @@
 import { cn } from "../lib/utils";
 
-type Status =
-  | "creating"
-  | "ready"
-  | "running"
-  | "stopped"
-  | "error"
-  | "deleted";
+type Status = "creating" | "active" | "suspended" | "error" | "deleted";
 
 const dotColors: Record<Status, string> = {
   creating: "bg-status-info",
-  ready: "bg-status-ok",
-  running: "bg-accent",
-  stopped: "bg-muted/40",
+  active: "bg-accent",
+  suspended: "bg-muted/40",
   error: "bg-status-err",
   deleted: "bg-muted/20",
 };
 
 const badgeStyles: Record<Status, string> = {
   creating: "bg-status-info/10 text-status-info",
-  ready: "bg-status-ok/10 text-status-ok",
-  running: "bg-accent/10 text-accent",
-  stopped: "bg-muted/10 text-muted",
+  active: "bg-accent/10 text-accent",
+  suspended: "bg-muted/10 text-muted",
   error: "bg-status-err/10 text-status-err",
   deleted: "bg-muted/10 text-muted/60",
 };
@@ -37,7 +29,7 @@ export function StatusDot({ status, className }: StatusDotProps) {
       className={cn(
         "inline-block size-2 shrink-0 rounded-full",
         dotColors[status],
-        status === "running" && "animate-pulse",
+        status === "active" && "animate-pulse",
         className,
       )}
     />

@@ -31,6 +31,7 @@ public struct RelaySession: Decodable, Sendable, Identifiable, Hashable {
     public let sandboxProvider: String?
     public let environmentId: String?
     public let sandboxImageDigest: String?
+    public let sandboxProviderId: String?
     public let repoId: String?
     public let repoPath: String?
     public let branchName: String?
@@ -51,6 +52,7 @@ public struct RelaySession: Decodable, Sendable, Identifiable, Hashable {
         sandboxProvider: String? = nil,
         environmentId: String? = nil,
         sandboxImageDigest: String? = nil,
+        sandboxProviderId: String? = nil,
         repoId: String? = nil,
         repoPath: String? = nil,
         branchName: String? = nil,
@@ -68,6 +70,7 @@ public struct RelaySession: Decodable, Sendable, Identifiable, Hashable {
         self.sandboxProvider = sandboxProvider
         self.environmentId = environmentId
         self.sandboxImageDigest = sandboxImageDigest
+        self.sandboxProviderId = sandboxProviderId
         self.repoId = repoId
         self.repoPath = repoPath
         self.branchName = branchName
@@ -108,9 +111,8 @@ public struct RelaySession: Decodable, Sendable, Identifiable, Hashable {
 
 public enum SessionStatus: String, Codable, Sendable {
     case creating
-    case ready
-    case running
-    case stopped
+    case active
+    case suspended
     case error
     case deleted
 }
@@ -140,11 +142,11 @@ public struct CreateSessionParams: Encodable, Sendable {
     }
 }
 
-public struct ConnectionInfo: Decodable, Sendable {
+public struct ActivateResponse: Decodable, Sendable {
     public let sessionId: String
     public let status: SessionStatus
     public let lastSeq: Int
-    public let sandboxReady: Bool
+    public let sandboxStatus: String
     public let wsEndpoint: String
 }
 
@@ -362,3 +364,5 @@ struct DeleteResult: Decodable, Sendable {
 struct OkResult: Decodable, Sendable {
     let ok: Bool
 }
+
+struct EmptyBody: Encodable, Sendable {}

@@ -64,15 +64,14 @@ describe("Session Protocol Integration", () => {
       const getRes = await app.request(`/api/sessions/${sessionId}`);
       expect(getRes.status).toBe(200);
       const getJson = (await getRes.json()) as { data: { status: string } };
-      expect(getJson.data.status).toBe("ready");
+      expect(getJson.data.status).toBe("active");
 
-      // Check sandbox is available
-      const sandbox = services.sandboxManager.getForSession(sessionId);
-      expect(sandbox).toBeDefined();
-      expect(sandbox?.status).toBe("running");
+      // Check sandbox provider ID was stored
+      const updatedSession = services.sessionService.get(sessionId);
+      expect(updatedSession?.sandboxProviderId).toBeDefined();
     });
 
-    it("provides connection info via /connect endpoint", async () => {
+    it("activates session and returns sandbox status", async () => {
       const app = createApp({ services });
 
       // Create session and wait for ready
@@ -86,26 +85,27 @@ describe("Session Protocol Integration", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // Get connection info
-      const connectRes = await app.request(
-        `/api/sessions/${sessionId}/connect`,
+      // Activate session
+      const activateRes = await app.request(
+        `/api/sessions/${sessionId}/activate`,
+        { method: "POST" },
       );
-      expect(connectRes.status).toBe(200);
+      expect(activateRes.status).toBe(200);
 
-      const connectJson = (await connectRes.json()) as {
+      const activateJson = (await activateRes.json()) as {
         data: {
           sessionId: string;
           status: string;
           lastSeq: number;
-          sandboxReady: boolean;
+          sandboxStatus: string;
           wsEndpoint: string;
         };
       };
-      expect(connectJson.data.sessionId).toBe(sessionId);
-      expect(connectJson.data.status).toBe("ready");
-      expect(connectJson.data.lastSeq).toBe(0);
-      expect(connectJson.data.sandboxReady).toBe(true);
-      expect(connectJson.data.wsEndpoint).toBe(`/ws/sessions/${sessionId}`);
+      expect(activateJson.data.sessionId).toBe(sessionId);
+      expect(activateJson.data.status).toBe("active");
+      expect(activateJson.data.lastSeq).toBe(0);
+      expect(activateJson.data.sandboxStatus).toBe("running");
+      expect(activateJson.data.wsEndpoint).toBe(`/ws/sessions/${sessionId}`);
     });
 
     it("deletes session and terminates sandbox", async () => {
@@ -123,7 +123,8 @@ describe("Session Protocol Integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Verify sandbox exists
-      expect(services.sandboxManager.getForSession(sessionId)).toBeDefined();
+      const sessionBeforeDelete = services.sessionService.get(sessionId);
+      expect(sessionBeforeDelete?.sandboxProviderId).toBeDefined();
 
       // Delete session
       const deleteRes = await app.request(`/api/sessions/${sessionId}`, {
@@ -135,8 +136,7 @@ describe("Session Protocol Integration", () => {
       const getRes = await app.request(`/api/sessions/${sessionId}`);
       expect(getRes.status).toBe(404);
 
-      // Verify sandbox is terminated
-      expect(services.sandboxManager.getForSession(sessionId)).toBeUndefined();
+      // Verify session is deleted (sandbox termination happens via provider)
     });
   });
 
@@ -231,11 +231,11 @@ describe("Session Protocol Integration", () => {
     });
   });
 
-  describe("Connection info reflects journal state", () => {
+  describe("Activate reflects journal state", () => {
     it("lastSeq updates as events are added", async () => {
       const app = createApp({ services });
 
-      // Create session
+      // Create session and wait for provisioning
       const createRes = await app.request("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -244,23 +244,31 @@ describe("Session Protocol Integration", () => {
       const createJson = (await createRes.json()) as { data: { id: string } };
       const sessionId = createJson.data.id;
 
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
       // Initial lastSeq should be 0
-      const connect1 = await app.request(`/api/sessions/${sessionId}/connect`);
-      const connect1Json = (await connect1.json()) as {
+      const activate1 = await app.request(
+        `/api/sessions/${sessionId}/activate`,
+        { method: "POST" },
+      );
+      const activate1Json = (await activate1.json()) as {
         data: { lastSeq: number };
       };
-      expect(connect1Json.data.lastSeq).toBe(0);
+      expect(activate1Json.data.lastSeq).toBe(0);
 
       // Add events
       services.eventJournal.append(sessionId, "event_1", { type: "event_1" });
       services.eventJournal.append(sessionId, "event_2", { type: "event_2" });
 
       // lastSeq should now be 2
-      const connect2 = await app.request(`/api/sessions/${sessionId}/connect`);
-      const connect2Json = (await connect2.json()) as {
+      const activate2 = await app.request(
+        `/api/sessions/${sessionId}/activate`,
+        { method: "POST" },
+      );
+      const activate2Json = (await activate2.json()) as {
         data: { lastSeq: number };
       };
-      expect(connect2Json.data.lastSeq).toBe(2);
+      expect(activate2Json.data.lastSeq).toBe(2);
     });
   });
 });

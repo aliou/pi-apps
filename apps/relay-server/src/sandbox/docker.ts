@@ -1,7 +1,7 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PassThrough, type Readable, type Writable } from "node:stream";
+import { type Duplex, PassThrough } from "node:stream";
 import Docker from "dockerode";
 import type {
   CleanupResult,
@@ -10,6 +10,7 @@ import type {
   SandboxInfo,
   SandboxProvider,
   SandboxStatus,
+  SandboxStreams,
 } from "./types";
 
 export interface DockerProviderConfig {
@@ -25,19 +26,14 @@ export interface DockerProviderConfig {
   /** Container name prefix (default: pi-sandbox) */
   containerPrefix?: string;
 
+  /** Docker socket path (default: /var/run/docker.sock, or DOCKER_HOST env) */
+  socketPath?: string;
+
   /** Default resource limits */
   defaultResources?: {
     cpuShares?: number;
     memoryMB?: number;
   };
-
-  /**
-   * Secrets to inject into containers.
-   * Keys are environment variable names (e.g., "ANTHROPIC_API_KEY"),
-   * values are the secret values.
-   * These are mounted as files in /run/secrets/ (not as env vars).
-   */
-  secrets?: Record<string, string>;
 
   /**
    * Base directory for temporary secrets files.
@@ -71,15 +67,16 @@ export class DockerSandboxProvider implements SandboxProvider {
     >
   > & {
     defaultResources: { cpuShares: number; memoryMB: number };
-    secrets?: Record<string, string>;
     secretsBaseDir?: string;
   };
-  private sandboxes = new Map<string, DockerSandboxHandle>();
+  /** Optional cache of handles — Docker is always the source of truth. */
+  private handleCache = new Map<string, DockerSandboxHandle>();
   /** Track secrets directories for cleanup */
   private secretsDirs = new Map<string, string>();
 
   constructor(config: DockerProviderConfig = { image: DEFAULT_CONFIG.image }) {
-    this.docker = new Docker();
+    const socketPath = config.socketPath ?? this.resolveDockerSocket();
+    this.docker = new Docker({ socketPath });
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
@@ -90,12 +87,14 @@ export class DockerSandboxProvider implements SandboxProvider {
     };
   }
 
-  /**
-   * Update the secrets configuration.
-   * Call this when secrets change in the database.
-   */
-  setSecrets(secrets: Record<string, string>): void {
-    this.config.secrets = secrets;
+  /** Resolve Docker socket from DOCKER_HOST env or default path. */
+  private resolveDockerSocket(): string {
+    const dockerHost = process.env.DOCKER_HOST;
+    if (dockerHost) {
+      // DOCKER_HOST can be unix:///path/to/sock or just /path/to/sock
+      return dockerHost.replace(/^unix:\/\//, "");
+    }
+    return "/var/run/docker.sock";
   }
 
   async isAvailable(): Promise<boolean> {
@@ -108,12 +107,19 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   async createSandbox(options: CreateSandboxOptions): Promise<SandboxHandle> {
-    const { sessionId, env = {}, repoUrl, repoBranch, resources } = options;
+    const {
+      sessionId,
+      env = {},
+      secrets,
+      repoUrl,
+      repoBranch,
+      resources,
+    } = options;
 
-    // Check for existing sandbox
-    const existing = this.sandboxes.get(sessionId);
-    if (existing && existing.status !== "stopped") {
-      return existing;
+    // Check cache for existing running handle
+    const cached = this.handleCache.get(sessionId);
+    if (cached && cached.status !== "stopped" && cached.status !== "error") {
+      return cached;
     }
 
     // Volume name for this session's workspace
@@ -135,26 +141,19 @@ export class DockerSandboxProvider implements SandboxProvider {
     ];
 
     // Create secrets directory on host and write secret files
-    const secretsDir = this.createSecretsDir(sessionId);
+    const secretsDir = this.writeSecretsDir(sessionId, secrets);
     const binds = [`${volumeName}:/workspace`];
 
     if (secretsDir) {
-      // Mount secrets directory as read-only
       binds.push(`${secretsDir}:/run/secrets:ro`);
-      // Tell the container to source secrets from files
       containerEnv.push("PI_SECRETS_DIR=/run/secrets");
     }
 
-    // Resource limits (with defaults guaranteed)
+    // Resource limits
     const cpuShares =
       resources?.cpuShares ?? this.config.defaultResources.cpuShares ?? 1024;
     const memoryMB =
       resources?.memoryMB ?? this.config.defaultResources.memoryMB ?? 2048;
-
-    const limits = {
-      CpuShares: cpuShares,
-      Memory: memoryMB * 1024 * 1024,
-    };
 
     // Create container
     const container = await this.docker.createContainer({
@@ -171,9 +170,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       HostConfig: {
         Binds: binds,
         NetworkMode: this.config.networkMode,
-        CpuShares: limits.CpuShares,
-        Memory: limits.Memory,
-        AutoRemove: false, // We manage cleanup
+        CpuShares: cpuShares,
+        Memory: memoryMB * 1024 * 1024,
+        AutoRemove: false,
       },
     });
 
@@ -182,54 +181,69 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // Capture image digest for reproducibility
     const imageInfo = await this.docker.getImage(this.config.image).inspect();
-    const imageDigest = imageInfo.Id; // e.g., "sha256:abc123..."
+    const imageDigest = imageInfo.Id;
 
-    // Attach to streams
-    const stream = await container.attach({
-      stream: true,
-      stdin: true,
-      stdout: true,
-      stderr: true,
-    });
-
-    // Demux stdout/stderr
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    container.modem.demuxStream(stream, stdout, stderr);
-
-    // Create handle
     const handle = new DockerSandboxHandle(
       sessionId,
       container,
-      stream,
-      stdout,
-      stderr,
       volumeName,
       imageDigest,
+      (sid, s) => this.writeSecretsDir(sid, s),
     );
 
-    this.sandboxes.set(sessionId, handle);
+    this.handleCache.set(sessionId, handle);
 
     return handle;
   }
 
-  getSandbox(sessionId: string): SandboxHandle | undefined {
-    const handle = this.sandboxes.get(sessionId);
-    if (handle && handle.status !== "stopped") {
-      return handle;
-    }
-    return undefined;
-  }
-
-  removeSandbox(sessionId: string): void {
-    const handle = this.sandboxes.get(sessionId);
-    if (handle) {
-      handle.terminate();
-      this.sandboxes.delete(sessionId);
+  async getSandbox(providerId: string): Promise<SandboxHandle> {
+    // Check cache first
+    for (const [, handle] of this.handleCache) {
+      if (
+        handle.providerId === providerId &&
+        handle.status !== "stopped" &&
+        handle.status !== "error"
+      ) {
+        return handle;
+      }
     }
 
-    // Clean up secrets directory
-    this.cleanupSecretsDir(sessionId);
+    // Not in cache — inspect Docker directly
+    const container = this.docker.getContainer(providerId);
+    let info: Docker.ContainerInspectInfo;
+    try {
+      info = await container.inspect();
+    } catch {
+      throw new Error(
+        `Sandbox not found: container ${providerId} does not exist`,
+      );
+    }
+
+    // Extract session ID from container name
+    const name = info.Name.replace(/^\//, "");
+    const prefix = `${this.config.containerPrefix}-`;
+    if (!name.startsWith(prefix)) {
+      throw new Error(`Container ${providerId} is not a sandbox container`);
+    }
+    const sessionId = name.slice(prefix.length);
+
+    // Build handle from inspected state
+    const status = this.dockerStateToStatus(info.State.Status);
+    const imageDigest = info.Image;
+    const volumeName = `${this.config.volumePrefix}-${sessionId}-workspace`;
+
+    const handle = new DockerSandboxHandle(
+      sessionId,
+      container,
+      volumeName,
+      imageDigest,
+      (sid, s) => this.writeSecretsDir(sid, s),
+    );
+    handle.setInitialStatus(status);
+
+    this.handleCache.set(sessionId, handle);
+
+    return handle;
   }
 
   async listSandboxes(): Promise<SandboxInfo[]> {
@@ -245,10 +259,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         c.Names[0]?.replace(`/${this.config.containerPrefix}-`, "") ?? "";
       return {
         sessionId,
-        containerId: c.Id,
+        providerId: c.Id,
         status: this.dockerStateToStatus(c.State),
         createdAt: new Date(c.Created * 1000).toISOString(),
-        volumeName: `${this.config.volumePrefix}-${sessionId}-workspace`,
       };
     });
   }
@@ -257,7 +270,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     let containersRemoved = 0;
     const volumesRemoved = 0;
 
-    // Remove stopped containers
     const containers = await this.docker.listContainers({
       all: true,
       filters: {
@@ -271,13 +283,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         const container = this.docker.getContainer(c.Id);
         await container.remove({ force: true });
         containersRemoved++;
+
+        // Clean up cached handle
+        const sessionId =
+          c.Names[0]?.replace(`/${this.config.containerPrefix}-`, "") ?? "";
+        this.handleCache.delete(sessionId);
+        this.cleanupSecretsDir(sessionId);
       } catch {
         // Ignore errors
       }
     }
-
-    // Note: We don't auto-remove volumes - they contain user data
-    // Volume cleanup should be explicit via a separate method
 
     return { containersRemoved, volumesRemoved };
   }
@@ -297,7 +312,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     repoUrl: string,
     branch?: string,
   ): Promise<void> {
-    // Run a temporary container to clone the repo
     const branchArg = branch ? `--branch ${branch}` : "";
     const cmd = `git clone ${branchArg} ${repoUrl} /workspace`;
 
@@ -338,25 +352,31 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   /**
-   * Create a temporary directory with secret files for a session.
-   * Returns the directory path, or null if no secrets configured.
+   * Write secrets as files to a host directory for bind mounting.
+   * Called at creation and on resume (to pick up changes).
+   * Returns the directory path, or null if no secrets.
    */
-  private createSecretsDir(sessionId: string): string | null {
-    const secrets = this.config.secrets;
+  writeSecretsDir(
+    sessionId: string,
+    secrets?: Record<string, string>,
+  ): string | null {
     if (!secrets || Object.keys(secrets).length === 0) {
-      return null;
+      return this.secretsDirs.get(sessionId) ?? null;
     }
 
-    // Create a secure temporary directory
-    // Use configured base dir or fall back to system tmpdir
     const baseDir = this.config.secretsBaseDir ?? tmpdir();
     const secretsDir = join(baseDir, `pi-secrets-${sessionId}`);
     mkdirSync(secretsDir, { mode: 0o700, recursive: true });
 
-    // Write each secret as a file (lowercase name)
     for (const [envName, value] of Object.entries(secrets)) {
       const filename = envName.toLowerCase();
       const filepath = join(secretsDir, filename);
+      // chmod 0o600 first to allow overwrite on resume, then lock to 0o400
+      try {
+        chmodSync(filepath, 0o600);
+      } catch {
+        // File may not exist yet
+      }
       writeFileSync(filepath, value, { mode: 0o400 });
     }
 
@@ -364,9 +384,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     return secretsDir;
   }
 
-  /**
-   * Clean up the secrets directory for a session.
-   */
   private cleanupSecretsDir(sessionId: string): void {
     const secretsDir = this.secretsDirs.get(sessionId);
     if (secretsDir) {
@@ -382,51 +399,148 @@ export class DockerSandboxProvider implements SandboxProvider {
 
 /**
  * Handle for a Docker-based sandbox.
+ * Does not hold streams — call attach() to get them.
  */
 class DockerSandboxHandle implements SandboxHandle {
   private _status: SandboxStatus = "running";
   private statusListeners = new Set<(status: SandboxStatus) => void>();
-
-  readonly stdin: Writable;
-  readonly stdout: Readable;
-  readonly stderr: Readable;
-  readonly imageDigest: string;
+  private currentStreams: DockerSandboxStreams | null = null;
 
   constructor(
     readonly sessionId: string,
     private container: Docker.Container,
-    stdinStream: NodeJS.WritableStream,
-    stdoutStream: PassThrough,
-    stderrStream: PassThrough,
     private _volumeName: string,
-    imageDigest: string,
-  ) {
-    // Cast the streams to the correct types
-    this.stdin = stdinStream as Writable;
-    this.stdout = stdoutStream;
-    this.stderr = stderrStream;
-    this.imageDigest = imageDigest;
+    private _imageDigest: string,
+    private writeSecrets?: (
+      sessionId: string,
+      secrets?: Record<string, string>,
+    ) => string | null,
+  ) {}
 
-    // Monitor container state
-    this.monitorContainer();
-  }
-
-  /** Get the volume name (for backup/restore operations) */
-  get volumeName(): string {
-    return this._volumeName;
+  get providerId(): string {
+    return this.container.id;
   }
 
   get status(): SandboxStatus {
     return this._status;
   }
 
-  get containerId(): string {
-    return this.container.id;
+  get imageDigest(): string {
+    return this._imageDigest;
+  }
+
+  get volumeName(): string {
+    return this._volumeName;
+  }
+
+  /** Used by provider when reconstructing handle from Docker inspect. */
+  setInitialStatus(status: SandboxStatus): void {
+    this._status = status;
+  }
+
+  async resume(secrets?: Record<string, string>): Promise<void> {
+    // Refresh secrets on host before resuming (bind mount picks them up)
+    if (secrets && this.writeSecrets) {
+      this.writeSecrets(this.sessionId, secrets);
+    }
+
+    // Handle state transitions to get to running state
+    if (this._status === "paused") {
+      await this.container.unpause();
+      this.setStatus("running");
+    } else if (this._status === "stopped") {
+      await this.container.start();
+      this.setStatus("running");
+    } else if (this._status === "creating") {
+      // Wait briefly for container to be ready
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const info = await this.container.inspect();
+      if (info.State.Running) {
+        this.setStatus("running");
+      }
+    } else if (this._status === "running") {
+      // Already running, no-op
+      return;
+    } else if (this._status === "error") {
+      throw new Error(
+        `Cannot resume: container ${this.container.id} is in error state`,
+      );
+    }
+
+    // Final verification that container is running
+    const info = await this.container.inspect();
+    if (!info.State.Running) {
+      throw new Error(
+        `Cannot resume: container ${this.container.id} is not running (state: ${info.State.Status})`,
+      );
+    }
+  }
+
+  async attach(): Promise<SandboxStreams> {
+    // If already attached, detach old streams first
+    if (this.currentStreams) {
+      this.currentStreams.detach();
+      this.currentStreams = null;
+    }
+
+    // Verify container is running (assume resume() was called)
+    const info = await this.container.inspect();
+    if (!info.State.Running) {
+      throw new Error(
+        `Cannot attach: container ${this.container.id} is not running (state: ${info.State.Status})`,
+      );
+    }
+
+    const stream = await this.container.attach({
+      stream: true,
+      stdin: true,
+      stdout: true,
+      stderr: true,
+      hijack: true,
+    });
+
+    // Cast to Duplex
+    const raw = stream as unknown as Duplex;
+
+    // Demux stdout/stderr
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    this.container.modem.demuxStream(raw, stdout, stderr);
+
+    // Add no-op error handlers to prevent crashes on late writes
+    raw.on("error", () => {});
+    stdout.on("error", () => {});
+    stderr.on("error", () => {});
+
+    const streams = new DockerSandboxStreams(raw, stdout, stderr);
+    this.currentStreams = streams;
+
+    // Monitor container for unexpected exits
+    this.monitorContainer();
+
+    return streams;
+  }
+
+  async pause(): Promise<void> {
+    // Detach streams before pausing
+    if (this.currentStreams) {
+      this.currentStreams.detach();
+      this.currentStreams = null;
+    }
+
+    await this.container.pause();
+    this.setStatus("paused");
   }
 
   async terminate(): Promise<void> {
+    // Detach streams
+    if (this.currentStreams) {
+      this.currentStreams.detach();
+      this.currentStreams = null;
+    }
+
     try {
-      await this.container.stop({ t: 10 }); // 10 second grace period
+      await this.container.stop({ t: 10 });
     } catch {
       // Container may already be stopped
     }
@@ -436,16 +550,6 @@ class DockerSandboxHandle implements SandboxHandle {
       // Ignore
     }
     this.setStatus("stopped");
-  }
-
-  async pause(): Promise<void> {
-    await this.container.pause();
-    this.setStatus("paused");
-  }
-
-  async resume(): Promise<void> {
-    await this.container.unpause();
-    this.setStatus("running");
   }
 
   onStatusChange(handler: (status: SandboxStatus) => void): () => void {
@@ -469,5 +573,38 @@ class DockerSandboxHandle implements SandboxHandle {
     } catch {
       this.setStatus("error");
     }
+  }
+}
+
+/**
+ * Live streams to a Docker container.
+ */
+class DockerSandboxStreams implements SandboxStreams {
+  private detached = false;
+  private raw: Duplex;
+
+  constructor(
+    raw: Duplex,
+    readonly stdout: PassThrough,
+    readonly stderr: PassThrough,
+  ) {
+    this.raw = raw;
+  }
+
+  get stdin(): Duplex {
+    return this.raw;
+  }
+
+  detach(): void {
+    if (this.detached) return;
+    this.detached = true;
+
+    // Destroy the raw stream first to stop demux input
+    this.raw.destroy();
+    this.raw.removeAllListeners();
+
+    // Then destroy stdout/stderr
+    this.stdout.destroy();
+    this.stderr.destroy();
   }
 }

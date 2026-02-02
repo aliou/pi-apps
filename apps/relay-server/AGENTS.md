@@ -21,6 +21,20 @@ Node.js server that wraps pi sessions and exposes REST API + WebSocket for remot
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Session Lifecycle
+
+Sessions follow this state machine: `creating → active → suspended → deleted`. `error` can be reached from any state except `deleted`.
+
+**Client flow:**
+1. `POST /api/sessions` — creates session + starts sandbox provisioning (status: `creating`)
+2. `POST /api/sessions/:id/activate` — blocks until sandbox is running (status: `active`)
+3. Open WebSocket to `ws://host/ws/sessions/:id` — WS requires `active` status
+4. Work (send prompts, receive events)
+5. Close WS → idle timeout → `suspended`
+6. Come back → `activate` again → open WS
+
+**Sandbox manager is stateless.** The DB stores `sandboxProvider` and `sandboxProviderId` per session. The manager delegates to the provider (Docker/mock) and inspects real state (e.g., Docker API) rather than maintaining in-memory maps.
+
 ## Two Communication Layers
 
 ### REST API (Custom, Extendable)
@@ -74,26 +88,38 @@ If you need to add relay-specific communication (not agent communication), use R
 ```
 src/
 ├── routes/           # REST API endpoints
-│   ├── sessions.ts
+│   ├── sessions.ts   # Session CRUD + activate
 │   ├── environments.ts
 │   ├── github.ts
-│   └── ...
+│   ├── secrets.ts
+│   ├── models.ts
+│   ├── settings.ts
+│   └── health.ts
 ├── services/         # Business logic
 │   ├── session.service.ts
 │   ├── environment.service.ts
-│   └── ...
+│   ├── event-journal.ts   # Event persistence for replay
+│   ├── github.service.ts
+│   ├── repo.service.ts
+│   ├── secrets.service.ts
+│   └── crypto.service.ts
 ├── sandbox/          # Sandbox providers
-│   ├── types.ts      # SandboxHandle interface
-│   ├── manager.ts    # Provider orchestration
-│   └── docker.ts     # Docker implementation
+│   ├── types.ts      # SandboxHandle, SandboxStreams interfaces
+│   ├── manager.ts    # Stateless provider orchestration (DB is source of truth)
+│   ├── docker.ts     # Docker provider (attach/detach, resume/pause)
+│   └── mock.ts       # Mock provider for testing
 ├── ws/               # WebSocket handling
-│   └── handler.ts    # RPC proxy (DO NOT ADD PROTOCOL)
+│   ├── handler.ts    # RPC proxy (DO NOT ADD PROTOCOL)
+│   ├── connection.ts # Per-session WS connection + event forwarding
+│   └── types.ts      # Client commands and server events
 ├── db/               # Database
 │   ├── schema.ts     # Drizzle schema
 │   ├── connection.ts
+│   ├── migrate.ts
 │   └── migrations/
 ├── app.ts            # Hono app factory
 ├── config.ts         # Configuration
+├── env.ts            # Environment variable parsing
 └── index.ts          # Entry point
 ```
 
@@ -128,6 +154,30 @@ interface RelayResponse<T> {
 
 Success: `{ data: <result>, error: null }`
 Error: `{ data: null, error: "<message>" }`
+
+## Docker Integration Tests
+
+Docker sandbox tests are skipped by default. To run them:
+
+```bash
+RUN_DOCKER_TESTS=1 pnpm --filter pi-relay-server vitest run src/sandbox/docker.test.ts
+```
+
+On macOS with Lima, also set the Docker socket and a Lima-accessible secrets dir:
+
+```bash
+DOCKER_HOST="unix://$HOME/.lima/default/sock/docker.sock" \
+PI_SECRETS_BASE_DIR="$PWD/.dev/relay/state" \
+PI_SANDBOX_IMAGE=pi-sandbox:alpine \
+RUN_DOCKER_TESTS=1 \
+pnpm --filter pi-relay-server vitest run src/sandbox/docker.test.ts
+```
+
+Environment variables:
+- `RUN_DOCKER_TESTS` — enable Docker tests (any truthy value)
+- `DOCKER_HOST` — Docker socket path (auto-detected from env by the provider)
+- `PI_SANDBOX_IMAGE` — image to test with (default: `pi-sandbox:local`)
+- `PI_SECRETS_BASE_DIR` — host dir for secrets bind mount (default: `os.tmpdir()`, must be Docker-accessible)
 
 ## Service Pattern
 
@@ -195,10 +245,14 @@ Example: Adding a new resource "widgets"
 
 ## Environment Variables
 
-See `src/env.ts` for required/optional environment variables.
+See `src/env.ts` and `src/config.ts` for all environment variables.
 
 Key variables:
 - `PORT` - Server port (default: 31415)
-- `DATABASE_URL` - SQLite path
-- `GITHUB_TOKEN` - For repo access
-- Provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.)
+- `RELAY_ENCRYPTION_KEY` - Required. Base64-encoded 32-byte key for secrets at rest
+- `RELAY_ENCRYPTION_KEY_VERSION` - Key version for rotation (default: 1)
+- `SANDBOX_PROVIDER` - `mock` or `docker` (default: mock)
+- `SANDBOX_DOCKER_IMAGE` - Docker image for sandboxes (default: pi-sandbox:local)
+
+Provider API keys (stored as encrypted secrets via `/api/secrets`, injected into sandboxes at runtime):
+- `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, etc.

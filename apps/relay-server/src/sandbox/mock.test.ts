@@ -13,21 +13,26 @@ describe("MockSandboxProvider", () => {
     const handle = await provider.createSandbox({ sessionId: "test-session" });
 
     expect(handle.sessionId).toBe("test-session");
-    expect(handle.stdin).toBeDefined();
-    expect(handle.stdout).toBeDefined();
+    expect(handle.providerId).toBe("mock-test-session");
+
+    const streams = await handle.attach();
+    expect(streams.stdin).toBeDefined();
+    expect(streams.stdout).toBeDefined();
   });
 
-  it("getSandbox returns existing sandbox", async () => {
+  it("getSandbox returns existing sandbox by providerId", async () => {
     const provider = new MockSandboxProvider();
     const handle = await provider.createSandbox({ sessionId: "test-session" });
 
-    const retrieved = provider.getSandbox("test-session");
+    const retrieved = await provider.getSandbox("mock-test-session");
     expect(retrieved).toBe(handle);
   });
 
-  it("getSandbox returns undefined for unknown session", () => {
+  it("getSandbox throws for unknown providerId", async () => {
     const provider = new MockSandboxProvider();
-    expect(provider.getSandbox("unknown")).toBeUndefined();
+    await expect(provider.getSandbox("unknown")).rejects.toThrow(
+      "Sandbox not found: unknown",
+    );
   });
 
   it("status changes to running after creation", async () => {
@@ -59,12 +64,31 @@ describe("MockSandboxProvider", () => {
     expect(handle.status).toBe("stopped");
   });
 
-  it("removeSandbox terminates and removes sandbox", async () => {
+  it("listSandboxes returns active sandboxes", async () => {
     const provider = new MockSandboxProvider();
-    await provider.createSandbox({ sessionId: "test-session" });
+    await provider.createSandbox({ sessionId: "test-session-1" });
+    await provider.createSandbox({ sessionId: "test-session-2" });
 
-    provider.removeSandbox("test-session");
-    expect(provider.getSandbox("test-session")).toBeUndefined();
+    // Wait for sandboxes to start
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const sandboxes = await provider.listSandboxes();
+    expect(sandboxes).toHaveLength(2);
+    expect(sandboxes[0]?.status).toBe("running");
+    expect(sandboxes[0]?.providerId).toContain("mock-");
+  });
+
+  it("cleanup removes stopped sandboxes", async () => {
+    const provider = new MockSandboxProvider();
+    const handle = await provider.createSandbox({ sessionId: "test-session" });
+
+    // Wait for running, then terminate
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await handle.terminate();
+
+    const result = await provider.cleanup();
+    expect(result.containersRemoved).toBe(1);
+    expect(result.volumesRemoved).toBe(0);
   });
 });
 
@@ -76,14 +100,15 @@ describe("MockSandboxHandle RPC", () => {
     // Wait for running status
     await new Promise((resolve) => setTimeout(resolve, 150));
 
+    const streams = await handle.attach();
     const events: unknown[] = [];
-    const rl = readline.createInterface({ input: handle.stdout });
+    const rl = readline.createInterface({ input: streams.stdout });
     rl.on("line", (line) => {
       events.push(JSON.parse(line));
     });
 
     // Send get_state command
-    handle.stdin.write(
+    streams.stdin.write(
       `${JSON.stringify({ type: "get_state", id: "cmd-1" })}\n`,
     );
 
@@ -106,14 +131,15 @@ describe("MockSandboxHandle RPC", () => {
     // Wait for running status
     await new Promise((resolve) => setTimeout(resolve, 150));
 
+    const streams = await handle.attach();
     const events: unknown[] = [];
-    const rl = readline.createInterface({ input: handle.stdout });
+    const rl = readline.createInterface({ input: streams.stdout });
     rl.on("line", (line) => {
       events.push(JSON.parse(line));
     });
 
     // Send prompt command
-    handle.stdin.write(
+    streams.stdin.write(
       `${JSON.stringify({ type: "prompt", message: "hello", id: "cmd-2" })}\n`,
     );
 
@@ -137,20 +163,23 @@ describe("MockSandboxHandle RPC", () => {
     // Wait for running status
     await new Promise((resolve) => setTimeout(resolve, 150));
 
+    const streams = await handle.attach();
     const events: unknown[] = [];
-    const rl = readline.createInterface({ input: handle.stdout });
+    const rl = readline.createInterface({ input: streams.stdout });
     rl.on("line", (line) => {
       events.push(JSON.parse(line));
     });
 
     // Send prompt command
-    handle.stdin.write(
+    streams.stdin.write(
       `${JSON.stringify({ type: "prompt", message: "test", id: "cmd-3" })}\n`,
     );
 
     // Send abort immediately
     await new Promise((resolve) => setTimeout(resolve, 50));
-    handle.stdin.write(`${JSON.stringify({ type: "abort", id: "abort-1" })}\n`);
+    streams.stdin.write(
+      `${JSON.stringify({ type: "abort", id: "abort-1" })}\n`,
+    );
 
     // Wait a bit
     await new Promise((resolve) => setTimeout(resolve, 200));

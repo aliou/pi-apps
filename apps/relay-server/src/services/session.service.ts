@@ -4,9 +4,8 @@ import { type Session, sessions } from "../db/schema";
 
 export type SessionStatus =
   | "creating"
-  | "ready"
-  | "running"
-  | "stopped"
+  | "active"
+  | "suspended"
   | "error"
   | "deleted";
 export type SessionMode = "chat" | "code";
@@ -21,6 +20,7 @@ export interface CreateSessionParams {
   modelProvider?: string;
   modelId?: string;
   sandboxProvider?: SandboxProviderType;
+  sandboxProviderId?: string;
   environmentId?: string;
 }
 
@@ -32,6 +32,7 @@ export interface UpdateSessionParams {
   currentModelProvider?: string;
   currentModelId?: string;
   sandboxImageDigest?: string;
+  sandboxProviderId?: string;
 }
 
 export type SessionRecord = Session;
@@ -56,6 +57,7 @@ export class SessionService {
       mode: params.mode,
       status: "creating" as SessionStatus,
       sandboxProvider: params.sandboxProvider ?? null,
+      sandboxProviderId: params.sandboxProviderId ?? null,
       environmentId: params.environmentId ?? null,
       sandboxImageDigest: null as string | null,
       repoId: params.repoId ?? null,
@@ -133,6 +135,9 @@ export class SessionService {
     }
     if (fields.sandboxImageDigest !== undefined) {
       updates.sandboxImageDigest = fields.sandboxImageDigest;
+    }
+    if (fields.sandboxProviderId !== undefined) {
+      updates.sandboxProviderId = fields.sandboxProviderId;
     }
 
     this.db

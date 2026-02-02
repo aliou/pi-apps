@@ -69,18 +69,12 @@ async function main() {
   const secretsService = new SecretsService(db, cryptoService);
   console.log("Secrets service initialized");
 
-  // Load secrets for sandbox injection
-  const secrets = await secretsService.getAllAsEnv();
-  const secretCount = Object.keys(secrets).length;
-  console.log(`Loaded ${secretCount} secret(s) for sandbox injection`);
-
   // Initialize sandbox manager based on config
   const sandboxProvider = getSandboxProvider();
   const sandboxManager = new SandboxManager({
     defaultProvider: sandboxProvider as SandboxProviderType,
     docker: {
       image: getSandboxDockerImage(),
-      secrets,
       secretsBaseDir: paths.stateDir, // Use state dir for temp secrets (Lima-compatible)
     },
   });
@@ -146,16 +140,6 @@ async function main() {
   );
   app.get("/ws/sessions/:id", wsHandler);
 
-  // Graceful shutdown
-  const shutdown = () => {
-    console.log("\nShutting down...");
-    sqlite.close();
-    process.exit(0);
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-
   // Start server with WebSocket support
   const server = serve({
     fetch: app.fetch,
@@ -168,6 +152,29 @@ async function main() {
 
   console.log(`Server listening on http://${config.host}:${config.port}`);
   console.log("Press Ctrl+C to stop");
+
+  // Graceful shutdown
+  const shutdown = (code = 0, err?: unknown) => {
+    if (err) {
+      console.error("Fatal error:", err);
+    } else {
+      console.log("\nShutting down...");
+    }
+
+    try {
+      server.close();
+      sqlite.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+
+    setTimeout(() => process.exit(code), 250).unref();
+  };
+
+  process.on("SIGINT", () => shutdown(0));
+  process.on("SIGTERM", () => shutdown(0));
+  process.on("uncaughtException", (err) => shutdown(1, err));
+  process.on("unhandledRejection", (reason) => shutdown(1, reason));
 }
 
 main().catch((err) => {

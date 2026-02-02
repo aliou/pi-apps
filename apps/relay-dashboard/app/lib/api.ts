@@ -53,7 +53,7 @@ export const api = {
 export interface Session {
   id: string;
   mode: "chat" | "code";
-  status: "creating" | "ready" | "running" | "stopped" | "error" | "deleted";
+  status: "creating" | "active" | "suspended" | "error" | "deleted";
   repoId?: string;
   repoPath?: string;
   branchName?: string;
@@ -93,11 +93,11 @@ export interface JournalEvent {
   createdAt: string;
 }
 
-export interface ConnectResponse {
+export interface ActivateResponse {
   sessionId: string;
   status: Session["status"];
   lastSeq: number;
-  sandboxReady: boolean;
+  sandboxStatus: string;
   wsEndpoint: string;
 }
 

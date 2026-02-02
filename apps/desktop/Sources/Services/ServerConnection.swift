@@ -184,11 +184,10 @@ public final class ServerConnection {
         await disconnectFromSession()
 
         do {
-            let info = try await api.getConnectionInfo(sessionId: session.id)
-            guard info.sandboxReady else {
-                throw ServerConnectionError.sandboxNotReady
-            }
+            // Activate session — blocks until sandbox is running
+            _ = try await api.activateSession(id: session.id)
 
+            // Open WebSocket
             let connection = RemoteAgentConnection(baseURL: serverURL, sessionId: session.id)
             try await connection.connect()
 

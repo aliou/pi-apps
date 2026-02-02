@@ -94,7 +94,7 @@ The relay server exposes REST endpoints and WebSocket for session communication.
 - `POST /api/sessions` - Create session
 - `GET /api/sessions/:id` - Get session
 - `DELETE /api/sessions/:id` - Delete session
-- `GET /api/sessions/:id/connect` - Get WebSocket connection info
+- `POST /api/sessions/:id/activate` - Activate session (ensure sandbox running, blocks until ready)
 - `GET /api/models` - List available models (based on configured secrets)
 - `GET /api/github/token` - GitHub token status
 - `POST /api/github/token` - Set GitHub token

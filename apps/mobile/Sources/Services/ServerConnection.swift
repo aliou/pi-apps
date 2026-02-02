@@ -222,23 +222,10 @@ public final class ServerConnection {
         await disconnectFromSession()
 
         do {
-            // Wait for sandbox to be ready (poll with backoff)
-            let maxAttempts = 30  // 30 seconds max
-            var attempts = 0
-            while attempts < maxAttempts {
-                let info = try await api.getConnectionInfo(sessionId: session.id)
-                if info.sandboxReady {
-                    break
-                }
-                attempts += 1
-                if attempts >= maxAttempts {
-                    throw ServerConnectionError.sandboxNotReady
-                }
-                print("[ServerConnection] Sandbox not ready, waiting... (attempt \(attempts)/\(maxAttempts))")
-                try await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second
-            }
+            // Activate session — blocks until sandbox is running
+            _ = try await api.activateSession(id: session.id)
 
-            // Create and connect
+            // Open WebSocket
             let connection = RemoteAgentConnection(baseURL: serverURL, sessionId: session.id)
             try await connection.connect()
 
@@ -255,14 +242,19 @@ public final class ServerConnection {
     }
 
     public func disconnectFromSession() async {
+        // Invalidate identity FIRST so old eventTask sees "not connected"
+        let oldConnection = agentConnection
+        agentConnection = nil
+        currentSession = nil
+
+        // Cancel forwarding task before disconnecting
         eventTask?.cancel()
         eventTask = nil
 
-        if let connection = agentConnection {
+        // Now disconnect the old WebSocket
+        if let connection = oldConnection {
             await connection.disconnect()
         }
-        agentConnection = nil
-        currentSession = nil
 
         finishAllSubscribers()
     }
@@ -411,11 +403,19 @@ public final class ServerConnection {
     private func startEventForwarding() {
         guard let connection = agentConnection else { return }
 
+        // Bind task to this specific connection so old tasks can't publish into new sessions
+        let connectionId = ObjectIdentifier(connection)
+
         eventTask = Task { [weak self] in
             let eventStream = connection.subscribe()
 
             for await event in eventStream {
                 guard let self, !Task.isCancelled else { break }
+
+                // If connection was replaced, stop silently
+                guard let current = self.agentConnection,
+                      ObjectIdentifier(current) == connectionId
+                else { break }
 
                 switch event {
                 case .nativeToolRequest(let request):
@@ -435,19 +435,22 @@ public final class ServerConnection {
                 }
             }
 
-            // Connection disconnected
-            if let self, self.isSessionConnected {
-                await MainActor.run {
-                    self.broadcastEvent(.agentEnd(
-                        success: false,
-                        error: RPCError(
-                            code: "transport_disconnect",
-                            message: "WebSocket connection lost",
-                            details: nil
-                        )
-                    ))
-                    self.finishAllSubscribers()
-                }
+            // Stream ended — only broadcast disconnect if still the active connection
+            guard let self,
+                  let current = self.agentConnection,
+                  ObjectIdentifier(current) == connectionId
+            else { return }
+
+            await MainActor.run {
+                self.broadcastEvent(.agentEnd(
+                    success: false,
+                    error: RPCError(
+                        code: "transport_disconnect",
+                        message: "WebSocket connection lost",
+                        details: nil
+                    )
+                ))
+                self.finishAllSubscribers()
             }
         }
     }

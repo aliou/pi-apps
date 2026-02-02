@@ -121,10 +121,10 @@ describe("SessionService", () => {
   describe("update", () => {
     it("updates status", () => {
       const session = service.create({ mode: "chat" });
-      service.update(session.id, { status: "ready" });
+      service.update(session.id, { status: "active" });
 
       const updated = service.get(session.id);
-      expect(updated?.status).toBe("ready");
+      expect(updated?.status).toBe("active");
     });
 
     it("updates name", () => {
@@ -164,7 +164,7 @@ describe("SessionService", () => {
 
     it("throws for nonexistent session", () => {
       expect(() => {
-        service.update("nonexistent", { status: "ready" });
+        service.update("nonexistent", { status: "active" });
       }).toThrow("Session not found");
     });
   });

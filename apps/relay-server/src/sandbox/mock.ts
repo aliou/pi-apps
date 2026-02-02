@@ -1,10 +1,13 @@
 import readline from "node:readline";
 import { PassThrough } from "node:stream";
 import type {
+  CleanupResult,
   CreateSandboxOptions,
   SandboxHandle,
+  SandboxInfo,
   SandboxProvider,
   SandboxStatus,
+  SandboxStreams,
 } from "./types";
 
 /**
@@ -12,9 +15,10 @@ import type {
  * Accepts commands on stdin, emits events on stdout.
  */
 class MockSandboxHandle implements SandboxHandle {
-  readonly stdin = new PassThrough();
-  readonly stdout = new PassThrough();
-  readonly stderr = new PassThrough();
+  private readonly _stdin = new PassThrough();
+  private readonly _stdout = new PassThrough();
+  private readonly _stderr = new PassThrough();
+  readonly providerId: string;
 
   private _status: SandboxStatus = "creating";
   private statusHandlers = new Set<(status: SandboxStatus) => void>();
@@ -55,6 +59,7 @@ class MockSandboxHandle implements SandboxHandle {
   ] as const;
 
   constructor(readonly sessionId: string) {
+    this.providerId = `mock-${sessionId}`;
     this.setupInputHandler();
     // Simulate sandbox starting up
     setTimeout(() => this.setStatus("running"), 100);
@@ -64,12 +69,45 @@ class MockSandboxHandle implements SandboxHandle {
     return this._status;
   }
 
+  async resume(): Promise<void> {
+    if (this._status === "paused") {
+      this.setStatus("running");
+    } else if (this._status === "stopped") {
+      throw new Error(`Cannot resume: sandbox ${this.sessionId} is stopped`);
+    } else if (this._status === "creating") {
+      // Wait for it to transition to running
+      await new Promise((resolve) => {
+        const unsubscribe = this.onStatusChange((status) => {
+          if (status === "running") {
+            unsubscribe();
+            resolve(undefined);
+          }
+        });
+      });
+    }
+    // If already running, no-op
+  }
+
+  async attach(): Promise<SandboxStreams> {
+    return {
+      stdin: this._stdin,
+      stdout: this._stdout,
+      stderr: this._stderr,
+      detach: () => {
+        // No-op for mock — streams stay alive for re-attach
+      },
+    };
+  }
+
+  async pause(): Promise<void> {
+    this.setStatus("paused");
+  }
+
   async terminate(): Promise<void> {
-    this.setStatus("stopping");
     this.abortController?.abort();
     this.bashAbortController?.abort();
-    this.stdin.end();
-    this.stdout.end();
+    this._stdin.end();
+    this._stdout.end();
     this.setStatus("stopped");
   }
 
@@ -86,7 +124,7 @@ class MockSandboxHandle implements SandboxHandle {
   }
 
   private setupInputHandler(): void {
-    const rl = readline.createInterface({ input: this.stdin });
+    const rl = readline.createInterface({ input: this._stdin });
 
     rl.on("line", (line) => {
       try {
@@ -751,7 +789,7 @@ class MockSandboxHandle implements SandboxHandle {
   // -- Helpers --
 
   private emit(event: Record<string, unknown>): void {
-    this.stdout.write(`${JSON.stringify(event)}\n`);
+    this._stdout.write(`${JSON.stringify(event)}\n`);
   }
 
   private sendResponse(
@@ -805,19 +843,34 @@ export class MockSandboxProvider implements SandboxProvider {
     return handle;
   }
 
-  getSandbox(sessionId: string): SandboxHandle | undefined {
-    const handle = this.sandboxes.get(sessionId);
-    if (handle && handle.status !== "stopped") {
-      return handle;
+  async getSandbox(providerId: string): Promise<SandboxHandle> {
+    for (const handle of this.sandboxes.values()) {
+      if (handle.providerId === providerId && handle.status !== "stopped") {
+        return handle;
+      }
     }
-    return undefined;
+    throw new Error(`Sandbox not found: ${providerId}`);
   }
 
-  removeSandbox(sessionId: string): void {
-    const handle = this.sandboxes.get(sessionId);
-    if (handle) {
-      handle.terminate();
-      this.sandboxes.delete(sessionId);
+  async listSandboxes(): Promise<SandboxInfo[]> {
+    return Array.from(this.sandboxes.values())
+      .filter((h) => h.status !== "stopped")
+      .map((h) => ({
+        sessionId: h.sessionId,
+        providerId: h.providerId,
+        status: h.status,
+        createdAt: new Date().toISOString(),
+      }));
+  }
+
+  async cleanup(): Promise<CleanupResult> {
+    let count = 0;
+    for (const [id, handle] of this.sandboxes) {
+      if (handle.status === "stopped") {
+        this.sandboxes.delete(id);
+        count++;
+      }
     }
+    return { containersRemoved: count, volumesRemoved: 0 };
   }
 }

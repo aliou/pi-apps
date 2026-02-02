@@ -6,6 +6,7 @@ import type {
   SandboxHandle,
   SandboxInfo,
   SandboxProvider,
+  SandboxStreams,
 } from "./types";
 
 export type SandboxProviderType = "mock" | "docker";
@@ -19,18 +20,13 @@ export interface SandboxManagerConfig {
   enabledProviders?: SandboxProviderType[];
 }
 
-interface SessionTracking {
-  provider: SandboxProviderType;
-  handle: SandboxHandle;
-}
-
 /**
  * Manages sandbox lifecycle with support for multiple providers.
- * Sessions can specify which provider to use at creation time.
+ * Stateless — does not track sessions in memory.
+ * The DB is the source of truth for session → provider/providerId mappings.
  */
 export class SandboxManager {
   private providers = new Map<SandboxProviderType, SandboxProvider>();
-  private sessions = new Map<string, SessionTracking>();
   private defaultProvider: SandboxProviderType;
 
   constructor(config: SandboxManagerConfig) {
@@ -38,7 +34,6 @@ export class SandboxManager {
 
     const enabled = config.enabledProviders ?? ["mock", "docker"];
 
-    // Initialize enabled providers
     if (enabled.includes("mock")) {
       this.providers.set("mock", new MockSandboxProvider());
     }
@@ -88,9 +83,7 @@ export class SandboxManager {
 
   /**
    * Create a sandbox for a session.
-   * @param sessionId - Session ID
-   * @param options - Creation options
-   * @param providerType - Provider to use (defaults to defaultProvider)
+   * Returns the handle. Caller should persist handle.providerId to DB.
    */
   async createForSession(
     sessionId: string,
@@ -104,36 +97,66 @@ export class SandboxManager {
       throw new Error(`Provider "${type}" is not enabled`);
     }
 
-    const handle = await provider.createSandbox({ sessionId, ...options });
+    return provider.createSandbox({ sessionId, ...options });
+  }
 
-    // Track which provider this session uses
-    this.sessions.set(sessionId, { provider: type, handle });
+  /**
+   * Get sandbox handle for a session by its provider-specific ID.
+   * Checks real provider state (e.g., Docker API).
+   * Throws if sandbox doesn't exist.
+   */
+  async getHandle(
+    providerType: SandboxProviderType,
+    providerId: string,
+  ): Promise<SandboxHandle> {
+    const provider = this.providers.get(providerType);
+    if (!provider) {
+      throw new Error(`Provider "${providerType}" is not enabled`);
+    }
 
+    return provider.getSandbox(providerId);
+  }
+
+  /**
+   * Resume a sandbox session: get handle and call resume().
+   * Used by the activate endpoint.
+   */
+  async resumeSession(
+    providerType: SandboxProviderType,
+    providerId: string,
+    secrets?: Record<string, string>,
+  ): Promise<SandboxHandle> {
+    const handle = await this.getHandle(providerType, providerId);
+    await handle.resume(secrets);
     return handle;
   }
 
-  /** Get sandbox handle for a session */
-  getForSession(sessionId: string): SandboxHandle | undefined {
-    return this.sessions.get(sessionId)?.handle;
+  /**
+   * Attach to a sandbox: get handle + streams in one call.
+   * Used by the WS handler.
+   */
+  async attachSession(
+    providerType: SandboxProviderType,
+    providerId: string,
+  ): Promise<{ handle: SandboxHandle; streams: SandboxStreams }> {
+    const handle = await this.getHandle(providerType, providerId);
+    const streams = await handle.attach();
+    return { handle, streams };
   }
 
-  /** Get which provider a session is using */
-  getProviderForSession(sessionId: string): SandboxProviderType | undefined {
-    return this.sessions.get(sessionId)?.provider;
-  }
-
-  /** Terminate sandbox for a session */
-  async terminateForSession(sessionId: string): Promise<void> {
-    const tracking = this.sessions.get(sessionId);
-    if (!tracking) return;
-
-    const provider = this.providers.get(tracking.provider);
-    if (provider) {
-      await tracking.handle.terminate();
-      provider.removeSandbox(sessionId);
+  /**
+   * Terminate a sandbox by provider-specific ID.
+   */
+  async terminateByProviderId(
+    providerType: SandboxProviderType,
+    providerId: string,
+  ): Promise<void> {
+    try {
+      const handle = await this.getHandle(providerType, providerId);
+      await handle.terminate();
+    } catch {
+      // Sandbox already gone — that's fine
     }
-
-    this.sessions.delete(sessionId);
   }
 
   /** List all active sandboxes across all providers */
@@ -143,11 +166,9 @@ export class SandboxManager {
     const results: (SandboxInfo & { provider: SandboxProviderType })[] = [];
 
     for (const [type, provider] of this.providers) {
-      if (provider.listSandboxes) {
-        const sandboxes = await provider.listSandboxes();
-        for (const sandbox of sandboxes) {
-          results.push({ ...sandbox, provider: type });
-        }
+      const sandboxes = await provider.listSandboxes();
+      for (const sandbox of sandboxes) {
+        results.push({ ...sandbox, provider: type });
       }
     }
 
@@ -160,11 +181,9 @@ export class SandboxManager {
     let volumesRemoved = 0;
 
     for (const provider of this.providers.values()) {
-      if (provider.cleanup) {
-        const result = await provider.cleanup();
-        containersRemoved += result.containersRemoved;
-        volumesRemoved += result.volumesRemoved;
-      }
+      const result = await provider.cleanup();
+      containersRemoved += result.containersRemoved;
+      volumesRemoved += result.volumesRemoved;
     }
 
     return { containersRemoved, volumesRemoved };

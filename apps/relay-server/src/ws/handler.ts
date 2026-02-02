@@ -1,9 +1,25 @@
 import type { UpgradeWebSocket } from "hono/ws";
-import type { SandboxManager } from "../sandbox/manager";
+import type { SandboxManager, SandboxProviderType } from "../sandbox/manager";
 import type { EventJournal } from "../services/event-journal";
 import type { SessionService } from "../services/session.service";
 import { type ConnectionManager, WebSocketConnection } from "./connection";
 import { isClientCommand } from "./types";
+
+function wsLog(
+  event: string,
+  sessionId: string | undefined,
+  fields?: Record<string, unknown>,
+) {
+  console.log(
+    `[ws] ${event} session=${sessionId ?? "unknown"}${
+      fields
+        ? ` ${Object.entries(fields)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(" ")}`
+        : ""
+    }`,
+  );
+}
 
 export interface WebSocketHandlerDeps {
   sandboxManager: SandboxManager;
@@ -30,55 +46,65 @@ export function createWebSocketHandler(
 
     return {
       onOpen(_evt, ws) {
-        // Validate session exists
+        wsLog("open", sessionId, { lastSeq });
+
+        // Validate session exists and is active
         const session = sessionId ? sessionService.get(sessionId) : null;
         if (!session || session.status === "deleted") {
+          wsLog("rejected", sessionId, { reason: "session_not_found" });
           ws.close(4004, "Session not found");
           return;
         }
 
-        // Get or create sandbox for session
-        const sandbox = sandboxManager.getForSession(sessionId);
-        if (!sandbox) {
-          // Try to create sandbox if session is in a state that allows it
-          if (session.status === "creating" || session.status === "ready") {
-            // Sandbox will be created async, client should retry
-            ws.close(4003, "Sandbox not ready, retry in a moment");
-            return;
-          }
-          ws.close(4003, "Sandbox not available");
+        if (session.status !== "active") {
+          wsLog("rejected", sessionId, { reason: "session_not_active" });
+          ws.close(4003, "Session not active — call activate first");
           return;
         }
 
-        // Create connection
-        connection = new WebSocketConnection(
-          ws,
-          sessionId,
-          sandbox,
-          eventJournal,
-          lastSeq,
-        );
-
-        // Register with connection manager
-        connectionManager.add(sessionId, connection);
-
-        // Send connected event
-        const maxSeq = eventJournal.getMaxSeq(sessionId);
-        connection.send({
-          type: "connected",
-          sessionId,
-          lastSeq: maxSeq,
-        });
-
-        // Replay missed events if client provided lastSeq
-        if (lastSeq > 0 && lastSeq < maxSeq) {
-          connection.replayFromSeq(lastSeq);
+        if (!session.sandboxProvider || !session.sandboxProviderId) {
+          wsLog("rejected", sessionId, { reason: "sandbox_not_provisioned" });
+          ws.close(4003, "Sandbox not provisioned");
+          return;
         }
 
-        // Update session status to running
-        if (session.status === "ready") {
-          sessionService.update(sessionId, { status: "running" });
-        }
+        // Attach streams (sandbox is already running thanks to activate)
+        const providerType = session.sandboxProvider as SandboxProviderType;
+        const providerId = session.sandboxProviderId;
+
+        sandboxManager
+          .attachSession(providerType, providerId)
+          .then(({ streams }) => {
+            wsLog("attached", sessionId);
+            connection = new WebSocketConnection(
+              ws,
+              sessionId,
+              streams,
+              eventJournal,
+              lastSeq,
+            );
+
+            connectionManager.add(sessionId, connection);
+
+            const maxSeq = eventJournal.getMaxSeq(sessionId);
+            connection.send({
+              type: "connected",
+              sessionId,
+              lastSeq: maxSeq,
+            });
+
+            if (lastSeq > 0 && lastSeq < maxSeq) {
+              connection.replayFromSeq(lastSeq);
+            }
+          })
+          .catch((err) => {
+            wsLog("attach_failed", sessionId, { error: String(err) });
+            console.error(
+              `Failed to attach streams for session ${sessionId}:`,
+              err,
+            );
+            ws.close(4003, "Failed to attach to sandbox");
+          });
       },
 
       onMessage(evt, _ws) {
@@ -95,6 +121,7 @@ export function createWebSocketHandler(
           const parsed = JSON.parse(data);
 
           if (isClientCommand(parsed)) {
+            wsLog("cmd", sessionId, { type: parsed.type });
             connection.handleCommand(parsed);
             // Touch session activity
             sessionService.touch(sessionId);
@@ -115,6 +142,7 @@ export function createWebSocketHandler(
       },
 
       onClose(_evt, _ws) {
+        wsLog("closed", sessionId);
         if (connection && sessionId) {
           // Remove from connection manager
           connectionManager.remove(sessionId, connection);
@@ -126,6 +154,7 @@ export function createWebSocketHandler(
       },
 
       onError(evt, _ws) {
+        wsLog("error", sessionId, { error: String(evt) });
         console.error(`WebSocket error for session ${sessionId}:`, evt);
         if (connection && sessionId) {
           connectionManager.remove(sessionId, connection);

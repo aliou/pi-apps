@@ -194,25 +194,41 @@ describe("Sessions Routes", () => {
     });
   });
 
-  describe("GET /api/sessions/:id/connect", () => {
-    it("returns connection info for existing session", async () => {
-      const session = services.sessionService.create({ mode: "chat" });
-
+  describe("POST /api/sessions/:id/activate", () => {
+    it("activates session with provisioned sandbox", async () => {
       const app = createApp({ services });
-      const res = await app.request(`/api/sessions/${session.id}/connect`);
+
+      // Create session via API so sandbox gets provisioned async
+      const createRes = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "chat" }),
+      });
+      const createJson = (await createRes.json()) as { data: { id: string } };
+      const sessionId = createJson.data.id;
+
+      // Wait for sandbox provisioning
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const res = await app.request(`/api/sessions/${sessionId}/activate`, {
+        method: "POST",
+      });
 
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.data.sessionId).toBe(session.id);
-      expect(json.data.status).toBe("creating");
+      expect(json.data.sessionId).toBe(sessionId);
+      expect(json.data.status).toBe("active");
       expect(json.data.lastSeq).toBe(0);
+      expect(json.data.sandboxStatus).toBe("running");
       expect(json.data.wsEndpoint).toContain("/ws/sessions/");
       expect(json.error).toBeNull();
     });
 
     it("returns 404 for nonexistent session", async () => {
       const app = createApp({ services });
-      const res = await app.request("/api/sessions/nonexistent-id/connect");
+      const res = await app.request("/api/sessions/nonexistent-id/activate", {
+        method: "POST",
+      });
 
       expect(res.status).toBe(404);
       const json = await res.json();
@@ -224,11 +240,27 @@ describe("Sessions Routes", () => {
       services.sessionService.update(session.id, { status: "deleted" });
 
       const app = createApp({ services });
-      const res = await app.request(`/api/sessions/${session.id}/connect`);
+      const res = await app.request(`/api/sessions/${session.id}/activate`, {
+        method: "POST",
+      });
 
       expect(res.status).toBe(410);
       const json = await res.json();
       expect(json.error).toBe("Session has been deleted");
+    });
+
+    it("returns 409 for errored session", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      services.sessionService.update(session.id, { status: "error" });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}/activate`, {
+        method: "POST",
+      });
+
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.error).toBe("Session is in error state");
     });
   });
 
