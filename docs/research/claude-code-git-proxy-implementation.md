@@ -155,558 +155,373 @@ password=<session-jwt>
 
 The proxy intercepts this and replaces it with real credentials.
 
-## How to Implement for Your Server
+## How to Implement in the Relay Server
 
-### Option 1: Use Anthropic's Sandbox Runtime Directly
+This section maps the Git proxy architecture to the existing relay server codebase.
+All file references below are relative to `apps/relay-server/src/`.
 
-```bash
-# Install
-npm install -g @anthropic-ai/sandbox-runtime
+### Current State: What Already Exists
 
-# Run command in sandbox
-npx @anthropic-ai/sandbox-runtime "git clone https://github.com/user/repo"
+The relay server already implements a Docker sandbox with git credential
+injection, but **the real GitHub token is embedded directly into the container**:
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| Docker sandbox provider | Implemented | `sandbox/docker.ts` |
+| Session lifecycle (create/pause/resume) | Implemented | `services/session.service.ts` |
+| Encrypted secrets (AES-256-GCM) | Implemented | `services/secrets.service.ts`, `services/crypto.service.ts` |
+| Git credential helper (writes real token) | Implemented | `sandbox/docker.ts:368-388` |
+| Ephemeral clone container | Implemented | `sandbox/docker.ts:390-456` |
+| Sandbox types/interfaces | Implemented | `sandbox/types.ts` |
+| GitHub token stored in settings | Implemented | `routes/sessions.ts:95-104` |
+| Session-scoped JWT | **Missing** | — |
+| Git proxy service | **Missing** | — |
+| Network isolation (`--network=none`) | **Missing** (uses bridge) | `sandbox/docker.ts:70` |
+| Branch restriction enforcement | **Missing** | — |
+| Git operation audit log | **Missing** | — |
+
+### Current Credential Flow (Insecure)
+
+```
+sessions.ts:96-104       docker.ts:168          docker.ts:372-376
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────────────┐
+│ Read github_repos │    │ setupGitConfig() │    │ Credential helper script │
+│ _access_token    │───▶│ writes real token │───▶│ echoes real token        │
+│ from settings DB │    │ to host dir      │    │ mounted RO at /data/git  │
+└──────────────────┘    └──────────────────┘    └──────────────────────────┘
+                                                           │
+                                                           ▼
+                                                  Container has full
+                                                  GitHub PAT access
 ```
 
-### Option 2: Build Custom Git Proxy
+**Risk:** A compromised agent can use the credential helper to push to any branch
+on any repo the token has access to. The token is readable inside the container at
+`/data/git/git-credential-helper` (mounted read-only, but the content is the raw PAT).
 
-#### Step 1: Create Session JWT Service
+### Target Credential Flow (Proxy-Based)
+
+```
+sessions.ts              git-proxy.ts               docker.ts
+┌──────────────────┐    ┌──────────────────────┐    ┌──────────────────────────┐
+│ Generate session │    │ Git Proxy Service     │    │ Credential helper script │
+│ JWT with branch  │    │ - Validates JWT       │    │ echoes session JWT only  │
+│ claim            │    │ - Checks branch       │    │ (not the real PAT)       │
+└───────┬──────────┘    │ - Injects real token  │    └──────────┬───────────────┘
+        │               │ - Forwards to GitHub  │               │
+        │               └───────────┬───────────┘               │
+        │                           │                           │
+        ▼                           ▼                           ▼
+  JWT in /data/git            Real PAT stays             Container only
+  (session-scoped,            on host, never             has a JWT that
+   branch-locked)             enters container           is useless alone
+```
+
+### Step 1: Add a Session Token Service
+
+New file: `services/session-token.service.ts`
+
+This reuses the existing `CryptoService` (`services/crypto.service.ts`) for key
+material. The `RELAY_ENCRYPTION_KEY` already exists in the config.
 
 ```typescript
-// session-token-service.ts
-import jwt from 'jsonwebtoken';
+// services/session-token.service.ts
+import jwt from "jsonwebtoken";
 
-interface SessionClaims {
+export interface GitSessionClaims {
   sessionId: string;
-  repository: string;          // e.g., "owner/repo"
-  allowedBranch: string;       // e.g., "claude/fix-bug-123"
-  allowedOperations: string[]; // e.g., ["push", "fetch", "clone"]
-  expiresAt: number;
+  repository: string;      // "owner/repo" — from sessions.repoId resolution
+  allowedBranch: string;   // from sessions.branchName
+  ops: ("push" | "fetch" | "clone")[];
 }
 
-function createSessionToken(claims: SessionClaims): string {
-  return jwt.sign(claims, process.env.JWT_SECRET, {
-    expiresIn: '24h'
-  });
-}
-```
+export class SessionTokenService {
+  constructor(private readonly secret: string) {}
 
-#### Step 2: Build Git Proxy Server
-
-```typescript
-// git-proxy.ts
-import { createServer } from 'http';
-import { spawn } from 'child_process';
-
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-
-async function handleGitRequest(req, res) {
-  // 1. Extract session JWT from request
-  const sessionJwt = extractCredential(req);
-
-  // 2. Validate JWT
-  const claims = validateAndDecodeJwt(sessionJwt);
-  if (!claims) {
-    return res.status(401).send('Invalid session token');
+  /** Create a session-scoped JWT for the git proxy. */
+  create(claims: GitSessionClaims): string {
+    return jwt.sign(claims, this.secret, { expiresIn: "24h" });
   }
 
-  // 3. Parse git operation
-  const gitOp = parseGitOperation(req);
-
-  // 4. Validate branch restriction
-  if (gitOp.type === 'push') {
-    if (gitOp.targetBranch !== claims.allowedBranch) {
-      return res.status(403).send(
-        `Push denied: can only push to ${claims.allowedBranch}`
-      );
+  /** Validate and decode. Returns null if invalid/expired. */
+  verify(token: string): GitSessionClaims | null {
+    try {
+      return jwt.verify(token, this.secret) as GitSessionClaims;
+    } catch {
+      return null;
     }
   }
-
-  // 5. Validate repository
-  if (gitOp.repository !== claims.repository) {
-    return res.status(403).send('Repository access denied');
-  }
-
-  // 6. Forward to GitHub with real credentials
-  const githubReq = injectGitHubAuth(req, GITHUB_TOKEN);
-  const response = await forwardToGitHub(githubReq);
-
-  return res.send(response);
 }
 ```
 
-#### Step 3: Configure Git Inside Sandbox
+The `secret` can come from `RELAY_ENCRYPTION_KEY` (already required by the server
+at `index.ts:57-70`) or a dedicated `GIT_PROXY_JWT_SECRET` env var.
 
-```bash
-# Set proxy for git operations
-export HTTP_PROXY=http://localhost:8080
-export HTTPS_PROXY=http://localhost:8080
+### Step 2: Add the Git Proxy Service
 
-# Or configure git specifically
-git config --global http.proxy http://localhost:8080
-git config --global credential.helper '/path/to/session-helper'
-```
+New file: `services/git-proxy.service.ts`
 
-### Option 3: Use FINOS GitProxy
-
-GitProxy is an open-source project that provides similar functionality:
-- **Website:** https://git-proxy.finos.org
-- **Features:** Push interception, approval workflows, audit logging
-
-## Recommended Architecture for Pi-Apps
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Pi-Apps Server                               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Session Manager                                          │   │
-│  │  - Creates unique branch per session                      │   │
-│  │  - Generates session-scoped JWT                           │   │
-│  │  - Tracks session state                                   │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                           │                                      │
-│                           ▼                                      │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Git Proxy Service                                        │   │
-│  │  - Validates session JWTs                                 │   │
-│  │  - Enforces branch restrictions                           │   │
-│  │  - Injects GitHub credentials                             │   │
-│  │  - Logs all operations for audit                          │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                           │                                      │
-│                           ▼                                      │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Agent Sandbox (Docker/Bubblewrap/Modal)                  │   │
-│  │  - No network except via proxy socket                     │   │
-│  │  - Session JWT as only credential                         │   │
-│  │  - Filesystem restricted to repo directory                │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Key Implementation Steps
-
-1. **Session Initialization:**
-   - Create unique branch: `claude/<task-id>-<session-id>`
-   - Generate session JWT with branch claim
-   - Clone repo into isolated sandbox
-
-2. **Git Proxy Middleware:**
-   - Parse git-upload-pack and git-receive-pack protocols
-   - Validate branch on push operations
-   - Replace session credential with real GitHub token
-
-3. **Sandbox Setup:**
-   - Use Docker with `--network=none` + proxy sidecar
-   - Or use Bubblewrap with `--unshare-net`
-   - Mount only the repository directory
-
-4. **Credential Flow:**
-   ```
-   Agent → Session JWT → Proxy → GitHub Token → GitHub
-   ```
-
-## Security Checklist
-
-- [ ] Credentials never enter the sandbox
-- [ ] Session JWTs are short-lived and session-specific
-- [ ] Branch restrictions are enforced at proxy level (not in agent)
-- [ ] All git operations are logged for audit
-- [ ] Network isolation prevents direct GitHub access
-- [ ] Repository access is scoped to the specific repo only
-- [ ] Force-push to protected branches is blocked
-- [ ] JWT can be revoked if session is compromised
-
----
-
-## Integration with Pi-Apps Sandbox RFC (Issue #5)
-
-The [Sandbox Abstraction RFC](https://github.com/aliou/pi-apps/issues/5) proposes a compute abstraction layer for running Pi in isolated environments. The Git proxy fits naturally into this architecture.
-
-### Architectural Alignment
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           Pi-Apps Server                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │                        Session Manager                                  │ │
-│  │  - Creates session with unique ID                                       │ │
-│  │  - Generates session-scoped JWT (for Git proxy auth)                    │ │
-│  │  - Creates unique branch: `claude/<task-id>-<session-id>`               │ │
-│  │  - Manages session lifecycle (pause/resume/backup)                      │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                         │
-│           ┌────────────────────────┼────────────────────────┐               │
-│           ▼                        ▼                        ▼               │
-│  ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐ │
-│  │  Git Proxy      │    │  Anthropic Proxy    │    │  Network Proxy      │ │
-│  │  Service        │    │  (API credentials)  │    │  (Domain allowlist) │ │
-│  │                 │    │                     │    │                     │ │
-│  │  - Branch       │    │  - Injects API key  │    │  - npm, pip, etc.   │ │
-│  │    restriction  │    │  - Rate limiting    │    │  - Blocks exfil     │ │
-│  │  - Repo scoping │    │  - Usage tracking   │    │    domains          │ │
-│  └────────┬────────┘    └──────────┬──────────┘    └──────────┬──────────┘ │
-│           │                        │                          │             │
-│           └────────────────────────┼──────────────────────────┘             │
-│                                    │                                         │
-│                          Unix Socket / Sidecar                               │
-│                                    │                                         │
-│  ┌─────────────────────────────────▼───────────────────────────────────────┐│
-│  │                     ComputeProvider Abstraction                          ││
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────┐   ││
-│  │  │  Local  │  │ Docker  │  │  Modal  │  │  Koyeb  │  │ Cloudflare  │   ││
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────────┘   ││
-│  │                                                                          ││
-│  │  Sandbox runs: pi --mode rpc                                             ││
-│  │  - No direct network access                                              ││
-│  │  - Only session JWT credential inside                                    ││
-│  │  - Filesystem restricted to /workspace                                   ││
-│  └──────────────────────────────────────────────────────────────────────────┘│
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Integration Points with RFC Interfaces
-
-#### 1. Extend `CreateSandboxOptions` for Git Configuration
+The proxy runs as a Hono sub-app mounted on the relay server (same process,
+different route prefix), or as a standalone service if preferred. It intercepts
+the Git smart HTTP protocol endpoints (`/info/refs`, `/git-upload-pack`,
+`/git-receive-pack`).
 
 ```typescript
-interface CreateSandboxOptions {
-  // Existing from RFC
-  timeoutMs?: number;
-  resourceLimits?: ResourceLimits;
+// services/git-proxy.service.ts
+import { Hono } from "hono";
+import type { SessionTokenService } from "./session-token.service";
 
-  // New: Git proxy configuration
-  git?: {
-    repository: string;           // "owner/repo"
-    allowedBranch: string;        // "claude/fix-123-abc"
-    sessionToken: string;         // Session-scoped JWT
-    allowedOperations?: ('push' | 'fetch' | 'clone')[];
-  };
+export function createGitProxyApp(
+  tokenService: SessionTokenService,
+  getGitHubToken: () => string | undefined,
+) {
+  const app = new Hono();
 
-  // New: Credential proxy endpoints
-  proxies?: {
-    git?: string;        // "http://host:8080" - Git credential proxy
-    anthropic?: string;  // "http://host:8081" - API key injection proxy
-    network?: string;    // "http://host:8082" - General HTTP proxy
-  };
-}
-```
+  // Intercept all Git smart HTTP requests
+  // Git sends: GET  /<owner>/<repo>.git/info/refs?service=git-upload-pack
+  //            POST /<owner>/<repo>.git/git-upload-pack   (fetch)
+  //            POST /<owner>/<repo>.git/git-receive-pack  (push)
+  app.all("/:owner/:repo{.+\\.git}/*", async (c) => {
+    // 1. Extract session JWT from Basic auth (username=x-session-token)
+    const authHeader = c.req.header("authorization") ?? "";
+    const token = parseBasicAuthPassword(authHeader);
 
-#### 2. Extend `SandboxHandle` for Git Status
-
-```typescript
-interface SandboxHandle {
-  // Existing from RFC
-  sendPrompt(prompt: string): Promise<void>;
-  onEvent(handler: (event: SandboxEvent) => void): void;
-  pause(): Promise<SandboxBackup>;
-  resume(backup: SandboxBackup): Promise<void>;
-  terminate(): Promise<void>;
-
-  // New: Git operation hooks
-  onGitOperation?(handler: (op: GitOperation) => void): void;
-  getGitAuditLog?(): Promise<GitAuditEntry[]>;
-}
-
-interface GitOperation {
-  type: 'push' | 'fetch' | 'clone' | 'pull';
-  repository: string;
-  branch?: string;
-  timestamp: Date;
-  allowed: boolean;
-  reason?: string;  // If denied, why
-}
-```
-
-#### 3. Provider-Specific Network Configuration
-
-Each compute provider needs different network isolation setup:
-
-```typescript
-// Docker Provider
-class DockerComputeProvider implements ComputeProvider {
-  async createSandbox(options: CreateSandboxOptions): Promise<SandboxHandle> {
-    // Network isolation via Docker
-    const containerConfig = {
-      NetworkMode: 'none',  // No direct network
-      // Mount proxy socket
-      Binds: [
-        '/var/run/pi-proxy.sock:/var/run/proxy.sock:ro'
-      ],
-      Env: [
-        // Git uses proxy socket
-        `GIT_PROXY_COMMAND=/usr/bin/git-proxy-wrapper`,
-        `GIT_CREDENTIAL_HELPER=/usr/bin/session-credential-helper`,
-        `SESSION_TOKEN=${options.git?.sessionToken}`,
-        // HTTP traffic via proxy
-        `HTTP_PROXY=http://proxy.sock:8080`,
-        `HTTPS_PROXY=http://proxy.sock:8080`,
-      ]
-    };
-    // ...
-  }
-}
-
-// Modal Provider
-class ModalComputeProvider implements ComputeProvider {
-  async createSandbox(options: CreateSandboxOptions): Promise<SandboxHandle> {
-    // Modal uses gVisor - configure network policy
-    const sandbox = await modal.Sandbox.create({
-      network_file_systems: {},  // No network FS
-      // Proxy sidecar for network access
-      proxy: {
-        git: options.proxies?.git,
-        http: options.proxies?.network,
-      },
-      secrets: [
-        // Only session token, not real credentials
-        modal.Secret.from_dict({ SESSION_TOKEN: options.git?.sessionToken })
-      ]
-    });
-    // ...
-  }
-}
-```
-
-### Session Lifecycle with Git Integration
-
-#### Session Creation Flow
-
-```typescript
-async function createSession(userId: string, repoUrl: string): Promise<Session> {
-  // 1. Parse repository
-  const repo = parseGitUrl(repoUrl);  // { owner: "foo", name: "bar" }
-
-  // 2. Create unique session branch
-  const sessionId = generateSessionId();
-  const branchName = `claude/${taskId}-${sessionId}`;
-
-  // 3. Generate session-scoped JWT
-  const sessionToken = jwt.sign({
-    sessionId,
-    userId,
-    repository: `${repo.owner}/${repo.name}`,
-    allowedBranch: branchName,
-    allowedOperations: ['push', 'fetch', 'clone'],
-    exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60)  // 24h
-  }, process.env.JWT_SECRET);
-
-  // 4. Create the branch on GitHub (using server's real credentials)
-  await createBranch(repo, branchName, 'main');
-
-  // 5. Create sandbox with Git configuration
-  const sandbox = await computeProvider.createSandbox({
-    timeoutMs: 3600000,
-    git: {
-      repository: `${repo.owner}/${repo.name}`,
-      allowedBranch: branchName,
-      sessionToken,
-    },
-    proxies: {
-      git: process.env.GIT_PROXY_URL,
-      anthropic: process.env.ANTHROPIC_PROXY_URL,
-      network: process.env.NETWORK_PROXY_URL,
+    // 2. Validate
+    const claims = tokenService.verify(token);
+    if (!claims) {
+      return c.text("Invalid session token", 401);
     }
+
+    // 3. Check repository matches
+    const reqRepo = `${c.req.param("owner")}/${c.req.param("repo").replace(/\.git$/, "")}`;
+    if (reqRepo !== claims.repository) {
+      return c.text("Repository access denied", 403);
+    }
+
+    // 4. For push (git-receive-pack), validate branch
+    const path = c.req.path;
+    if (path.endsWith("/git-receive-pack")) {
+      // Parse the pkt-line to extract the target ref
+      const body = await c.req.arrayBuffer();
+      const targetBranch = extractBranchFromReceivePack(Buffer.from(body));
+      if (targetBranch && targetBranch !== `refs/heads/${claims.allowedBranch}`) {
+        return c.text(
+          `Push denied: can only push to ${claims.allowedBranch}`,
+          403,
+        );
+      }
+      // Re-forward the body to GitHub (we consumed it)
+      return forwardToGitHub(c, getGitHubToken(), body);
+    }
+
+    // 5. Forward reads (fetch/clone) with real credentials
+    return forwardToGitHub(c, getGitHubToken());
   });
 
-  // 6. Clone repo inside sandbox
-  await sandbox.sendPrompt(`Clone the repository and checkout ${branchName}`);
-
-  return { sessionId, sandbox, branchName };
+  return app;
 }
 ```
 
-#### Session Backup/Restore with Git State
-
-The RFC mentions backup/restore for session continuity. Git state needs special handling:
+Mount it in `index.ts` alongside the existing API routes:
 
 ```typescript
-interface SandboxBackup {
-  // Existing from RFC
+// index.ts — alongside existing route mounts
+import { createGitProxyApp } from "./services/git-proxy.service";
+
+const gitProxy = createGitProxyApp(sessionTokenService, () => getGitHubToken(db));
+app.route("/git", gitProxy);
+```
+
+### Step 3: Modify `setupGitConfig` to Use Session JWT
+
+Change `sandbox/docker.ts:368-388` to write the session JWT instead of the real
+GitHub token into the credential helper.
+
+**Current** (`docker.ts:371-376`):
+```typescript
+const helperScript = githubToken
+  ? `#!/bin/sh\necho "protocol=https\nhost=github.com\nusername=x-access-token\npassword=${githubToken}"\n`
+  : "#!/bin/sh\n";
+```
+
+**Proposed:**
+```typescript
+// The credential helper now echoes the session JWT, not the real token.
+// The git proxy intercepts this and swaps in the real GitHub PAT.
+const helperScript = sessionToken
+  ? [
+      "#!/bin/sh",
+      'echo "protocol=https"',
+      `echo "host=${gitProxyHost}"`,  // Points to proxy, not github.com
+      'echo "username=x-session-token"',
+      `echo "password=${sessionToken}"`,
+    ].join("\n") + "\n"
+  : "#!/bin/sh\n";
+```
+
+The gitconfig also needs to route git traffic through the proxy:
+
+**Current** (`docker.ts:378-387`):
+```typescript
+const lines = [
+  "[user]",
+  '\tname = "pi-sandbox"',
+  '\temail = "pi-sandbox@noreply.github.com"',
+];
+if (githubToken) {
+  lines.push("[credential]", "\thelper = /data/git/git-credential-helper");
+}
+```
+
+**Proposed:**
+```typescript
+const lines = [
+  "[user]",
+  '\tname = "pi-sandbox"',
+  '\temail = "pi-sandbox@noreply.github.com"',
+];
+if (sessionToken) {
+  lines.push(
+    "[credential]",
+    "\thelper = /data/git/git-credential-helper",
+    // Rewrite GitHub URLs to go through the proxy
+    `[url "https://${gitProxyHost}/git/"]`,
+    '\tinsteadOf = https://github.com/',
+  );
+}
+```
+
+### Step 4: Update `CreateSandboxOptions` and Session Route
+
+**In `sandbox/types.ts`** — replace the raw `githubToken` field:
+
+```typescript
+export interface CreateSandboxOptions {
   sessionId: string;
-  timestamp: Date;
-  filesystemSnapshot: Buffer;  // Or reference to cloud storage
+  env?: Record<string, string>;
+  secrets?: Record<string, string>;
+  repoUrl?: string;
+  repoBranch?: string;
 
-  // New: Git state
-  git?: {
-    lastCommit: string;        // SHA of last commit
-    uncommittedChanges: boolean;
-    branch: string;
+  // Replace githubToken with session-scoped credential
+  // githubToken?: string;          // REMOVE
+  gitSessionToken?: string;         // ADD: session-scoped JWT for proxy auth
+  gitProxyHost?: string;            // ADD: proxy endpoint (e.g. "host.docker.internal:31415")
+
+  resources?: {
+    cpuShares?: number;
+    memoryMB?: number;
   };
-}
-
-async function backupSession(handle: SandboxHandle): Promise<SandboxBackup> {
-  // 1. Commit any uncommitted changes
-  await handle.sendPrompt('git add -A && git commit -m "Session backup" || true');
-
-  // 2. Push to remote (via proxy)
-  await handle.sendPrompt('git push origin HEAD');
-
-  // 3. Get git state
-  const gitState = await handle.exec('git rev-parse HEAD');
-
-  // 4. Create backup
-  return handle.pause();
-}
-
-async function restoreSession(backup: SandboxBackup): Promise<SandboxHandle> {
-  // 1. Create new sandbox
-  const handle = await computeProvider.createSandbox(/* ... */);
-
-  // 2. Clone and checkout the backed-up commit
-  await handle.sendPrompt(`git clone ... && git checkout ${backup.git?.lastCommit}`);
-
-  // 3. Restore filesystem state
-  await handle.resume(backup);
-
-  return handle;
+  timeoutSec?: number;
 }
 ```
 
-### Phased Implementation Recommendation
-
-Building on the RFC's phased approach:
-
-| Phase | RFC Scope | Git Proxy Addition |
-|-------|-----------|-------------------|
-| **Phase 1** | Abstraction layer, no behavior change | Add Git proxy interfaces to types |
-| **Phase 2** | Docker provider | Implement Git proxy with Docker network isolation |
-| **Phase 3** | Backup/restore | Add git state to backup, handle uncommitted changes |
-| **Phase 4** | Cloud providers (Modal, Koyeb) | Adapt Git proxy for cloud sandbox network policies |
-
-### Git Proxy Service Implementation
-
-The Git proxy should be a standalone service that all sandbox providers connect to:
+**In `routes/sessions.ts`** — generate a session JWT instead of passing the raw
+token (currently at lines 95-104 and 164-168):
 
 ```typescript
-// packages/server/src/services/git-proxy.ts
+// Currently:
+//   githubToken = JSON.parse(tokenSetting.value) as string;
+//   ...passed to sandboxManager.createForSession({ githubToken })
 
-import express from 'express';
-import httpProxy from 'http-proxy';
-
-const proxy = httpProxy.createProxyServer({});
-
-const app = express();
-
-app.use('/git/*', async (req, res) => {
-  // 1. Extract session token from git credential
-  const authHeader = req.headers.authorization;
-  const sessionToken = extractSessionToken(authHeader);
-
-  // 2. Validate JWT
-  const claims = validateSessionToken(sessionToken);
-  if (!claims) {
-    return res.status(401).json({ error: 'Invalid session token' });
-  }
-
-  // 3. Parse git operation from URL and body
-  const gitOp = parseGitRequest(req);
-
-  // 4. Validate operation against session claims
-  if (gitOp.type === 'receive-pack') {  // Push
-    const targetBranch = extractPushBranch(req);
-    if (targetBranch !== claims.allowedBranch) {
-      // Log the violation
-      await auditLog.record({
-        sessionId: claims.sessionId,
-        operation: 'push',
-        targetBranch,
-        allowed: false,
-        reason: `Branch ${targetBranch} not allowed, expected ${claims.allowedBranch}`
-      });
-      return res.status(403).json({
-        error: `Push denied: can only push to ${claims.allowedBranch}`
-      });
-    }
-  }
-
-  // 5. Validate repository
-  const targetRepo = extractRepository(req);
-  if (targetRepo !== claims.repository) {
-    return res.status(403).json({ error: 'Repository access denied' });
-  }
-
-  // 6. Log successful operation
-  await auditLog.record({
-    sessionId: claims.sessionId,
-    operation: gitOp.type,
-    repository: targetRepo,
-    branch: gitOp.branch,
-    allowed: true
-  });
-
-  // 7. Inject real GitHub credentials and forward
-  req.headers.authorization = `Basic ${Buffer.from(
-    `x-access-token:${process.env.GITHUB_TOKEN}`
-  ).toString('base64')}`;
-
-  proxy.web(req, res, {
-    target: 'https://github.com',
-    changeOrigin: true
-  });
+// Proposed:
+const githubToken = tokenSetting ? JSON.parse(tokenSetting.value) as string : undefined;
+const gitSessionToken = sessionTokenService.create({
+  sessionId: session.id,
+  repository: `${repo.owner}/${repo.name}`,
+  allowedBranch: repoBranch ?? "main",
+  ops: ["push", "fetch", "clone"],
 });
 
-app.listen(process.env.GIT_PROXY_PORT || 8080);
+sandboxManager.createForSession(session.id, {
+  repoUrl,
+  repoBranch,
+  gitSessionToken,                                   // Session JWT, not raw PAT
+  gitProxyHost: `host.docker.internal:${PI_RELAY_PORT}`,
+  secrets,
+  resources: environmentConfig?.resources,
+}, sandboxProvider);
 ```
 
-### Configuration Example
+The real `githubToken` stays in the settings DB and is only read by the Git proxy
+service — it never reaches the sandbox creation path.
+
+### Step 5: Switch Docker Network to `none` (Optional, Strict Mode)
+
+Currently `sandbox/docker.ts:70` defaults to `"bridge"`. For full isolation:
 
 ```typescript
-// packages/server/src/config/sandbox.ts
-
-export const sandboxConfig = {
-  providers: {
-    local: { enabled: true },
-    docker: {
-      enabled: true,
-      networkMode: 'none',
-      proxySocket: '/var/run/pi-proxy.sock'
-    },
-    modal: {
-      enabled: false,
-      // Modal-specific config
-    }
-  },
-
-  proxies: {
-    git: {
-      port: 8080,
-      jwtSecret: process.env.GIT_PROXY_JWT_SECRET,
-      githubToken: process.env.GITHUB_TOKEN,
-      auditLogPath: '/var/log/pi/git-audit.log'
-    },
-    anthropic: {
-      port: 8081,
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    },
-    network: {
-      port: 8082,
-      allowedDomains: [
-        'registry.npmjs.org',
-        'pypi.org',
-        'files.pythonhosted.org',
-        // ... package registries
-      ],
-      deniedDomains: [
-        '*.pastebin.com',
-        '*.requestbin.com',
-        // ... exfiltration vectors
-      ]
-    }
-  },
-
-  session: {
-    tokenExpiry: '24h',
-    branchPrefix: 'claude/',
-    maxConcurrentSessions: 10
-  }
+const DEFAULT_CONFIG = {
+  image: "pi-sandbox:local",
+  networkMode: "none",     // was: "bridge"
+  containerPrefix: "pi-sandbox",
+  // ...
 };
 ```
+
+When using `NetworkMode: "none"`, the container has no network at all. Traffic
+to the git proxy (and package registries) must go through a mounted Unix socket
+or a Docker network limited to the proxy sidecar.
+
+**Sidecar approach** (simpler — proxy container on same Docker network):
+```typescript
+// Create an isolated Docker network per session
+const network = await docker.createNetwork({
+  Name: `pi-net-${sessionId}`,
+  Internal: true,  // No external access
+});
+// Attach proxy container and sandbox container to this network
+// Sandbox can reach proxy at "git-proxy:31415" but nothing else
+```
+
+**Unix socket approach** (stronger — matches Claude Code Web):
+```typescript
+binds.push(`${proxySocketPath}:/var/run/git-proxy.sock:ro`);
+// git config insteadOf points to http+unix:///var/run/git-proxy.sock/
+```
+
+For the initial implementation, a simpler middle ground works: keep `bridge` mode
+but have the credential helper point to the relay server's git proxy endpoint.
+The token inside the container is just a JWT — even if exfiltrated, the proxy
+still enforces branch restrictions.
+
+### Step 6: Clone via Proxy (Replace Token-in-URL)
+
+Currently `cloneRepoIntoDir` (`docker.ts:390-456`) embeds the raw PAT in the
+clone URL. Replace this with a clone through the proxy:
+
+```typescript
+// Instead of:
+//   `https://x-access-token:${githubToken}@github.com/${owner}/${repo}`
+// Use:
+//   `https://x-session-token:${sessionToken}@${gitProxyHost}/git/${owner}/${repo}.git`
+```
+
+The ephemeral clone container uses the proxy just like the main sandbox. The
+proxy validates the session token and injects the real PAT for the clone.
+
+### Summary of Files to Change
+
+| File | Change |
+|------|--------|
+| `services/session-token.service.ts` | **New** — JWT create/verify |
+| `services/git-proxy.service.ts` | **New** — HTTP proxy with branch enforcement |
+| `index.ts` | Mount git proxy route, init SessionTokenService |
+| `sandbox/types.ts` | Replace `githubToken` with `gitSessionToken` + `gitProxyHost` |
+| `sandbox/docker.ts:368-388` | Credential helper writes JWT, gitconfig routes via proxy |
+| `sandbox/docker.ts:390-456` | Clone via proxy URL instead of token-in-URL |
+| `routes/sessions.ts:95-168` | Generate session JWT, keep real PAT server-side |
+
+### Security Checklist
+
+- [ ] Real GitHub PAT never enters the container (only session JWT)
+- [ ] Session JWTs are short-lived (24h) and session-specific
+- [ ] Branch restrictions enforced at proxy level (not in agent code)
+- [ ] All git operations logged for audit in the event journal
+- [ ] Repository access scoped to the specific repo for that session
+- [ ] Force-push to branches other than the session branch is blocked
+- [ ] JWT can be invalidated by terminating the session
+- [ ] Clone also routes through proxy (no token-in-URL)
 
 ## Sources
 
