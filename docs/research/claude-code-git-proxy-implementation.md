@@ -523,6 +523,203 @@ proxy validates the session token and injects the real PAT for the clone.
 - [ ] JWT can be invalidated by terminating the session
 - [ ] Clone also routes through proxy (no token-in-URL)
 
+---
+
+## Git Proxy with Cloud Sandbox Providers
+
+The RFC ([Issue #5](https://github.com/aliou/pi-apps/issues/5)) lists Docker,
+Modal, Koyeb, and Cloudflare as sandbox providers. Each has different network
+isolation primitives, which affects how the git proxy pattern can be applied.
+
+### Provider Comparison
+
+| Capability | Docker | Modal | Koyeb | Cloudflare Containers |
+|---|---|---|---|---|
+| **Block all outbound** | `--network=none` | `block_network=True` | Not exposed | `enableInternet: false` |
+| **Egress allowlist** | Manual (iptables / proxy) | `cidr_allowlist=[...]` | Not exposed | Worker acts as proxy |
+| **Custom proxy routing** | Unix socket / sidecar | Proxy object (beta, WireGuard) | Not exposed | Durable Object sidecar |
+| **Isolation tech** | namespaces + cgroups | gVisor | Firecracker microVM | VM per container |
+| **Git proxy feasibility** | High — full control | High — CIDR + proxy | Low — no egress control | High — Worker proxy |
+
+### Docker (Current Provider)
+
+Already covered in the implementation steps above. The key change is switching
+`networkMode` from `"bridge"` to `"none"` and mounting a proxy socket or using a
+sidecar network.
+
+### Modal
+
+Modal has the strongest built-in network controls of the cloud providers:
+
+**Block network + allowlist relay server only:**
+```python
+import modal
+
+sb = modal.Sandbox.create(
+    "pi", "--mode", "rpc",
+    image=sandbox_image,
+    # Block all outbound except the relay server's git proxy
+    cidr_allowlist=["<relay-server-ip>/32"],
+    secrets=[
+        # Only the session JWT, not the real GitHub PAT
+        modal.Secret.from_dict({"GIT_SESSION_TOKEN": session_jwt})
+    ],
+    volumes={"/workspace": workspace_volume},
+    app=app,
+)
+```
+
+**With Modal Proxy (beta, Team/Enterprise plans):**
+```python
+sb = modal.Sandbox.create(
+    "pi", "--mode", "rpc",
+    image=sandbox_image,
+    block_network=True,
+    # Route all traffic through Modal Proxy (WireGuard tunnel)
+    # The proxy exit node can be your relay server
+    proxy=modal.Proxy.from_name("git-proxy"),
+    secrets=[modal.Secret.from_dict({"GIT_SESSION_TOKEN": session_jwt})],
+    app=app,
+)
+```
+
+The `cidr_allowlist` approach is simpler and doesn't require a Team plan. Point
+the allowlist at the relay server's IP and have the git proxy + HTTP proxy listen
+there. The sandbox can only reach those endpoints.
+
+**Limitation:** `cidr_allowlist` works on IPs, not domains. The relay server
+needs a stable IP or the allowlist needs updating when IPs change. Modal Proxy
+(WireGuard) solves this but is in beta and plan-gated.
+
+### Koyeb
+
+Koyeb sandboxes use Firecracker microVMs with a service mesh sidecar, but **do
+not expose egress control to the SDK**. There is:
+
+- No `block_network` parameter
+- No CIDR allowlist
+- No way to disable outbound internet from the sandbox API
+- No custom proxy routing
+
+**Implication:** With Koyeb, the git proxy pattern still works for *branch
+enforcement* (the proxy validates JWTs and restricts pushes), but you **cannot
+prevent the agent from bypassing the proxy** and hitting GitHub directly with
+the session JWT. The JWT is useless without the proxy swapping in the real PAT,
+so the credential isolation still holds — but a compromised agent could
+exfiltrate data to arbitrary endpoints.
+
+**Workaround options:**
+1. **Accept the limitation** — credential isolation alone (JWT instead of PAT
+   inside the sandbox) is still a significant improvement. The agent can't push
+   to unauthorized branches even if it bypasses the proxy.
+2. **Koyeb service mesh** — Koyeb uses Envoy sidecars internally. If they expose
+   network policy configuration in the future, it could be used for allowlisting.
+3. **In-sandbox firewall** — Run `iptables` rules in the entrypoint to block
+   everything except the relay server IP. This is fragile (agent could undo it
+   if running as root) but raises the bar.
+
+### Cloudflare Containers
+
+Cloudflare has a strong model that's architecturally similar to the Claude Code
+Web approach:
+
+**Worker as programmable proxy:**
+```typescript
+// wrangler.jsonc — container definition
+{
+  "containers": [{
+    "class_name": "PiSandbox",
+    "image": "./sandbox-image",
+    "max_instances": 10,
+    // Internet disabled by default — all traffic goes through Worker
+    "enable_internet": false
+  }]
+}
+```
+
+```typescript
+// src/index.ts — Durable Object / Container class
+import { Container } from "cloudflare:workers";
+
+export class PiSandbox extends Container {
+  // Default: no internet access
+  enableInternet = false;
+
+  // The Worker acts as the only gateway for the container's traffic.
+  // Container makes HTTP requests to a special internal address (workersAddress)
+  // which routes back to the Worker's fetch handler.
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Proxy git requests: validate JWT, inject real PAT, forward to GitHub
+    if (url.pathname.startsWith("/git/")) {
+      return this.handleGitProxy(request);
+    }
+
+    // Proxy package registry requests (npm, pip)
+    if (isAllowedDomain(url.hostname)) {
+      return fetch(request);  // Forward to the real internet
+    }
+
+    // Block everything else
+    return new Response("Blocked by proxy", { status: 403 });
+  }
+
+  private async handleGitProxy(request: Request): Promise<Response> {
+    const sessionJwt = extractSessionToken(request);
+    const claims = verifyJwt(sessionJwt);
+    if (!claims) return new Response("Unauthorized", { status: 401 });
+
+    // Validate branch on push
+    if (request.url.endsWith("/git-receive-pack")) {
+      const branch = extractPushBranch(await request.arrayBuffer());
+      if (branch !== `refs/heads/${claims.allowedBranch}`) {
+        return new Response("Push denied", { status: 403 });
+      }
+    }
+
+    // Inject real GitHub PAT and forward
+    const headers = new Headers(request.headers);
+    headers.set("Authorization", `Basic ${btoa(`x-access-token:${GITHUB_PAT}`)}`);
+    return fetch(`https://github.com${new URL(request.url).pathname}`, {
+      method: request.method,
+      headers,
+      body: request.body,
+    });
+  }
+}
+```
+
+The container starts with `enableInternet = false`. When the sandbox process
+makes an HTTP request, it hits the Worker's `fetch()` handler via a special
+internal address (`workersAddress`). The Worker decides what to allow — git
+requests go through JWT validation and credential injection, package registries
+are allowlisted, everything else is blocked.
+
+This is the closest match to Claude Code Web's architecture among the cloud
+providers, because the Worker is a true programmable proxy sitting between the
+container and the internet.
+
+**Limitation:** Cloudflare Containers are relatively new (public beta mid-2025).
+The `workersAddress` egress-through-Worker feature has had some community-reported
+issues. The Sandbox SDK (built on Containers) doesn't yet expose all the
+networking primitives directly.
+
+### Recommendation by Provider
+
+| Provider | Git Proxy Strategy | Network Isolation |
+|---|---|---|
+| **Docker** | Relay server Hono sub-app + sidecar or bridge | `--network=none` + proxy socket, or bridge + JWT-only |
+| **Modal** | Relay server with stable IP in `cidr_allowlist` | `cidr_allowlist` or `block_network` + Modal Proxy |
+| **Koyeb** | Relay server (credential isolation only) | Not enforceable — JWT-only mitigation |
+| **Cloudflare** | Worker `fetch()` handler as proxy | `enableInternet: false` — strongest cloud model |
+
+For the initial implementation, **Docker + relay server proxy** (Steps 1-6 above)
+covers the primary use case. Modal and Cloudflare can be added later with
+provider-specific adapters that configure their native network controls. Koyeb
+works with reduced guarantees (no egress blocking, but credential isolation
+still prevents unauthorized pushes).
+
 ## Sources
 
 - [Simon Willison's Blog: Claude Code for Web](https://simonwillison.net/2025/Oct/20/claude-code-for-web/)
@@ -532,3 +729,9 @@ proxy validates the session token and injects the real PAT for the clone.
 - [Anthropic Sandbox Runtime (GitHub)](https://github.com/anthropic-experimental/sandbox-runtime)
 - [Agent Quickstart (Claude Code inspired)](https://github.com/lebovic/agent-quickstart)
 - [FINOS GitProxy](https://git-proxy.finos.org)
+- [Modal Docs: Sandbox Networking](https://modal.com/docs/guide/sandbox-networking)
+- [Modal Docs: Proxies (beta)](https://modal.com/docs/guide/proxy-ips)
+- [Koyeb Blog: Sandboxes](https://www.koyeb.com/blog/koyeb-sandboxes-fast-scalable-fully-isolated-environments-for-ai-agents)
+- [Cloudflare Blog: Containers](https://blog.cloudflare.com/cloudflare-containers-coming-2025/)
+- [Cloudflare Docs: Sandbox SDK](https://developers.cloudflare.com/sandbox/)
+- [Cloudflare Docs: Container FAQ](https://developers.cloudflare.com/containers/faq/)
