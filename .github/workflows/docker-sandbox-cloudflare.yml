@@ -1,0 +1,37 @@
+name: Build Sandbox Cloudflare Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sandboxes/cloudflare/Dockerfile"
+      - "sandboxes/cloudflare/bridge/**"
+      - ".github/workflows/docker-sandbox-cloudflare.yml"
+      - ".github/actions/docker-build-push/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "sandboxes/cloudflare/Dockerfile"
+      - "sandboxes/cloudflare/bridge/**"
+      - ".github/workflows/docker-sandbox-cloudflare.yml"
+      - ".github/actions/docker-build-push/**"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and push
+        uses: ./.github/actions/docker-build-push
+        with:
+          context: sandboxes/cloudflare
+          image-name: aliou/pi-sandbox-cloudflare
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
