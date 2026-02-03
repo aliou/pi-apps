@@ -6,6 +6,7 @@ import type {
   SandboxHandle,
   SandboxInfo,
   SandboxProvider,
+  SandboxProviderCapabilities,
   SandboxStatus,
   SandboxStreams,
 } from "./types";
@@ -829,6 +830,10 @@ class MockSandboxHandle implements SandboxHandle {
  */
 export class MockSandboxProvider implements SandboxProvider {
   readonly name = "mock";
+  readonly capabilities: SandboxProviderCapabilities = {
+    losslessPause: true,
+    persistentDisk: false,
+  };
   private sandboxes = new Map<string, MockSandboxHandle>();
 
   async isAvailable(): Promise<boolean> {
@@ -874,6 +879,6 @@ export class MockSandboxProvider implements SandboxProvider {
         count++;
       }
     }
-    return { containersRemoved: count, volumesRemoved: 0 };
+    return { sandboxesRemoved: count, artifactsRemoved: 0 };
   }
 }

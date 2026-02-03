@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "dotenv";
+import type { SandboxProviderType } from "./sandbox/provider-types";
 
 /**
  * Load .env file from config directory if it exists.
@@ -18,8 +19,15 @@ export function loadEnv(configDir: string): void {
  * Sandbox provider configuration from environment.
  * These are functions to ensure they read env vars after loadEnv() is called.
  */
-export function getSandboxProvider(): "mock" | "docker" {
-  return (process.env.SANDBOX_PROVIDER ?? "mock") as "mock" | "docker";
+export function getSandboxProvider(): SandboxProviderType {
+  const value = process.env.SANDBOX_PROVIDER ?? "mock";
+  const valid: SandboxProviderType[] = ["mock", "docker", "cloudflare"];
+  if (!valid.includes(value as SandboxProviderType)) {
+    throw new Error(
+      `Invalid SANDBOX_PROVIDER: "${value}". Must be one of: ${valid.join(", ")}`,
+    );
+  }
+  return value as SandboxProviderType;
 }
 
 export function getSandboxDockerImage(): string {

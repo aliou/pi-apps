@@ -159,8 +159,8 @@ describe("DockerSandboxProvider", () => {
         if (!dockerAvailable) return;
 
         const result = await provider.cleanup();
-        expect(result.containersRemoved).toBeGreaterThanOrEqual(0);
-        expect(result.volumesRemoved).toBeGreaterThanOrEqual(0);
+        expect(result.sandboxesRemoved).toBeGreaterThanOrEqual(0);
+        expect(result.artifactsRemoved).toBeGreaterThanOrEqual(0);
       },
     );
   });

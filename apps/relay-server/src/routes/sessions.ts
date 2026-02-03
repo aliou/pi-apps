@@ -3,8 +3,8 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
-import type { SandboxProviderType } from "../sandbox/manager";
-import type { DockerEnvironmentConfig } from "../services/environment.service";
+import type { SandboxProviderType } from "../sandbox/provider-types";
+import type { EnvironmentConfig } from "../services/environment.service";
 import type { SessionMode } from "../services/session.service";
 import { readSessionHistory } from "../services/session-history";
 
@@ -65,7 +65,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
     let repoUrl: string | undefined;
     let repoBranch: string | undefined;
     let githubToken: string | undefined;
-    let environmentConfig: DockerEnvironmentConfig | undefined;
+    let environmentConfig: EnvironmentConfig | undefined;
 
     if (body.mode === "code") {
       // Resolve environment
@@ -166,7 +166,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
             repoBranch,
             githubToken,
             secrets,
-            resources: environmentConfig?.resources,
+            resourceTier: environmentConfig?.resourceTier,
           },
           sandboxProvider,
         )

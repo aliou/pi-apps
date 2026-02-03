@@ -2,20 +2,20 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import {
   AVAILABLE_DOCKER_IMAGES,
-  type DockerEnvironmentConfig,
+  type EnvironmentConfig,
   type SandboxType,
 } from "../services/environment.service";
 
 interface CreateEnvironmentRequest {
   name: string;
   sandboxType: SandboxType;
-  config: DockerEnvironmentConfig;
+  config: EnvironmentConfig;
   isDefault?: boolean;
 }
 
 interface UpdateEnvironmentRequest {
   name?: string;
-  config?: DockerEnvironmentConfig;
+  config?: EnvironmentConfig;
   isDefault?: boolean;
 }
 
@@ -57,8 +57,15 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "name is required" }, 400);
     }
 
-    if (!body.sandboxType || body.sandboxType !== "docker") {
-      return c.json({ data: null, error: "sandboxType must be 'docker'" }, 400);
+    const validSandboxTypes: SandboxType[] = ["docker", "cloudflare"];
+    if (!body.sandboxType || !validSandboxTypes.includes(body.sandboxType)) {
+      return c.json(
+        {
+          data: null,
+          error: `sandboxType must be one of: ${validSandboxTypes.join(", ")}`,
+        },
+        400,
+      );
     }
 
     if (!body.config?.image) {

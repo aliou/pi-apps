@@ -1,5 +1,6 @@
 import { type DockerProviderConfig, DockerSandboxProvider } from "./docker";
 import { MockSandboxProvider } from "./mock";
+import { ALL_PROVIDER_TYPES, type SandboxProviderType } from "./provider-types";
 import type {
   CleanupResult,
   CreateSandboxOptions,
@@ -8,8 +9,6 @@ import type {
   SandboxProvider,
   SandboxStreams,
 } from "./types";
-
-export type SandboxProviderType = "mock" | "docker";
 
 export interface SandboxManagerConfig {
   /** Default provider for new sessions */
@@ -32,7 +31,7 @@ export class SandboxManager {
   constructor(config: SandboxManagerConfig) {
     this.defaultProvider = config.defaultProvider;
 
-    const enabled = config.enabledProviders ?? ["mock", "docker"];
+    const enabled = config.enabledProviders ?? ALL_PROVIDER_TYPES;
 
     if (enabled.includes("mock")) {
       this.providers.set("mock", new MockSandboxProvider());
@@ -67,7 +66,7 @@ export class SandboxManager {
   > {
     const status: Record<string, { enabled: boolean; available: boolean }> = {};
 
-    for (const type of ["mock", "docker"] as SandboxProviderType[]) {
+    for (const type of ALL_PROVIDER_TYPES) {
       const provider = this.providers.get(type);
       status[type] = {
         enabled: !!provider,
@@ -178,15 +177,15 @@ export class SandboxManager {
 
   /** Cleanup stopped sandboxes across all providers */
   async cleanup(): Promise<CleanupResult> {
-    let containersRemoved = 0;
-    let volumesRemoved = 0;
+    let sandboxesRemoved = 0;
+    let artifactsRemoved = 0;
 
     for (const provider of this.providers.values()) {
       const result = await provider.cleanup();
-      containersRemoved += result.containersRemoved;
-      volumesRemoved += result.volumesRemoved;
+      sandboxesRemoved += result.sandboxesRemoved;
+      artifactsRemoved += result.artifactsRemoved;
     }
 
-    return { containersRemoved, volumesRemoved };
+    return { sandboxesRemoved, artifactsRemoved };
   }
 }

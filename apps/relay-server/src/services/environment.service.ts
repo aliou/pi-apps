@@ -1,18 +1,14 @@
 import { eq, ne } from "drizzle-orm";
 import type { AppDatabase } from "../db/connection";
 import { type Environment, environments } from "../db/schema";
+import type { SandboxResourceTier } from "../sandbox/provider-types";
 
-export interface DockerEnvironmentConfig {
+export interface EnvironmentConfig {
   image: string;
-  resources?: {
-    cpuShares?: number;
-    memoryMB?: number;
-  };
+  resourceTier?: SandboxResourceTier;
 }
 
-export type EnvironmentConfig = DockerEnvironmentConfig;
-
-export type SandboxType = "docker";
+export type SandboxType = "docker" | "cloudflare";
 
 export interface CreateEnvironmentParams {
   name: string;

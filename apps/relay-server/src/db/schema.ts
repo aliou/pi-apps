@@ -10,7 +10,9 @@ import {
 export const environments = sqliteTable("environments", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  sandboxType: text("sandbox_type", { enum: ["docker"] }).notNull(),
+  sandboxType: text("sandbox_type", {
+    enum: ["docker", "cloudflare"],
+  }).notNull(),
   config: text("config").notNull(), // JSON string: { image, resources? }
   isDefault: integer("is_default", { mode: "boolean" })
     .notNull()
@@ -28,7 +30,9 @@ export const sessions = sqliteTable("sessions", {
   })
     .notNull()
     .default("creating"),
-  sandboxProvider: text("sandbox_provider", { enum: ["mock", "docker"] }),
+  sandboxProvider: text("sandbox_provider", {
+    enum: ["mock", "docker", "cloudflare"],
+  }),
   sandboxProviderId: text("sandbox_provider_id"),
   environmentId: text("environment_id").references(() => environments.id),
   sandboxImageDigest: text("sandbox_image_digest"),

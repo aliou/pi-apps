@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - "dockerfiles/sandbox-codex-universal/**"
+      - "sandboxes/docker/sandbox-codex-universal/**"
       - ".github/workflows/docker-sandbox-codex-universal.yml"
       - ".github/actions/docker-build-push/**"
   pull_request:
     branches: [main]
     paths:
-      - "dockerfiles/sandbox-codex-universal/**"
+      - "sandboxes/docker/sandbox-codex-universal/**"
       - ".github/workflows/docker-sandbox-codex-universal.yml"
       - ".github/actions/docker-build-push/**"
 
@@ -28,7 +28,7 @@ jobs:
       - name: Build and push
         uses: ./.github/actions/docker-build-push
         with:
-          context: dockerfiles/sandbox-codex-universal
+          context: sandboxes/docker/sandbox-codex-universal
           image-name: aliou/pi-sandbox-codex-universal
           push: ${{ github.event_name != 'pull_request' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

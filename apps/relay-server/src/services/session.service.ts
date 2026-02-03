@@ -1,6 +1,7 @@
 import { desc, eq, ne } from "drizzle-orm";
 import type { AppDatabase } from "../db/connection";
 import { type Session, sessions } from "../db/schema";
+import type { SandboxProviderType } from "../sandbox/provider-types";
 
 export type SessionStatus =
   | "creating"
@@ -9,7 +10,6 @@ export type SessionStatus =
   | "error"
   | "deleted";
 export type SessionMode = "chat" | "code";
-export type SandboxProviderType = "mock" | "docker";
 
 export interface CreateSessionParams {
   mode: SessionMode;

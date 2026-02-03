@@ -4,15 +4,29 @@ import { join } from "node:path";
 import process from "node:process";
 import { type Duplex, PassThrough } from "node:stream";
 import Docker from "dockerode";
+import type { SandboxResourceTier } from "./provider-types";
 import type {
   CleanupResult,
   CreateSandboxOptions,
   SandboxHandle,
   SandboxInfo,
   SandboxProvider,
+  SandboxProviderCapabilities,
   SandboxStatus,
   SandboxStreams,
 } from "./types";
+
+/** Docker resource limits per tier. */
+const RESOURCE_TIER_LIMITS: Record<
+  SandboxResourceTier,
+  { cpuShares: number; memoryMB: number }
+> = {
+  small: { cpuShares: 512, memoryMB: 1024 },
+  medium: { cpuShares: 1024, memoryMB: 2048 },
+  large: { cpuShares: 2048, memoryMB: 4096 },
+};
+
+const DEFAULT_TIER: SandboxResourceTier = "medium";
 
 /**
  * Get the host process UID:GID string for container User field.
@@ -44,12 +58,6 @@ export interface DockerProviderConfig {
   /** Docker socket path (default: /var/run/docker.sock, or DOCKER_HOST env) */
   socketPath?: string;
 
-  /** Default resource limits */
-  defaultResources?: {
-    cpuShares?: number;
-    memoryMB?: number;
-  };
-
   /**
    * Base directory for per-session data on the host.
    * Each session gets a subdirectory with workspace/ and agent/ dirs.
@@ -69,10 +77,6 @@ const DEFAULT_CONFIG = {
   image: "pi-sandbox:local",
   networkMode: "bridge",
   containerPrefix: "pi-sandbox",
-  defaultResources: {
-    cpuShares: 1024,
-    memoryMB: 2048,
-  },
 } as const;
 
 /**
@@ -84,11 +88,14 @@ const DEFAULT_CONFIG = {
  */
 export class DockerSandboxProvider implements SandboxProvider {
   readonly name = "docker";
+  readonly capabilities: SandboxProviderCapabilities = {
+    losslessPause: true,
+    persistentDisk: true,
+  };
   private docker: Docker;
   private config: Required<
     Pick<DockerProviderConfig, "image" | "networkMode" | "containerPrefix">
   > & {
-    defaultResources: { cpuShares: number; memoryMB: number };
     sessionDataDir: string;
     secretsBaseDir?: string;
   };
@@ -103,10 +110,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
-      defaultResources: {
-        ...DEFAULT_CONFIG.defaultResources,
-        ...config.defaultResources,
-      },
     };
   }
 
@@ -144,7 +147,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       repoUrl,
       repoBranch,
       githubToken,
-      resources,
     } = options;
 
     // Check cache for existing running handle
@@ -197,11 +199,11 @@ export class DockerSandboxProvider implements SandboxProvider {
       containerEnv.push("PI_SECRETS_DIR=/run/secrets");
     }
 
-    // Resource limits
-    const cpuShares =
-      resources?.cpuShares ?? this.config.defaultResources.cpuShares ?? 1024;
-    const memoryMB =
-      resources?.memoryMB ?? this.config.defaultResources.memoryMB ?? 2048;
+    // Resource limits from tier
+    const tier = options.resourceTier ?? DEFAULT_TIER;
+    const limits = RESOURCE_TIER_LIMITS[tier];
+    const cpuShares = limits.cpuShares;
+    const memoryMB = limits.memoryMB;
 
     const hostUser = getHostUser();
 
@@ -317,8 +319,8 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   async cleanup(): Promise<CleanupResult> {
-    let containersRemoved = 0;
-    const volumesRemoved = 0;
+    let sandboxesRemoved = 0;
+    const artifactsRemoved = 0;
 
     const containers = await this.docker.listContainers({
       all: true,
@@ -332,7 +334,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       try {
         const container = this.docker.getContainer(c.Id);
         await container.remove({ force: true });
-        containersRemoved++;
+        sandboxesRemoved++;
 
         // Clean up cached handle
         const sessionId =
@@ -344,7 +346,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    return { containersRemoved, volumesRemoved };
+    return { sandboxesRemoved, artifactsRemoved };
   }
 
   // --- Private helpers ---

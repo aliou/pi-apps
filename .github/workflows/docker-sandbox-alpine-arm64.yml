@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - "dockerfiles/sandbox-alpine-arm64/**"
+      - "sandboxes/docker/sandbox-alpine-arm64/**"
       - ".github/workflows/docker-sandbox-alpine-arm64.yml"
       - ".github/actions/docker-build-push/**"
   pull_request:
     branches: [main]
     paths:
-      - "dockerfiles/sandbox-alpine-arm64/**"
+      - "sandboxes/docker/sandbox-alpine-arm64/**"
       - ".github/workflows/docker-sandbox-alpine-arm64.yml"
       - ".github/actions/docker-build-push/**"
 
@@ -28,7 +28,7 @@ jobs:
       - name: Build and push
         uses: ./.github/actions/docker-build-push
         with:
-          context: dockerfiles/sandbox-alpine-arm64
+          context: sandboxes/docker/sandbox-alpine-arm64
           image-name: aliou/pi-sandbox-alpine-arm64
           platforms: linux/arm64
           push: ${{ github.event_name != 'pull_request' }}

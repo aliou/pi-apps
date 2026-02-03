@@ -40,18 +40,18 @@ describe("EnvironmentService", () => {
       expect(env.updatedAt).toBeDefined();
     });
 
-    it("creates environment with resources in config", () => {
+    it("creates environment with resource tier in config", () => {
       const env = service.create({
         name: "Heavy Env",
         sandboxType: "docker",
         config: {
           image: "ghcr.io/aliou/pi-sandbox-codex-universal",
-          resources: { cpuShares: 2048, memoryMB: 4096 },
+          resourceTier: "large",
         },
       });
 
       const config = JSON.parse(env.config);
-      expect(config.resources).toEqual({ cpuShares: 2048, memoryMB: 4096 });
+      expect(config.resourceTier).toBe("large");
     });
   });
 
@@ -171,13 +171,13 @@ describe("EnvironmentService", () => {
       service.update(env.id, {
         config: {
           image: "ghcr.io/aliou/pi-sandbox-codex-universal",
-          resources: { memoryMB: 4096 },
+          resourceTier: "large",
         },
       });
 
       const updated = service.get(env.id);
       const config = JSON.parse(updated?.config ?? "{}");
-      expect(config.resources).toEqual({ memoryMB: 4096 });
+      expect(config.resourceTier).toBe("large");
     });
 
     it("updates isDefault and clears others", () => {

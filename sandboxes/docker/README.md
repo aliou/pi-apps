@@ -81,15 +81,15 @@ The entrypoint script loads secrets from bind-mounted files into environment var
 
 ```bash
 # Alpine ARM64
-docker build -t pi-sandbox:alpine dockerfiles/sandbox-alpine-arm64/
+docker build -t pi-sandbox:alpine sandboxes/docker/sandbox-alpine-arm64/
 
 # Codex Universal
-docker build -t pi-sandbox:local dockerfiles/sandbox-codex-universal/
+docker build -t pi-sandbox:local sandboxes/docker/sandbox-codex-universal/
 ```
 
 ## Adding a New Image
 
-1. Create a new directory under `dockerfiles/` (e.g., `sandbox-my-image/`)
+1. Create a new directory under `sandboxes/docker/` (e.g., `sandbox-my-image/`)
 2. Add a `Dockerfile` and `entrypoint.sh`
 3. Install pi, fixuid, and a non-root `user` as described above
 4. Set `ENTRYPOINT ["fixuid", "-q", "/entrypoint.sh"]`

@@ -87,8 +87,8 @@ describe("MockSandboxProvider", () => {
     await handle.terminate();
 
     const result = await provider.cleanup();
-    expect(result.containersRemoved).toBe(1);
-    expect(result.volumesRemoved).toBe(0);
+    expect(result.sandboxesRemoved).toBe(1);
+    expect(result.artifactsRemoved).toBe(0);
   });
 });
 

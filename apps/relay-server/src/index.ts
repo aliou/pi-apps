@@ -12,7 +12,8 @@ import {
   getSandboxProvider,
   loadEnv,
 } from "./env";
-import { SandboxManager, type SandboxProviderType } from "./sandbox/manager";
+import { SandboxManager } from "./sandbox/manager";
+import type { SandboxProviderType } from "./sandbox/provider-types";
 import { CryptoService } from "./services/crypto.service";
 import { EnvironmentService } from "./services/environment.service";
 import { EventJournal } from "./services/event-journal";

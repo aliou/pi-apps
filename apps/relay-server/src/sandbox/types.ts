@@ -1,4 +1,5 @@
 import type { Readable, Writable } from "node:stream";
+import type { SandboxResourceTier } from "./provider-types";
 
 export type SandboxStatus =
   | "creating"
@@ -90,18 +91,29 @@ export interface CreateSandboxOptions {
   /** GitHub PAT for git push and private repo clone */
   githubToken?: string;
 
-  /** Resource limits */
-  resources?: {
-    cpuShares?: number;
-    memoryMB?: number;
-  };
+  /** Provider-neutral resource tier. Provider maps to specific limits. */
+  resourceTier?: SandboxResourceTier;
 
   /** Timeout settings */
   timeoutSec?: number;
 }
 
+/**
+ * Declares what a sandbox provider can and cannot do.
+ * Used by session service / idle timeout logic to decide behavior
+ * (e.g., skip pause for lossy providers, trigger backup instead).
+ */
+export interface SandboxProviderCapabilities {
+  /** Whether pause/resume preserves full process state (Docker: true, cloud: false). */
+  losslessPause: boolean;
+
+  /** Whether workspace files survive sandbox destruction without explicit backup. */
+  persistentDisk: boolean;
+}
+
 export interface SandboxProvider {
   readonly name: string;
+  readonly capabilities: SandboxProviderCapabilities;
 
   /** Check if provider is available (Docker running, etc.) */
   isAvailable(): Promise<boolean>;
@@ -124,6 +136,6 @@ export interface SandboxProvider {
 }
 
 export interface CleanupResult {
-  containersRemoved: number;
-  volumesRemoved: number;
+  sandboxesRemoved: number;
+  artifactsRemoved: number;
 }

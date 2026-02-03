@@ -1,5 +1,6 @@
 import type { UpgradeWebSocket } from "hono/ws";
-import type { SandboxManager, SandboxProviderType } from "../sandbox/manager";
+import type { SandboxManager } from "../sandbox/manager";
+import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EventJournal } from "../services/event-journal";
 import type { SessionService } from "../services/session.service";
 import { type ConnectionManager, WebSocketConnection } from "./connection";
