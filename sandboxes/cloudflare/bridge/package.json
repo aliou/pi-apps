@@ -1,0 +1,10 @@
+{
+  "name": "pi-sandbox-bridge",
+  "private": true,
+  "version": "0.0.1",
+  "description": "WebSocket-to-stdio bridge for pi inside Cloudflare Containers",
+  "main": "bridge.js",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

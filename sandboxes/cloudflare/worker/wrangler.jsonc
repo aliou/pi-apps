@@ -1,0 +1,41 @@
+{
+  "name": "pi-sandbox-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Container definition -- wrangler builds the Dockerfile on deploy
+  "containers": [
+    {
+      "class_name": "PiSandbox",
+      "image": "../Dockerfile",
+      "max_instances": 10
+    }
+  ],
+
+  // Durable Object binding for the Container class
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PI_SANDBOX",
+        "class_name": "PiSandbox"
+      }
+    ]
+  },
+
+  // DO migrations (required for Container/DO with SQLite)
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PiSandbox"]
+    }
+  ],
+
+  // R2 bucket for state backups
+  "r2_buckets": [
+    {
+      "binding": "STATE_BUCKET",
+      "bucket_name": "pi-sandbox-state"
+    }
+  ]
+}

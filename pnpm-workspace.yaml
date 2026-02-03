@@ -1,3 +1,4 @@
 packages:
   - "apps/relay-server"
   - "apps/relay-dashboard"
+  - "sandboxes/cloudflare/worker"

@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**/*.ts", "**/*.tsx", "!.pi/skills", "!var", "!apps/server"]
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "!.pi/skills",
+      "!var",
+      "!apps/server",
+      "!**/worker-configuration.d.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
