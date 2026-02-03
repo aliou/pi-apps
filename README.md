@@ -11,9 +11,12 @@ pi-apps/
 │   ├── mobile/            # iOS app (connects to relay)
 │   ├── relay-server/      # Relay API server (Node.js/Hono/SQLite)
 │   └── relay-dashboard/   # Relay admin UI (React Router v7/Vite)
-└── packages/
-    ├── pi-core/           # RPC types, relay client, transport protocols
-    └── pi-ui/             # Shared SwiftUI components
+├── packages/
+│   ├── pi-core/           # RPC types, relay client, transport protocols
+│   └── pi-ui/             # Shared SwiftUI components
+└── sandboxes/
+    ├── cloudflare/        # CF Containers sandbox (Worker + bridge + Dockerfile)
+    └── docker/            # Docker sandbox images for local/self-hosted relay
 ```
 
 ## Quick Start

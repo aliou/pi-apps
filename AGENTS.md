@@ -83,6 +83,8 @@ pnpm --filter pi-relay-dashboard dev
 - `apps/relay-dashboard/` - Relay admin UI (React Router v7 SPA/Vite/Tailwind)
 - `packages/pi-core/` - RPC types, transport layer (Foundation only)
 - `packages/pi-ui/` - Shared UI components (SwiftUI)
+- `sandboxes/cloudflare/` - Cloudflare Containers sandbox (Worker, bridge, Dockerfile)
+- `sandboxes/docker/` - Docker sandbox images for local/self-hosted relay
 
 ## Relay API
 

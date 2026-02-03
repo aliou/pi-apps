@@ -15,9 +15,9 @@ Node.js server that wraps pi sessions and exposes REST API + WebSocket for remot
 │  - Secrets management        │                              │
 ├─────────────────────────────────────────────────────────────┤
 │                    Sandbox Manager                          │
-│  - Docker provider (creates containers with pi)             │
-│  - Manages pi process lifecycle                             │
-│  - Routes stdin/stdout ↔ WebSocket                          │
+│  - Provider abstraction (mock, docker, cloudflare)          │
+│  - Manages sandbox lifecycle                                │
+│  - Routes RPC messages via SandboxChannel                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -120,10 +120,13 @@ src/
 │   ├── secrets.service.ts
 │   └── crypto.service.ts
 ├── sandbox/          # Sandbox providers
-│   ├── types.ts      # SandboxHandle, SandboxStreams interfaces
+│   ├── types.ts      # SandboxHandle, SandboxChannel interfaces
+│   ├── provider-types.ts # Provider type enum and config
 │   ├── manager.ts    # Stateless provider orchestration (DB is source of truth)
-│   ├── docker.ts     # Docker provider (attach/detach, resume/pause)
-│   └── mock.ts       # Mock provider for testing
+│   ├── docker.ts     # Docker provider (local containers)
+│   ├── cloudflare.ts # Cloudflare Containers provider (remote, via CF Worker)
+│   ├── mock.ts       # Mock provider for testing
+│   └── state-store.ts # Sandbox state persistence interface
 ├── ws/               # WebSocket handling
 │   ├── handler.ts    # RPC proxy (DO NOT ADD PROTOCOL)
 │   ├── connection.ts # Per-session WS connection + event forwarding
@@ -268,8 +271,10 @@ Key variables:
 - `PORT` - Server port (default: 31415)
 - `RELAY_ENCRYPTION_KEY` - Required. Base64-encoded 32-byte key for secrets at rest
 - `RELAY_ENCRYPTION_KEY_VERSION` - Key version for rotation (default: 1)
-- `SANDBOX_PROVIDER` - `mock` or `docker` (default: mock)
+- `SANDBOX_PROVIDER` - `mock`, `docker`, or `cloudflare` (default: mock)
 - `SANDBOX_DOCKER_IMAGE` - Docker image for sandboxes (default: pi-sandbox:local)
+- `SANDBOX_CF_WORKER_URL` - Cloudflare Worker URL (required when provider is `cloudflare`)
+- `SANDBOX_CF_API_TOKEN` - Shared secret for CF Worker auth (must match Worker's `RELAY_SECRET`)
 
 Provider API keys (stored as encrypted secrets via `/api/secrets`, injected into sandboxes at runtime):
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, etc.
