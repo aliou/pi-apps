@@ -8,6 +8,8 @@ import { runMigrations } from "./db/migrate";
 import {
   getRelayEncryptionKey,
   getRelayEncryptionKeyVersion,
+  getSandboxCloudflareApiToken,
+  getSandboxCloudflareWorkerUrl,
   getSandboxDockerImage,
   getSandboxProvider,
   loadEnv,
@@ -74,6 +76,10 @@ async function main() {
   // Initialize sandbox manager based on config
   const sandboxProvider = getSandboxProvider();
   const sessionDataDir = join(paths.stateDir, "sessions");
+
+  const cfWorkerUrl = getSandboxCloudflareWorkerUrl();
+  const cfApiToken = getSandboxCloudflareApiToken();
+
   const sandboxManager = new SandboxManager({
     defaultProvider: sandboxProvider as SandboxProviderType,
     docker: {
@@ -81,6 +87,10 @@ async function main() {
       sessionDataDir, // Per-session host dirs for workspace + agent data
       secretsBaseDir: paths.stateDir, // Use state dir for temp secrets (Lima-compatible)
     },
+    cloudflare:
+      cfWorkerUrl && cfApiToken
+        ? { workerUrl: cfWorkerUrl, apiToken: cfApiToken }
+        : undefined,
   });
   console.log(
     `Default sandbox provider: ${sandboxManager.defaultProviderName}`,

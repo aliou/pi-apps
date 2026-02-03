@@ -133,7 +133,7 @@ The mobile app exposes native iOS capabilities as tools the LLM can invoke. Tool
 
 **Swift:** Swift 6, SwiftLint enforced. Use `Theme.*` colors from PiUI. Types should be `Sendable`. Use `Self` in static refs.
 
-**TypeScript:** pnpm workspace monorepo with turbo. Biome for lint/format (config at repo root, sub-packages extend with `"root": false`). Turbo orchestrates build/dev/lint/typecheck/test across packages.
+**TypeScript:** pnpm workspace monorepo with turbo. Biome for lint/format (config at repo root, sub-packages extend with `"root": false`). Turbo orchestrates build/dev/lint/typecheck/test across packages. **Never use `npm` or `npx` commands.** Always use `pnpm` and `pnpm exec` (or `pnpm dlx` for one-off binaries). This includes sub-projects like the Cloudflare Worker -- use `pnpm exec wrangler`, not `npx wrangler`.
 
 ## Local Dev Paths (Relay)
 

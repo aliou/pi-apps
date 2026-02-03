@@ -35,6 +35,17 @@ export function getSandboxDockerImage(): string {
 }
 
 /**
+ * Cloudflare sandbox provider configuration.
+ */
+export function getSandboxCloudflareWorkerUrl(): string | undefined {
+  return process.env.SANDBOX_CF_WORKER_URL;
+}
+
+export function getSandboxCloudflareApiToken(): string | undefined {
+  return process.env.SANDBOX_CF_API_TOKEN;
+}
+
+/**
  * Encryption key for secrets at rest (base64-encoded 32 bytes).
  * Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
  */

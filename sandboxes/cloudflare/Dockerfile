@@ -1,7 +1,9 @@
-FROM node:22-alpine
+FROM node:22-slim
 
-# Install system deps
-RUN apk add --no-cache curl tar bash git
+# Install system deps (ca-certificates needed for curl HTTPS)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl tar bash git ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install pi CLI
 ARG PI_VERSION=v0.50.9

@@ -1,3 +1,7 @@
+import {
+  type CloudflareProviderConfig,
+  CloudflareSandboxProvider,
+} from "./cloudflare";
 import { type DockerProviderConfig, DockerSandboxProvider } from "./docker";
 import { MockSandboxProvider } from "./mock";
 import { ALL_PROVIDER_TYPES, type SandboxProviderType } from "./provider-types";
@@ -15,6 +19,8 @@ export interface SandboxManagerConfig {
   defaultProvider: SandboxProviderType;
   /** Docker provider config (required if docker is enabled) */
   docker?: DockerProviderConfig;
+  /** Cloudflare provider config (required if cloudflare is enabled) */
+  cloudflare?: CloudflareProviderConfig;
   /** Which providers to enable (default: all) */
   enabledProviders?: SandboxProviderType[];
 }
@@ -38,6 +44,12 @@ export class SandboxManager {
     }
     if (enabled.includes("docker") && config.docker) {
       this.providers.set("docker", new DockerSandboxProvider(config.docker));
+    }
+    if (enabled.includes("cloudflare") && config.cloudflare) {
+      this.providers.set(
+        "cloudflare",
+        new CloudflareSandboxProvider(config.cloudflare),
+      );
     }
   }
 

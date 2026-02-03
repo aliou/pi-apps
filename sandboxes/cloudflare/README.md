@@ -56,7 +56,7 @@ sandboxes/cloudflare/
 
 ```bash
 cd sandboxes/cloudflare/worker
-npm install
+pnpm install
 ```
 
 ## Development
@@ -64,7 +64,7 @@ npm install
 Typecheck:
 
 ```bash
-npm run typecheck
+pnpm run typecheck
 ```
 
 Local dev (requires CF auth via `wrangler login`):
@@ -74,7 +74,7 @@ Local dev (requires CF auth via `wrangler login`):
 echo 'RELAY_SECRET=test-secret' > .dev.vars
 
 # Start local dev server
-npm run dev
+pnpm run dev
 ```
 
 **Note:** `wrangler dev` builds the Docker container image for linux/amd64. This fails on Apple Silicon (arm64) with "exec format error." This is a known limitation of local container dev on macOS. Full testing requires deployment to CF or an x86_64 Linux machine.
@@ -85,28 +85,28 @@ npm run dev
 
 1. Log in to Cloudflare:
    ```bash
-   npx wrangler login
+   pnpm exec wrangler login
    ```
 
 2. Create the R2 bucket:
    ```bash
-   npx wrangler r2 bucket create pi-sandbox-state
+   pnpm exec wrangler r2 bucket create pi-sandbox-state
    ```
 
 3. Set the shared secret (must match `SANDBOX_CF_API_TOKEN` on the relay):
    ```bash
-   npx wrangler secret put RELAY_SECRET
+   pnpm exec wrangler secret put RELAY_SECRET
    ```
 
 4. Deploy:
    ```bash
-   npm run deploy
+   pnpm run deploy
    ```
 
 ### Subsequent deploys
 
 ```bash
-npm run deploy
+pnpm run deploy
 ```
 
 ## API
@@ -176,7 +176,7 @@ The bridge supports two-phase startup via the `WAIT_FOR_RESTORE` env var:
 
 ```bash
 cd sandboxes/cloudflare/worker/bridge
-npm install
+pnpm install
 
 # Start with mock pi (override PI_COMMAND)
 PI_COMMAND=/bin/cat node bridge.js &
