@@ -75,12 +75,12 @@ export function createWebSocketHandler(
 
         sandboxManager
           .attachSession(providerType, providerId)
-          .then(({ streams }) => {
+          .then(({ channel }) => {
             wsLog("attached", sessionId);
             connection = new WebSocketConnection(
               ws,
               sessionId,
-              streams,
+              channel,
               eventJournal,
               lastSeq,
             );
@@ -101,7 +101,7 @@ export function createWebSocketHandler(
           .catch((err) => {
             wsLog("attach_failed", sessionId, { error: String(err) });
             console.error(
-              `Failed to attach streams for session ${sessionId}:`,
+              `Failed to attach channel for session ${sessionId}:`,
               err,
             );
             ws.close(4003, "Failed to attach to sandbox");

@@ -1,4 +1,3 @@
-import readline from "node:readline";
 import { describe, expect, it } from "vitest";
 import { MockSandboxProvider } from "./mock";
 
@@ -15,9 +14,11 @@ describe("MockSandboxProvider", () => {
     expect(handle.sessionId).toBe("test-session");
     expect(handle.providerId).toBe("mock-test-session");
 
-    const streams = await handle.attach();
-    expect(streams.stdin).toBeDefined();
-    expect(streams.stdout).toBeDefined();
+    const channel = await handle.attach();
+    expect(typeof channel.send).toBe("function");
+    expect(typeof channel.onMessage).toBe("function");
+    expect(typeof channel.onClose).toBe("function");
+    expect(typeof channel.close).toBe("function");
   });
 
   it("getSandbox returns existing sandbox by providerId", async () => {
@@ -100,17 +101,14 @@ describe("MockSandboxHandle RPC", () => {
     // Wait for running status
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    const streams = await handle.attach();
+    const channel = await handle.attach();
     const events: unknown[] = [];
-    const rl = readline.createInterface({ input: streams.stdout });
-    rl.on("line", (line) => {
-      events.push(JSON.parse(line));
+    channel.onMessage((message) => {
+      events.push(JSON.parse(message));
     });
 
     // Send get_state command
-    streams.stdin.write(
-      `${JSON.stringify({ type: "get_state", id: "cmd-1" })}\n`,
-    );
+    channel.send(JSON.stringify({ type: "get_state", id: "cmd-1" }));
 
     // Wait for response
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -131,16 +129,15 @@ describe("MockSandboxHandle RPC", () => {
     // Wait for running status
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    const streams = await handle.attach();
+    const channel = await handle.attach();
     const events: unknown[] = [];
-    const rl = readline.createInterface({ input: streams.stdout });
-    rl.on("line", (line) => {
-      events.push(JSON.parse(line));
+    channel.onMessage((message) => {
+      events.push(JSON.parse(message));
     });
 
     // Send prompt command
-    streams.stdin.write(
-      `${JSON.stringify({ type: "prompt", message: "hello", id: "cmd-2" })}\n`,
+    channel.send(
+      JSON.stringify({ type: "prompt", message: "hello", id: "cmd-2" }),
     );
 
     // Wait for generation to complete (mock types ~90 chars at 30ms/3chars = ~900ms + delays)
@@ -163,23 +160,20 @@ describe("MockSandboxHandle RPC", () => {
     // Wait for running status
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    const streams = await handle.attach();
+    const channel = await handle.attach();
     const events: unknown[] = [];
-    const rl = readline.createInterface({ input: streams.stdout });
-    rl.on("line", (line) => {
-      events.push(JSON.parse(line));
+    channel.onMessage((message) => {
+      events.push(JSON.parse(message));
     });
 
     // Send prompt command
-    streams.stdin.write(
-      `${JSON.stringify({ type: "prompt", message: "test", id: "cmd-3" })}\n`,
+    channel.send(
+      JSON.stringify({ type: "prompt", message: "test", id: "cmd-3" }),
     );
 
     // Send abort immediately
     await new Promise((resolve) => setTimeout(resolve, 50));
-    streams.stdin.write(
-      `${JSON.stringify({ type: "abort", id: "abort-1" })}\n`,
-    );
+    channel.send(JSON.stringify({ type: "abort", id: "abort-1" }));
 
     // Wait a bit
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -191,5 +185,38 @@ describe("MockSandboxHandle RPC", () => {
     );
     expect(abortResponse).toBeDefined();
     expect((abortResponse as Record<string, unknown>).success).toBe(true);
+  });
+});
+
+describe("MockSandboxChannel", () => {
+  it("channel.close() triggers onClose handler", async () => {
+    const provider = new MockSandboxProvider();
+    const handle = await provider.createSandbox({ sessionId: "test-session" });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const channel = await handle.attach();
+    const closeReasons: (string | undefined)[] = [];
+    channel.onClose((reason) => closeReasons.push(reason));
+
+    channel.close();
+
+    expect(closeReasons).toHaveLength(1);
+  });
+
+  it("re-attach closes old channel and creates new one", async () => {
+    const provider = new MockSandboxProvider();
+    const handle = await provider.createSandbox({ sessionId: "test-session" });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const channel1 = await handle.attach();
+    let channel1Closed = false;
+    channel1.onClose(() => {
+      channel1Closed = true;
+    });
+
+    const channel2 = await handle.attach();
+
+    expect(channel1Closed).toBe(true);
+    expect(channel2).not.toBe(channel1);
   });
 });

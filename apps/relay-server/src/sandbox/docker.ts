@@ -2,18 +2,19 @@ import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import readline from "node:readline";
 import { type Duplex, PassThrough } from "node:stream";
 import Docker from "dockerode";
 import type { SandboxResourceTier } from "./provider-types";
 import type {
   CleanupResult,
   CreateSandboxOptions,
+  SandboxChannel,
   SandboxHandle,
   SandboxInfo,
   SandboxProvider,
   SandboxProviderCapabilities,
   SandboxStatus,
-  SandboxStreams,
 } from "./types";
 
 /** Docker resource limits per tier. */
@@ -529,7 +530,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 class DockerSandboxHandle implements SandboxHandle {
   private _status: SandboxStatus = "running";
   private statusListeners = new Set<(status: SandboxStatus) => void>();
-  private currentStreams: DockerSandboxStreams | null = null;
+  private currentChannel: DockerSandboxChannel | null = null;
 
   constructor(
     readonly sessionId: string,
@@ -604,11 +605,11 @@ class DockerSandboxHandle implements SandboxHandle {
     }
   }
 
-  async attach(): Promise<SandboxStreams> {
-    // If already attached, detach old streams first
-    if (this.currentStreams) {
-      this.currentStreams.detach();
-      this.currentStreams = null;
+  async attach(): Promise<SandboxChannel> {
+    // If already attached, close old channel first
+    if (this.currentChannel) {
+      this.currentChannel.close();
+      this.currentChannel = null;
     }
 
     // Verify container is running (assume resume() was called)
@@ -627,33 +628,25 @@ class DockerSandboxHandle implements SandboxHandle {
       hijack: true,
     });
 
-    // Cast to Duplex
     const raw = stream as unknown as Duplex;
-
-    // Demux stdout/stderr
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     this.container.modem.demuxStream(raw, stdout, stderr);
 
-    // Add no-op error handlers to prevent crashes on late writes
-    raw.on("error", () => {});
-    stdout.on("error", () => {});
-    stderr.on("error", () => {});
-
-    const streams = new DockerSandboxStreams(raw, stdout, stderr);
-    this.currentStreams = streams;
+    const channel = new DockerSandboxChannel(raw, stdout, stderr);
+    this.currentChannel = channel;
 
     // Monitor container for unexpected exits
     this.monitorContainer();
 
-    return streams;
+    return channel;
   }
 
   async pause(): Promise<void> {
-    // Detach streams before pausing
-    if (this.currentStreams) {
-      this.currentStreams.detach();
-      this.currentStreams = null;
+    // Close channel before pausing
+    if (this.currentChannel) {
+      this.currentChannel.close();
+      this.currentChannel = null;
     }
 
     await this.container.pause();
@@ -661,10 +654,10 @@ class DockerSandboxHandle implements SandboxHandle {
   }
 
   async terminate(): Promise<void> {
-    // Detach streams
-    if (this.currentStreams) {
-      this.currentStreams.detach();
-      this.currentStreams = null;
+    // Close channel
+    if (this.currentChannel) {
+      this.currentChannel.close();
+      this.currentChannel = null;
     }
 
     try {
@@ -705,34 +698,81 @@ class DockerSandboxHandle implements SandboxHandle {
 }
 
 /**
- * Live streams to a Docker container.
+ * Adapts Docker container attach streams into a message-oriented SandboxChannel.
+ * Uses readline internally to split the demuxed stdout into JSON lines.
  */
-class DockerSandboxStreams implements SandboxStreams {
-  private detached = false;
-  private raw: Duplex;
+class DockerSandboxChannel implements SandboxChannel {
+  private closed = false;
+  private messageHandlers = new Set<(message: string) => void>();
+  private closeHandlers = new Set<(reason?: string) => void>();
+  private rl: readline.Interface;
 
   constructor(
-    raw: Duplex,
-    readonly stdout: PassThrough,
-    readonly stderr: PassThrough,
+    private raw: Duplex,
+    stdout: PassThrough,
+    stderr: PassThrough,
   ) {
-    this.raw = raw;
+    // Split stdout into lines (each line is a complete JSON message from pi)
+    this.rl = readline.createInterface({ input: stdout });
+
+    this.rl.on("line", (line) => {
+      if (this.closed) return;
+      for (const handler of this.messageHandlers) {
+        handler(line);
+      }
+    });
+
+    this.rl.on("close", () => {
+      if (this.closed) return;
+      this.notifyClose("stream closed");
+    });
+
+    // Add no-op error handlers to prevent crashes on late writes
+    raw.on("error", () => {});
+    stdout.on("error", () => {});
+    stderr.on("error", () => {});
+
+    // Log stderr for debugging (don't expose as messages)
+    const stderrRl = readline.createInterface({ input: stderr });
+    stderrRl.on("line", (line) => {
+      if (line.trim()) {
+        console.error(`[sandbox:stderr] ${line}`);
+      }
+    });
   }
 
-  get stdin(): Duplex {
-    return this.raw;
+  send(message: string): void {
+    if (this.closed) return;
+    // Docker expects newline-delimited JSON on stdin
+    this.raw.write(`${message}\n`);
   }
 
-  detach(): void {
-    if (this.detached) return;
-    this.detached = true;
+  onMessage(handler: (message: string) => void): () => void {
+    this.messageHandlers.add(handler);
+    return () => this.messageHandlers.delete(handler);
+  }
 
-    // Destroy the raw stream first to stop demux input
+  onClose(handler: (reason?: string) => void): () => void {
+    this.closeHandlers.add(handler);
+    return () => this.closeHandlers.delete(handler);
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.rl.close();
     this.raw.destroy();
     this.raw.removeAllListeners();
+    this.messageHandlers.clear();
+    this.closeHandlers.clear();
+  }
 
-    // Then destroy stdout/stderr
-    this.stdout.destroy();
-    this.stderr.destroy();
+  private notifyClose(reason?: string): void {
+    this.closed = true;
+    for (const handler of this.closeHandlers) {
+      handler(reason);
+    }
+    this.messageHandlers.clear();
+    this.closeHandlers.clear();
   }
 }

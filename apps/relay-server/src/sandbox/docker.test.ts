@@ -77,7 +77,7 @@ describe("DockerSandboxProvider", () => {
 
   describe("attach", () => {
     it.skipIf(!process.env.RUN_DOCKER_TESTS)(
-      "can attach to a running container and communicate via stdin/stdout",
+      "can attach to a running container and communicate via channel",
       { timeout: 30_000 },
       async () => {
         if (!dockerAvailable) return;
@@ -92,29 +92,23 @@ describe("DockerSandboxProvider", () => {
         });
 
         // Container is already running — attach after start
-        const streams = await handle.attach();
+        const channel = await handle.attach();
 
-        // Send a command via stdin, expect output on stdout
+        // Send a command via channel, expect output via onMessage
         // pi takes a few seconds to boot in RPC mode
         const output = await new Promise<string>((resolve, reject) => {
           const timeout = setTimeout(
-            () => reject(new Error("Timed out waiting for stdout")),
+            () => reject(new Error("Timed out waiting for message")),
             25_000,
           );
-          let data = "";
-          streams.stdout.on("data", (chunk: Buffer) => {
-            data += chunk.toString();
-            // pi outputs JSON lines — wait for a complete line
-            if (data.includes("\n")) {
-              clearTimeout(timeout);
-              resolve(data.trim());
-            }
+
+          channel.onMessage((message) => {
+            clearTimeout(timeout);
+            resolve(message);
           });
 
           // Send get_state command — pi in RPC mode should respond
-          streams.stdin.write(
-            `${JSON.stringify({ type: "get_state", id: "test-1" })}\n`,
-          );
+          channel.send(JSON.stringify({ type: "get_state", id: "test-1" }));
         });
 
         expect(output).toBeTruthy();

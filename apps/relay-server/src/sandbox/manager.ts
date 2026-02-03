@@ -4,10 +4,10 @@ import { ALL_PROVIDER_TYPES, type SandboxProviderType } from "./provider-types";
 import type {
   CleanupResult,
   CreateSandboxOptions,
+  SandboxChannel,
   SandboxHandle,
   SandboxInfo,
   SandboxProvider,
-  SandboxStreams,
 } from "./types";
 
 export interface SandboxManagerConfig {
@@ -138,10 +138,10 @@ export class SandboxManager {
   async attachSession(
     providerType: SandboxProviderType,
     providerId: string,
-  ): Promise<{ handle: SandboxHandle; streams: SandboxStreams }> {
+  ): Promise<{ handle: SandboxHandle; channel: SandboxChannel }> {
     const handle = await this.getHandle(providerType, providerId);
-    const streams = await handle.attach();
-    return { handle, streams };
+    const channel = await handle.attach();
+    return { handle, channel };
   }
 
   /**

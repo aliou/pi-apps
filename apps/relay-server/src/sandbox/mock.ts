@@ -1,24 +1,65 @@
-import readline from "node:readline";
-import { PassThrough } from "node:stream";
 import type {
   CleanupResult,
   CreateSandboxOptions,
+  SandboxChannel,
   SandboxHandle,
   SandboxInfo,
   SandboxProvider,
   SandboxProviderCapabilities,
   SandboxStatus,
-  SandboxStreams,
 } from "./types";
 
 /**
+ * Mock channel that routes messages directly via callbacks.
+ * No Node.js streams involved.
+ */
+class MockSandboxChannel implements SandboxChannel {
+  private closed = false;
+  private messageHandlers = new Set<(message: string) => void>();
+  private closeHandlers = new Set<(reason?: string) => void>();
+
+  constructor(private sendToMock: (message: string) => void) {}
+
+  send(message: string): void {
+    if (this.closed) return;
+    this.sendToMock(message);
+  }
+
+  /** Called by MockSandboxHandle to deliver outgoing pi events. */
+  deliver(message: string): void {
+    if (this.closed) return;
+    for (const handler of this.messageHandlers) {
+      handler(message);
+    }
+  }
+
+  onMessage(handler: (message: string) => void): () => void {
+    this.messageHandlers.add(handler);
+    return () => this.messageHandlers.delete(handler);
+  }
+
+  onClose(handler: (reason?: string) => void): () => void {
+    this.closeHandlers.add(handler);
+    return () => this.closeHandlers.delete(handler);
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const handler of this.closeHandlers) {
+      handler("detached");
+    }
+    this.messageHandlers.clear();
+    this.closeHandlers.clear();
+  }
+}
+
+/**
  * Mock sandbox handle that simulates pi RPC behavior.
- * Accepts commands on stdin, emits events on stdout.
+ * Accepts commands via channel, emits events via channel.
  */
 class MockSandboxHandle implements SandboxHandle {
-  private readonly _stdin = new PassThrough();
-  private readonly _stdout = new PassThrough();
-  private readonly _stderr = new PassThrough();
+  private currentChannel: MockSandboxChannel | null = null;
   readonly providerId: string;
 
   private _status: SandboxStatus = "creating";
@@ -61,7 +102,6 @@ class MockSandboxHandle implements SandboxHandle {
 
   constructor(readonly sessionId: string) {
     this.providerId = `mock-${sessionId}`;
-    this.setupInputHandler();
     // Simulate sandbox starting up
     setTimeout(() => this.setStatus("running"), 100);
   }
@@ -92,15 +132,24 @@ class MockSandboxHandle implements SandboxHandle {
     // If already running, no-op
   }
 
-  async attach(): Promise<SandboxStreams> {
-    return {
-      stdin: this._stdin,
-      stdout: this._stdout,
-      stderr: this._stderr,
-      detach: () => {
-        // No-op for mock — streams stay alive for re-attach
-      },
-    };
+  async attach(): Promise<SandboxChannel> {
+    // Close previous channel if exists
+    if (this.currentChannel) {
+      this.currentChannel.close();
+    }
+
+    const channel = new MockSandboxChannel((message: string) => {
+      // Route incoming messages to the command handler
+      try {
+        const command = JSON.parse(message);
+        this.handleCommand(command);
+      } catch {
+        // Ignore invalid JSON
+      }
+    });
+
+    this.currentChannel = channel;
+    return channel;
   }
 
   async pause(): Promise<void> {
@@ -110,8 +159,8 @@ class MockSandboxHandle implements SandboxHandle {
   async terminate(): Promise<void> {
     this.abortController?.abort();
     this.bashAbortController?.abort();
-    this._stdin.end();
-    this._stdout.end();
+    this.currentChannel?.close();
+    this.currentChannel = null;
     this.setStatus("stopped");
   }
 
@@ -125,19 +174,6 @@ class MockSandboxHandle implements SandboxHandle {
     for (const handler of this.statusHandlers) {
       handler(status);
     }
-  }
-
-  private setupInputHandler(): void {
-    const rl = readline.createInterface({ input: this._stdin });
-
-    rl.on("line", (line) => {
-      try {
-        const command = JSON.parse(line);
-        this.handleCommand(command);
-      } catch {
-        // Ignore invalid JSON
-      }
-    });
   }
 
   private handleCommand(command: {
@@ -793,7 +829,7 @@ class MockSandboxHandle implements SandboxHandle {
   // -- Helpers --
 
   private emit(event: Record<string, unknown>): void {
-    this._stdout.write(`${JSON.stringify(event)}\n`);
+    this.currentChannel?.deliver(JSON.stringify(event));
   }
 
   private sendResponse(

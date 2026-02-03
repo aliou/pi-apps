@@ -1,31 +1,31 @@
-import readline from "node:readline";
 import type { WSContext } from "hono/ws";
-import type { SandboxStreams } from "../sandbox/types";
+import type { SandboxChannel } from "../sandbox/types";
 import type { EventJournal } from "../services/event-journal";
 import type { ClientCommand, PiEvent, ServerEvent } from "./types";
 
 /**
  * Manages a WebSocket connection to a session.
  * Handles:
- * - Forwarding commands from client to sandbox streams
- * - Forwarding events from sandbox streams to client
+ * - Forwarding commands from client to sandbox channel
+ * - Forwarding events from sandbox channel to client
  * - Event replay on reconnection
  * - Journaling events for durability
  */
 export class WebSocketConnection {
   private lastSeq: number;
-  private rl: readline.Interface | null = null;
   private closed = false;
+  private unsubMessage: (() => void) | null = null;
+  private unsubClose: (() => void) | null = null;
 
   constructor(
     private ws: WSContext,
     private sessionId: string,
-    private streams: SandboxStreams,
+    private channel: SandboxChannel,
     private journal: EventJournal,
     initialSeq = 0,
   ) {
     this.lastSeq = initialSeq;
-    this.setupSandboxListener();
+    this.setupChannelListener();
   }
 
   /**
@@ -36,7 +36,7 @@ export class WebSocketConnection {
     if (events.length === 0) return;
 
     const lastEvent = events[events.length - 1];
-    if (!lastEvent) return; // Should never happen after length check, but satisfy TS
+    if (!lastEvent) return;
 
     const toSeq = lastEvent.seq;
     this.send({ type: "replay_start", fromSeq, toSeq });
@@ -65,22 +65,8 @@ export class WebSocketConnection {
       this.journal.append(this.sessionId, command.type, command);
     }
 
-    // Forward to sandbox stdin as JSON line
-    this.streams.stdin.write(`${JSON.stringify(command)}\n`);
-  }
-
-  /**
-   * Handle event from sandbox stdout.
-   */
-  private handleSandboxEvent(event: PiEvent): void {
-    if (this.closed) return;
-
-    // Journal first (outbox pattern)
-    const seq = this.journal.append(this.sessionId, event.type, event);
-    this.lastSeq = seq;
-
-    // Then forward to client
-    this.send(event);
+    // Forward to sandbox as JSON string (channel handles framing)
+    this.channel.send(JSON.stringify(command));
   }
 
   /**
@@ -92,7 +78,6 @@ export class WebSocketConnection {
     try {
       const raw = this.ws.raw as WebSocket | undefined;
       if (raw && raw.readyState === 1) {
-        // WebSocket.OPEN = 1
         this.ws.send(JSON.stringify(data));
       }
     } catch {
@@ -105,38 +90,52 @@ export class WebSocketConnection {
    */
   close(): void {
     this.closed = true;
-    this.rl?.close();
-    this.rl = null;
-    this.streams.detach();
+    this.unsubMessage?.();
+    this.unsubClose?.();
+    this.unsubMessage = null;
+    this.unsubClose = null;
+    this.channel.close();
   }
 
   get currentSeq(): number {
     return this.lastSeq;
   }
 
-  private setupSandboxListener(): void {
-    // Parse sandbox stdout (JSON lines)
-    this.rl = readline.createInterface({ input: this.streams.stdout });
-
-    this.rl.on("line", (line) => {
+  private setupChannelListener(): void {
+    // Subscribe to messages from the sandbox (already-split JSON lines)
+    this.unsubMessage = this.channel.onMessage((message) => {
       try {
-        const event = JSON.parse(line) as PiEvent;
+        const event = JSON.parse(message) as PiEvent;
         this.handleSandboxEvent(event);
       } catch {
         // Ignore invalid JSON
       }
     });
 
-    this.rl.on("close", () => {
-      // Sandbox stream closed
+    // Subscribe to channel close
+    this.unsubClose = this.channel.onClose(() => {
       if (!this.closed) {
         this.send({
           type: "sandbox_status",
           status: "stopped",
-          message: "Sandbox stream closed",
+          message: "Sandbox channel closed",
         });
       }
     });
+  }
+
+  /**
+   * Handle event from sandbox.
+   */
+  private handleSandboxEvent(event: PiEvent): void {
+    if (this.closed) return;
+
+    // Journal first (outbox pattern)
+    const seq = this.journal.append(this.sessionId, event.type, event);
+    this.lastSeq = seq;
+
+    // Then forward to client
+    this.send(event);
   }
 }
 

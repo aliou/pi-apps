@@ -1,4 +1,3 @@
-import type { Readable, Writable } from "node:stream";
 import type { SandboxResourceTier } from "./provider-types";
 
 export type SandboxStatus =
@@ -21,16 +20,40 @@ export interface SandboxInfo {
 }
 
 /**
- * Live I/O streams to the pi process inside a sandbox.
+ * Transport-neutral, message-oriented channel to the pi process inside a sandbox.
+ *
+ * Each "message" is a complete JSON line (no framing concerns for the consumer).
+ * For Docker, an adapter splits the stdout stream into lines internally.
+ * For WebSocket-based transports, each frame is already a message.
+ *
  * Returned by `SandboxHandle.attach()`.
  */
-export interface SandboxStreams {
-  readonly stdin: Writable;
-  readonly stdout: Readable;
-  readonly stderr?: Readable;
+export interface SandboxChannel {
+  /**
+   * Send a message (JSON line) to the pi process.
+   * The channel handles framing (e.g., appending newline for stdin-based transports).
+   */
+  send(message: string): void;
 
-  /** Release streams without affecting the sandbox. */
-  detach(): void;
+  /**
+   * Subscribe to messages from the pi process.
+   * Each message is a complete JSON line (no trailing newline).
+   * Returns an unsubscribe function.
+   */
+  onMessage(handler: (message: string) => void): () => void;
+
+  /**
+   * Subscribe to channel close events.
+   * Fired when the underlying transport closes (process exit, WS disconnect, etc.).
+   * Returns an unsubscribe function.
+   */
+  onClose(handler: (reason?: string) => void): () => void;
+
+  /**
+   * Close the channel and release resources.
+   * Does not affect the sandbox itself (it keeps running).
+   */
+  close(): void;
 }
 
 /**
@@ -59,11 +82,11 @@ export interface SandboxHandle {
   resume(secrets?: Record<string, string>, githubToken?: string): Promise<void>;
 
   /**
-   * Get live streams to the pi process.
+   * Get a message-oriented channel to the pi process.
    * Assumes the sandbox is running (call resume() first if needed).
    * Throws if not running.
    */
-  attach(): Promise<SandboxStreams>;
+  attach(): Promise<SandboxChannel>;
 
   /** Freeze the sandbox (e.g., for idle timeout). */
   pause(): Promise<void>;
