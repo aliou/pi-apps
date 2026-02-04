@@ -36,6 +36,13 @@
       "when": 1770034358415,
       "tag": "0004_fat_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1770238554833,
+      "tag": "0005_common_absorbing_man",
+      "breakpoints": true
     }
   ]
 }

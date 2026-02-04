@@ -91,25 +91,37 @@ export const settings = sqliteTable("settings", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// -- secrets (encrypted API keys) ------------------------------
-export const secrets = sqliteTable("secrets", {
-  /** Unique identifier (e.g., "anthropic_api_key", "openai_api_key") */
-  id: text("id").primaryKey(),
-  /** Human-readable name */
-  name: text("name").notNull(),
-  /** Base64-encoded initialization vector */
-  iv: text("iv").notNull(),
-  /** Base64-encoded encrypted value */
-  ciphertext: text("ciphertext").notNull(),
-  /** Base64-encoded authentication tag */
-  tag: text("tag").notNull(),
-  /** Encryption key version (for rotation) */
-  keyVersion: integer("key_version").notNull().default(1),
-  /** ISO timestamp of creation */
-  createdAt: text("created_at").notNull(),
-  /** ISO timestamp of last update */
-  updatedAt: text("updated_at").notNull(),
-});
+// -- secrets (encrypted values) --------------------------------
+export const secrets = sqliteTable(
+  "secrets",
+  {
+    /** UUID primary key */
+    id: text("id").primaryKey(),
+    /** Human-readable display label */
+    name: text("name").notNull(),
+    /** Environment variable name to inject into sandbox (stored as-is, trimmed) */
+    envVar: text("env_var").notNull(),
+    /** Grouping kind: ai_provider for model credentials, env_var for arbitrary env */
+    kind: text("kind", { enum: ["ai_provider", "env_var"] })
+      .notNull()
+      .default("env_var"),
+    /** Whether this secret is injected into new sandboxes */
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    /** Base64-encoded initialization vector */
+    iv: text("iv").notNull(),
+    /** Base64-encoded encrypted value */
+    ciphertext: text("ciphertext").notNull(),
+    /** Base64-encoded authentication tag */
+    tag: text("tag").notNull(),
+    /** Encryption key version (for rotation) */
+    keyVersion: integer("key_version").notNull().default(1),
+    /** ISO timestamp of creation */
+    createdAt: text("created_at").notNull(),
+    /** ISO timestamp of last update */
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [uniqueIndex("secrets_env_var_idx").on(table.envVar)],
+);
 
 // Type exports
 export type Environment = typeof environments.$inferSelect;

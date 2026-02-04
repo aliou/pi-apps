@@ -479,6 +479,9 @@ export class DockerSandboxProvider implements SandboxProvider {
 
   /**
    * Write secrets as files to a host directory for bind mounting.
+   * Uses safe filenames (s-0, s-1, ...) and a manifest file mapping
+   * env var names to filenames, to avoid path traversal via envVar.
+   *
    * Called at creation and on resume (to pick up changes).
    * Returns the directory path, or null if no secrets.
    */
@@ -494,8 +497,11 @@ export class DockerSandboxProvider implements SandboxProvider {
     const secretsDir = join(baseDir, `pi-secrets-${sessionId}`);
     mkdirSync(secretsDir, { mode: 0o700, recursive: true });
 
+    const manifestLines: string[] = [];
+    let idx = 0;
+
     for (const [envName, value] of Object.entries(secrets)) {
-      const filename = envName.toLowerCase();
+      const filename = `s-${idx}`;
       const filepath = join(secretsDir, filename);
       // chmod 0o600 first to allow overwrite on resume, then lock to 0o400
       try {
@@ -504,7 +510,20 @@ export class DockerSandboxProvider implements SandboxProvider {
         // File may not exist yet
       }
       writeFileSync(filepath, value, { mode: 0o400 });
+      manifestLines.push(`${envName}\t${filename}`);
+      idx++;
     }
+
+    // Write manifest (env_var<TAB>filename per line)
+    const manifestPath = join(secretsDir, "manifest");
+    try {
+      chmodSync(manifestPath, 0o600);
+    } catch {
+      // File may not exist yet
+    }
+    writeFileSync(manifestPath, `${manifestLines.join("\n")}\n`, {
+      mode: 0o400,
+    });
 
     this.secretsDirs.set(sessionId, secretsDir);
     return secretsDir;

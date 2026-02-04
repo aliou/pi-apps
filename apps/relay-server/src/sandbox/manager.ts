@@ -33,6 +33,8 @@ export interface SandboxManagerConfig {
 export class SandboxManager {
   private providers = new Map<SandboxProviderType, SandboxProvider>();
   private defaultProvider: SandboxProviderType;
+  /** Cached secrets snapshot for new sandbox creation. */
+  private secretsSnapshot: Record<string, string> = {};
 
   constructor(config: SandboxManagerConfig) {
     this.defaultProvider = config.defaultProvider;
@@ -90,6 +92,21 @@ export class SandboxManager {
       SandboxProviderType,
       { enabled: boolean; available: boolean }
     >;
+  }
+
+  /**
+   * Update the secrets snapshot used for new sandbox creations.
+   * Does not affect already-running sandboxes.
+   */
+  setSecrets(secrets: Record<string, string>): void {
+    this.secretsSnapshot = { ...secrets };
+  }
+
+  /**
+   * Get the current secrets snapshot.
+   */
+  getSecrets(): Record<string, string> {
+    return { ...this.secretsSnapshot };
   }
 
   /**

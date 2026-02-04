@@ -99,6 +99,13 @@ async function main() {
     `Enabled providers: ${sandboxManager.enabledProviders.join(", ")}`,
   );
 
+  // Load initial secrets snapshot for new sandbox creations
+  const initialSecrets = await secretsService.getAllAsEnv();
+  sandboxManager.setSecrets(initialSecrets);
+  console.log(
+    `Secrets loaded: ${Object.keys(initialSecrets).length} enabled secret(s)`,
+  );
+
   // Check availability on startup
   const available = await sandboxManager.isProviderAvailable();
   if (!available) {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AppDatabase } from "../db/connection";
 import { createTestDatabase } from "../test-helpers";
 import { CryptoService } from "./crypto.service";
-import { SECRET_ENV_MAP, SecretsService } from "./secrets.service";
+import { SecretsService } from "./secrets.service";
 
 describe("SecretsService", () => {
   let db: AppDatabase;
@@ -15,11 +15,8 @@ describe("SecretsService", () => {
     db = result.db;
     sqlite = result.sqlite;
 
-    // Create crypto service with test key
     const testKey = CryptoService.generateKey();
     crypto = new CryptoService(testKey);
-
-    // Create service
     service = new SecretsService(db, crypto);
   });
 
@@ -27,61 +24,168 @@ describe("SecretsService", () => {
     sqlite.close();
   });
 
-  describe("set", () => {
-    it("stores an encrypted secret", async () => {
-      await service.set("anthropic_api_key", "sk-ant-test-key");
+  describe("create", () => {
+    it("creates a secret and returns metadata", async () => {
+      const secret = await service.create({
+        name: "Anthropic",
+        envVar: "ANTHROPIC_API_KEY",
+        kind: "ai_provider",
+        value: "sk-ant-test-key",
+      });
 
-      const value = await service.get("anthropic_api_key");
-      expect(value).toBe("sk-ant-test-key");
+      expect(secret.id).toBeDefined();
+      expect(secret.name).toBe("Anthropic");
+      expect(secret.envVar).toBe("ANTHROPIC_API_KEY");
+      expect(secret.kind).toBe("ai_provider");
+      expect(secret.enabled).toBe(true);
+      expect(secret.createdAt).toBeDefined();
+      expect(secret.updatedAt).toBeDefined();
+      // No decrypted value in metadata
+      expect(secret).not.toHaveProperty("value");
     });
 
-    it("updates existing secret", async () => {
-      await service.set("anthropic_api_key", "old-key");
-      await service.set("anthropic_api_key", "new-key");
+    it("creates a disabled secret", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "TEST_KEY",
+        kind: "env_var",
+        value: "val",
+        enabled: false,
+      });
 
-      const value = await service.get("anthropic_api_key");
-      expect(value).toBe("new-key");
+      expect(secret.enabled).toBe(false);
+    });
+
+    it("trims envVar whitespace", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "  MY_KEY  ",
+        kind: "env_var",
+        value: "val",
+      });
+
+      expect(secret.envVar).toBe("MY_KEY");
+    });
+
+    it("rejects empty envVar", async () => {
+      await expect(
+        service.create({
+          name: "Test",
+          envVar: "  ",
+          kind: "env_var",
+          value: "val",
+        }),
+      ).rejects.toThrow("envVar must not be empty");
+    });
+
+    it("rejects envVar with NUL byte", async () => {
+      await expect(
+        service.create({
+          name: "Test",
+          envVar: "MY\0KEY",
+          kind: "env_var",
+          value: "val",
+        }),
+      ).rejects.toThrow("envVar must not contain NUL bytes");
+    });
+
+    it("rejects envVar with = sign", async () => {
+      await expect(
+        service.create({
+          name: "Test",
+          envVar: "MY=KEY",
+          kind: "env_var",
+          value: "val",
+        }),
+      ).rejects.toThrow("envVar must not contain '='");
+    });
+
+    it("rejects duplicate envVar", async () => {
+      await service.create({
+        name: "First",
+        envVar: "MY_KEY",
+        kind: "env_var",
+        value: "val1",
+      });
+
+      await expect(
+        service.create({
+          name: "Second",
+          envVar: "MY_KEY",
+          kind: "env_var",
+          value: "val2",
+        }),
+      ).rejects.toThrow(/UNIQUE constraint/);
     });
   });
 
-  describe("get", () => {
-    it("returns null for non-existent secret", async () => {
-      const value = await service.get("anthropic_api_key");
-      expect(value).toBeNull();
+  describe("update", () => {
+    it("updates name", async () => {
+      const secret = await service.create({
+        name: "Old Name",
+        envVar: "MY_KEY",
+        kind: "env_var",
+        value: "val",
+      });
+
+      const updated = await service.update(secret.id, { name: "New Name" });
+      expect(updated).toBe(true);
+
+      const list = await service.list();
+      expect(list[0]?.name).toBe("New Name");
     });
 
-    it("decrypts stored secret", async () => {
-      const apiKey = "sk-ant-api03-very-long-key-here";
-      await service.set("anthropic_api_key", apiKey);
+    it("updates enabled flag", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "MY_KEY",
+        kind: "env_var",
+        value: "val",
+      });
 
-      const value = await service.get("anthropic_api_key");
-      expect(value).toBe(apiKey);
+      await service.update(secret.id, { enabled: false });
+      const list = await service.list();
+      expect(list[0]?.enabled).toBe(false);
+    });
+
+    it("updates value (re-encrypts)", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "MY_KEY",
+        kind: "env_var",
+        value: "old-value",
+      });
+
+      await service.update(secret.id, { value: "new-value" });
+      const decrypted = await service.getValue(secret.id);
+      expect(decrypted).toBe("new-value");
+    });
+
+    it("returns false for non-existent id", async () => {
+      const result = await service.update("nonexistent", { name: "x" });
+      expect(result).toBe(false);
     });
   });
 
   describe("delete", () => {
     it("removes a secret", async () => {
-      await service.set("openai_api_key", "sk-test");
-      const deleted = await service.delete("openai_api_key");
+      const secret = await service.create({
+        name: "Test",
+        envVar: "MY_KEY",
+        kind: "env_var",
+        value: "val",
+      });
 
+      const deleted = await service.delete(secret.id);
       expect(deleted).toBe(true);
-      expect(await service.get("openai_api_key")).toBeNull();
+
+      const list = await service.list();
+      expect(list).toHaveLength(0);
     });
 
-    it("returns false for non-existent secret", async () => {
-      const deleted = await service.delete("openai_api_key");
+    it("returns false for non-existent id", async () => {
+      const deleted = await service.delete("nonexistent");
       expect(deleted).toBe(false);
-    });
-  });
-
-  describe("has", () => {
-    it("returns true for existing secret", async () => {
-      await service.set("gemini_api_key", "test");
-      expect(await service.has("gemini_api_key")).toBe(true);
-    });
-
-    it("returns false for non-existent secret", async () => {
-      expect(await service.has("gemini_api_key")).toBe(false);
     });
   });
 
@@ -92,24 +196,51 @@ describe("SecretsService", () => {
     });
 
     it("returns metadata for all secrets", async () => {
-      await service.set("anthropic_api_key", "key1");
-      await service.set("openai_api_key", "key2");
+      await service.create({
+        name: "Key A",
+        envVar: "KEY_A",
+        kind: "ai_provider",
+        value: "val-a",
+      });
+      await service.create({
+        name: "Key B",
+        envVar: "KEY_B",
+        kind: "env_var",
+        value: "val-b",
+      });
 
       const list = await service.list();
-
       expect(list).toHaveLength(2);
-      expect(list.map((s) => s.id).sort()).toEqual([
-        "anthropic_api_key",
-        "openai_api_key",
-      ]);
 
-      // Should not include decrypted values
       for (const secret of list) {
         expect(secret).not.toHaveProperty("value");
+        expect(secret).toHaveProperty("id");
         expect(secret).toHaveProperty("name");
+        expect(secret).toHaveProperty("envVar");
+        expect(secret).toHaveProperty("kind");
+        expect(secret).toHaveProperty("enabled");
         expect(secret).toHaveProperty("createdAt");
         expect(secret).toHaveProperty("updatedAt");
       }
+    });
+  });
+
+  describe("getValue", () => {
+    it("returns null for non-existent id", async () => {
+      const value = await service.getValue("nonexistent");
+      expect(value).toBeNull();
+    });
+
+    it("decrypts stored secret", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "MY_KEY",
+        kind: "env_var",
+        value: "sk-secret-value-123",
+      });
+
+      const value = await service.getValue(secret.id);
+      expect(value).toBe("sk-secret-value-123");
     });
   });
 
@@ -119,57 +250,69 @@ describe("SecretsService", () => {
       expect(env).toEqual({});
     });
 
-    it("returns secrets as environment variable map", async () => {
-      await service.set("anthropic_api_key", "sk-ant-123");
-      await service.set("openai_api_key", "sk-openai-456");
+    it("returns only enabled secrets as env map", async () => {
+      await service.create({
+        name: "Active",
+        envVar: "ACTIVE_KEY",
+        kind: "ai_provider",
+        value: "active-value",
+      });
+      await service.create({
+        name: "Disabled",
+        envVar: "DISABLED_KEY",
+        kind: "ai_provider",
+        value: "disabled-value",
+        enabled: false,
+      });
 
       const env = await service.getAllAsEnv();
-
-      expect(env).toEqual({
-        ANTHROPIC_API_KEY: "sk-ant-123",
-        OPENAI_API_KEY: "sk-openai-456",
-      });
+      expect(env).toEqual({ ACTIVE_KEY: "active-value" });
+      expect(env).not.toHaveProperty("DISABLED_KEY");
     });
 
-    it("uses correct env var names from SECRET_ENV_MAP", async () => {
-      // Set all known secrets
-      await service.set("anthropic_api_key", "a");
-      await service.set("openai_api_key", "b");
-      await service.set("gemini_api_key", "c");
-      await service.set("groq_api_key", "d");
-      await service.set("deepseek_api_key", "e");
-      await service.set("openrouter_api_key", "f");
+    it("uses envVar as the key (not id)", async () => {
+      await service.create({
+        name: "OpenAI",
+        envVar: "OPENAI_API_KEY",
+        kind: "ai_provider",
+        value: "sk-123",
+      });
 
       const env = await service.getAllAsEnv();
-
-      expect(env).toEqual({
-        ANTHROPIC_API_KEY: "a",
-        OPENAI_API_KEY: "b",
-        GEMINI_API_KEY: "c",
-        GROQ_API_KEY: "d",
-        DEEPSEEK_API_KEY: "e",
-        OPENROUTER_API_KEY: "f",
-      });
+      expect(env).toEqual({ OPENAI_API_KEY: "sk-123" });
     });
   });
 
-  describe("SECRET_ENV_MAP", () => {
-    it("has mappings for all secret IDs", () => {
-      const expectedIds = [
-        "anthropic_api_key",
-        "openai_api_key",
-        "gemini_api_key",
-        "groq_api_key",
-        "deepseek_api_key",
-        "openrouter_api_key",
-      ];
+  describe("getEnabledEnvVarsByKind", () => {
+    it("returns only ai_provider env vars when filtered", async () => {
+      await service.create({
+        name: "OpenAI",
+        envVar: "OPENAI_API_KEY",
+        kind: "ai_provider",
+        value: "sk-123",
+      });
+      await service.create({
+        name: "Custom",
+        envVar: "MY_CUSTOM_VAR",
+        kind: "env_var",
+        value: "custom-val",
+      });
 
-      for (const id of expectedIds) {
-        expect(SECRET_ENV_MAP).toHaveProperty(id);
-        expect(typeof SECRET_ENV_MAP[id as keyof typeof SECRET_ENV_MAP]).toBe(
-          "string",
-        );
-      }
+      const envVars = await service.getEnabledEnvVarsByKind("ai_provider");
+      expect(envVars).toEqual(["OPENAI_API_KEY"]);
+    });
+
+    it("excludes disabled secrets", async () => {
+      await service.create({
+        name: "OpenAI",
+        envVar: "OPENAI_API_KEY",
+        kind: "ai_provider",
+        value: "sk-123",
+        enabled: false,
+      });
+
+      const envVars = await service.getEnabledEnvVarsByKind("ai_provider");
+      expect(envVars).toEqual([]);
     });
   });
 });

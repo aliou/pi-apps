@@ -4,55 +4,70 @@ import { secrets } from "../db/schema";
 import type { CryptoService, EncryptedData } from "./crypto.service";
 
 /**
- * Known secret identifiers for type safety.
- * These are provider API keys only - GitHub token for repo access
- * is stored separately in settings.
+ * Grouping kind for secrets.
+ * - ai_provider: model provider API keys (used by /api/models)
+ * - env_var: arbitrary environment variables for extensions etc.
  */
-export type SecretId =
-  | "anthropic_api_key"
-  | "openai_api_key"
-  | "gemini_api_key"
-  | "groq_api_key"
-  | "deepseek_api_key"
-  | "openrouter_api_key";
+export type SecretKind = "ai_provider" | "env_var";
 
 /**
  * Secret metadata (without the decrypted value).
  */
 export interface SecretInfo {
-  id: SecretId;
+  id: string;
   name: string;
+  envVar: string;
+  kind: SecretKind;
+  enabled: boolean;
   createdAt: string;
   updatedAt: string;
   keyVersion: number;
 }
 
 /**
- * Environment variable mapping for secrets.
+ * Parameters for creating a new secret.
  */
-export const SECRET_ENV_MAP: Record<SecretId, string> = {
-  anthropic_api_key: "ANTHROPIC_API_KEY",
-  openai_api_key: "OPENAI_API_KEY",
-  gemini_api_key: "GEMINI_API_KEY",
-  groq_api_key: "GROQ_API_KEY",
-  deepseek_api_key: "DEEPSEEK_API_KEY",
-  openrouter_api_key: "OPENROUTER_API_KEY",
-};
+export interface CreateSecretParams {
+  name: string;
+  envVar: string;
+  kind: SecretKind;
+  value: string;
+  enabled?: boolean;
+}
 
 /**
- * Human-readable names for secrets.
+ * Parameters for updating an existing secret.
+ * All fields optional; only provided fields are updated.
  */
-const SECRET_NAMES: Record<SecretId, string> = {
-  anthropic_api_key: "Anthropic API Key",
-  openai_api_key: "OpenAI API Key",
-  gemini_api_key: "Google Gemini API Key",
-  groq_api_key: "Groq API Key",
-  deepseek_api_key: "DeepSeek API Key",
-  openrouter_api_key: "OpenRouter API Key",
-};
+export interface UpdateSecretParams {
+  name?: string;
+  envVar?: string;
+  kind?: SecretKind;
+  enabled?: boolean;
+  value?: string;
+}
+
+/**
+ * Validate envVar: reject NUL bytes, `=`, and empty after trim.
+ * Returns trimmed value or throws.
+ */
+function validateEnvVar(envVar: string): string {
+  const trimmed = envVar.trim();
+  if (trimmed.length === 0) {
+    throw new Error("envVar must not be empty");
+  }
+  if (trimmed.includes("\0")) {
+    throw new Error("envVar must not contain NUL bytes");
+  }
+  if (trimmed.includes("=")) {
+    throw new Error("envVar must not contain '='");
+  }
+  return trimmed;
+}
 
 /**
  * Service for managing encrypted secrets in the database.
+ * Secrets are stored with AES-256-GCM encryption at rest.
  */
 export class SecretsService {
   constructor(
@@ -61,41 +76,112 @@ export class SecretsService {
   ) {}
 
   /**
-   * Store a secret (encrypts and saves to database).
+   * Create a new secret. Returns metadata (no decrypted value).
    */
-  async set(id: SecretId, value: string): Promise<void> {
-    const encrypted = this.crypto.encrypt(value);
+  async create(params: CreateSecretParams): Promise<SecretInfo> {
+    const envVar = validateEnvVar(params.envVar);
+    const encrypted = this.crypto.encrypt(params.value);
     const now = new Date().toISOString();
+    const id = crypto.randomUUID();
 
-    await this.db
-      .insert(secrets)
-      .values({
-        id,
-        name: SECRET_NAMES[id] ?? id,
-        iv: encrypted.iv,
-        ciphertext: encrypted.ciphertext,
-        tag: encrypted.tag,
-        keyVersion: encrypted.keyVersion,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: secrets.id,
-        set: {
-          iv: encrypted.iv,
-          ciphertext: encrypted.ciphertext,
-          tag: encrypted.tag,
-          keyVersion: encrypted.keyVersion,
-          updatedAt: now,
-        },
-      });
+    await this.db.insert(secrets).values({
+      id,
+      name: params.name,
+      envVar,
+      kind: params.kind,
+      enabled: params.enabled ?? true,
+      iv: encrypted.iv,
+      ciphertext: encrypted.ciphertext,
+      tag: encrypted.tag,
+      keyVersion: encrypted.keyVersion,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      id,
+      name: params.name,
+      envVar,
+      kind: params.kind,
+      enabled: params.enabled ?? true,
+      createdAt: now,
+      updatedAt: now,
+      keyVersion: encrypted.keyVersion,
+    };
   }
 
   /**
-   * Retrieve and decrypt a secret.
+   * Update an existing secret. Returns true if updated, false if not found.
+   * If value is provided, re-encrypts.
+   */
+  async update(id: string, params: UpdateSecretParams): Promise<boolean> {
+    const existing = await this.db
+      .select()
+      .from(secrets)
+      .where(eq(secrets.id, id))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    const updates: Record<string, unknown> = { updatedAt: now };
+
+    if (params.name !== undefined) {
+      updates.name = params.name;
+    }
+    if (params.envVar !== undefined) {
+      updates.envVar = validateEnvVar(params.envVar);
+    }
+    if (params.kind !== undefined) {
+      updates.kind = params.kind;
+    }
+    if (params.enabled !== undefined) {
+      updates.enabled = params.enabled;
+    }
+    if (params.value !== undefined) {
+      const encrypted = this.crypto.encrypt(params.value);
+      updates.iv = encrypted.iv;
+      updates.ciphertext = encrypted.ciphertext;
+      updates.tag = encrypted.tag;
+      updates.keyVersion = encrypted.keyVersion;
+    }
+
+    await this.db.update(secrets).set(updates).where(eq(secrets.id, id));
+    return true;
+  }
+
+  /**
+   * Delete a secret by ID.
+   */
+  async delete(id: string): Promise<boolean> {
+    const result = await this.db.delete(secrets).where(eq(secrets.id, id));
+    return result.changes > 0;
+  }
+
+  /**
+   * List all stored secrets (metadata only, no decrypted values).
+   */
+  async list(): Promise<SecretInfo[]> {
+    const rows = await this.db.select().from(secrets);
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      envVar: row.envVar,
+      kind: row.kind as SecretKind,
+      enabled: row.enabled,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      keyVersion: row.keyVersion,
+    }));
+  }
+
+  /**
+   * Get decrypted value for a single secret by ID.
    * Returns null if not found.
    */
-  async get(id: SecretId): Promise<string | null> {
+  async getValue(id: string): Promise<string | null> {
     const rows = await this.db
       .select()
       .from(secrets)
@@ -103,9 +189,7 @@ export class SecretsService {
       .limit(1);
 
     const row = rows[0];
-    if (!row) {
-      return null;
-    }
+    if (!row) return null;
 
     const encrypted: EncryptedData = {
       iv: row.iv,
@@ -118,62 +202,38 @@ export class SecretsService {
   }
 
   /**
-   * Delete a secret.
-   */
-  async delete(id: SecretId): Promise<boolean> {
-    const result = await this.db.delete(secrets).where(eq(secrets.id, id));
-    return result.changes > 0;
-  }
-
-  /**
-   * Check if a secret exists.
-   */
-  async has(id: SecretId): Promise<boolean> {
-    const rows = await this.db
-      .select({ id: secrets.id })
-      .from(secrets)
-      .where(eq(secrets.id, id))
-      .limit(1);
-    return rows.length > 0;
-  }
-
-  /**
-   * List all stored secrets (metadata only, not values).
-   */
-  async list(): Promise<SecretInfo[]> {
-    const rows = await this.db.select().from(secrets);
-    return rows.map((row) => ({
-      id: row.id as SecretId,
-      name: row.name,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      keyVersion: row.keyVersion,
-    }));
-  }
-
-  /**
-   * Get all secrets as environment variable key-value pairs.
-   * Used for injecting into sandbox containers.
+   * Get all enabled secrets as { envVar: decryptedValue } map.
+   * Used for sandbox injection. Only returns secrets where enabled = true.
    */
   async getAllAsEnv(): Promise<Record<string, string>> {
     const result: Record<string, string> = {};
-    const rows = await this.db.select().from(secrets);
+    const rows = await this.db
+      .select()
+      .from(secrets)
+      .where(eq(secrets.enabled, true));
 
     for (const row of rows) {
-      const id = row.id as SecretId;
-      const envKey = SECRET_ENV_MAP[id];
-      if (envKey) {
-        const encrypted: EncryptedData = {
-          iv: row.iv,
-          ciphertext: row.ciphertext,
-          tag: row.tag,
-          keyVersion: row.keyVersion,
-        };
-        result[envKey] = this.crypto.decrypt(encrypted);
-      }
+      const encrypted: EncryptedData = {
+        iv: row.iv,
+        ciphertext: row.ciphertext,
+        tag: row.tag,
+        keyVersion: row.keyVersion,
+      };
+      result[row.envVar] = this.crypto.decrypt(encrypted);
     }
 
     return result;
+  }
+
+  /**
+   * Get env var names for enabled secrets of a specific kind.
+   * Used by /api/models to set dummy env vars for pi-ai provider detection.
+   */
+  async getEnabledEnvVarsByKind(kind: SecretKind): Promise<string[]> {
+    const rows = await this.db.select().from(secrets);
+    return rows
+      .filter((r) => r.kind === kind && r.enabled)
+      .map((r) => r.envVar);
   }
 
   /**
@@ -185,13 +245,10 @@ export class SecretsService {
     let count = 0;
 
     for (const row of rows) {
-      // Skip if already using current key version
       if (row.keyVersion === this.crypto.getKeyVersion()) {
         continue;
       }
 
-      // Decrypt with old key would require multi-key support
-      // For now, this just re-encrypts with current key
       const encrypted: EncryptedData = {
         iv: row.iv,
         ciphertext: row.ciphertext,

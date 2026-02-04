@@ -1,25 +1,22 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
-import type { SecretId, SecretsService } from "../services/secrets.service";
+import type { SandboxManager } from "../sandbox/manager";
+import type { SecretKind, SecretsService } from "../services/secrets.service";
 
-/**
- * Valid secret IDs that can be managed via the API.
- */
-const VALID_SECRET_IDS: SecretId[] = [
-  "anthropic_api_key",
-  "openai_api_key",
-  "gemini_api_key",
-  "groq_api_key",
-  "deepseek_api_key",
-  "openrouter_api_key",
-];
-
-function isValidSecretId(id: string): id is SecretId {
-  return VALID_SECRET_IDS.includes(id as SecretId);
-}
-
-export function secretsRoutes(secretsService: SecretsService): Hono<AppEnv> {
+export function secretsRoutes(
+  secretsService: SecretsService,
+  sandboxManager: SandboxManager,
+): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+
+  /**
+   * Refresh the sandbox manager's secrets snapshot after a mutation.
+   * Only affects future sandbox creations, not running containers.
+   */
+  async function refreshSecrets(): Promise<void> {
+    const env = await secretsService.getAllAsEnv();
+    sandboxManager.setSecrets(env);
+  }
 
   // List all secrets (metadata only, no values)
   app.get("/", async (c) => {
@@ -27,76 +24,142 @@ export function secretsRoutes(secretsService: SecretsService): Hono<AppEnv> {
     return c.json({ data: list, error: null });
   });
 
-  // Check if a specific secret exists
-  app.get("/:id", async (c) => {
-    const id = c.req.param("id");
-
-    if (!isValidSecretId(id)) {
-      return c.json({ data: null, error: "Invalid secret ID" }, 400);
-    }
-
-    const exists = await secretsService.has(id);
-    return c.json({
-      data: { id, configured: exists },
-      error: null,
-    });
-  });
-
-  // Set a secret
-  app.put("/:id", async (c) => {
-    const id = c.req.param("id");
-
-    if (!isValidSecretId(id)) {
-      return c.json({ data: null, error: "Invalid secret ID" }, 400);
-    }
-
-    let body: { value?: string };
+  // Create a new secret
+  app.post("/", async (c) => {
+    let body: {
+      name?: string;
+      envVar?: string;
+      kind?: string;
+      value?: string;
+      enabled?: boolean;
+    };
     try {
       body = await c.req.json();
     } catch {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const { value } = body;
+    const { name, envVar, kind, value, enabled } = body;
+
+    if (typeof name !== "string" || name.trim() === "") {
+      return c.json({ data: null, error: "name is required" }, 400);
+    }
+    if (typeof envVar !== "string" || envVar.trim() === "") {
+      return c.json({ data: null, error: "envVar is required" }, 400);
+    }
     if (typeof value !== "string" || value.trim() === "") {
-      return c.json({ data: null, error: "Value is required" }, 400);
+      return c.json({ data: null, error: "value is required" }, 400);
+    }
+    if (kind !== undefined && kind !== "ai_provider" && kind !== "env_var") {
+      return c.json(
+        { data: null, error: "kind must be 'ai_provider' or 'env_var'" },
+        400,
+      );
     }
 
-    await secretsService.set(id, value.trim());
+    try {
+      const secret = await secretsService.create({
+        name: name.trim(),
+        envVar,
+        kind: (kind as SecretKind) ?? "env_var",
+        value,
+        enabled,
+      });
 
-    return c.json({ data: { ok: true }, error: null });
+      await refreshSecrets();
+      return c.json({ data: secret, error: null }, 201);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      // SQLite unique constraint on env_var
+      if (msg.includes("UNIQUE constraint")) {
+        return c.json(
+          {
+            data: null,
+            error: `A secret with envVar '${envVar}' already exists`,
+          },
+          400,
+        );
+      }
+      // envVar validation errors
+      if (msg.startsWith("envVar")) {
+        return c.json({ data: null, error: msg }, 400);
+      }
+      throw err;
+    }
+  });
+
+  // Update an existing secret
+  app.put("/:id", async (c) => {
+    const id = c.req.param("id");
+
+    let body: {
+      name?: string;
+      envVar?: string;
+      kind?: string;
+      enabled?: boolean;
+      value?: string;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ data: null, error: "Invalid JSON body" }, 400);
+    }
+
+    if (
+      body.kind !== undefined &&
+      body.kind !== "ai_provider" &&
+      body.kind !== "env_var"
+    ) {
+      return c.json(
+        { data: null, error: "kind must be 'ai_provider' or 'env_var'" },
+        400,
+      );
+    }
+
+    try {
+      const updated = await secretsService.update(id, {
+        name: body.name,
+        envVar: body.envVar,
+        kind: body.kind as SecretKind | undefined,
+        enabled: body.enabled,
+        value: body.value,
+      });
+
+      if (!updated) {
+        return c.json({ data: null, error: "Secret not found" }, 404);
+      }
+
+      await refreshSecrets();
+      return c.json({ data: { ok: true }, error: null });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      if (msg.includes("UNIQUE constraint")) {
+        return c.json(
+          {
+            data: null,
+            error: `A secret with envVar '${body.envVar}' already exists`,
+          },
+          400,
+        );
+      }
+      if (msg.startsWith("envVar")) {
+        return c.json({ data: null, error: msg }, 400);
+      }
+      throw err;
+    }
   });
 
   // Delete a secret
   app.delete("/:id", async (c) => {
     const id = c.req.param("id");
-
-    if (!isValidSecretId(id)) {
-      return c.json({ data: null, error: "Invalid secret ID" }, 400);
-    }
-
     const deleted = await secretsService.delete(id);
 
     if (!deleted) {
       return c.json({ data: null, error: "Secret not found" }, 404);
     }
 
+    await refreshSecrets();
     return c.json({ data: { ok: true }, error: null });
-  });
-
-  // Get list of valid secret IDs
-  app.get("/schema/ids", (c) => {
-    return c.json({
-      data: VALID_SECRET_IDS.map((id) => ({
-        id,
-        envVar: id.toUpperCase(),
-        name: id
-          .split("_")
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(" "),
-      })),
-      error: null,
-    });
   });
 
   return app;
