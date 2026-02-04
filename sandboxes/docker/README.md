@@ -83,8 +83,30 @@ The entrypoint script loads secrets from bind-mounted files into environment var
 # Alpine ARM64
 docker build -t pi-sandbox:alpine sandboxes/docker/sandbox-alpine-arm64/
 
+# Alpine ARM64 with specific pi version
+docker build --build-arg PI_VERSION=0.51.5 -t pi-sandbox:alpine sandboxes/docker/sandbox-alpine-arm64/
+
 # Codex Universal
 docker build -t pi-sandbox:local sandboxes/docker/sandbox-codex-universal/
+
+# Codex Universal with specific pi version
+docker build --build-arg PI_VERSION=0.51.5 -t pi-sandbox:local sandboxes/docker/sandbox-codex-universal/
+```
+
+## Image Tagging
+
+Images pushed to GHCR are tagged with:
+
+- **Pi version** (e.g., `0.51.5`) - extracted from `ARG PI_VERSION` in Dockerfile
+- **Git SHA** (e.g., `a1b2c3d`) - short commit hash
+- **Branch name** (e.g., `main`) - on push to branch
+- **PR number** (e.g., `pr-123`) - on pull requests
+
+Example tags for `ghcr.io/aliou/pi-sandbox-alpine-arm64`:
+```
+ghcr.io/aliou/pi-sandbox-alpine-arm64:0.51.5
+ghcr.io/aliou/pi-sandbox-alpine-arm64:main
+ghcr.io/aliou/pi-sandbox-alpine-arm64:a1b2c3d
 ```
 
 ## Adding a New Image

@@ -6,9 +6,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install pi CLI
-ARG PI_VERSION=v0.50.9
+ARG PI_VERSION=0.51.5
 RUN ARCH=$(uname -m | sed 's/aarch64/arm64/' | sed 's/x86_64/x64/') && \
-    curl -fsSL "https://github.com/badlogic/pi-mono/releases/download/${PI_VERSION}/pi-linux-${ARCH}.tar.gz" \
+    curl -fsSL "https://github.com/badlogic/pi-mono/releases/download/v${PI_VERSION}/pi-linux-${ARCH}.tar.gz" \
       -o /tmp/pi.tar.gz && \
     mkdir -p /opt/pi && \
     tar -xzf /tmp/pi.tar.gz -C /opt && \

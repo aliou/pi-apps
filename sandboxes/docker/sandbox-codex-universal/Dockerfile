@@ -5,14 +5,14 @@ ARG CODEX_IMAGE=ghcr.io/openai/codex-universal@sha256:956c2e7dd1590fc12763f17257
 FROM ${CODEX_IMAGE}
 
 # Install pi CLI from GitHub releases (binary, no Node required)
-ARG PI_VERSION=v0.50.9
+ARG PI_VERSION=0.51.5
 ARG TARGETARCH
 RUN set -ex && \
     if [ "$TARGETARCH" = "arm64" ]; then ARCH="arm64"; else ARCH="x64"; fi && \
     if [ "$PI_VERSION" = "latest" ]; then \
       PI_URL=$(curl -s https://api.github.com/repos/badlogic/pi-mono/releases/latest | grep "browser_download_url.*pi-linux-${ARCH}.tar.gz" | cut -d '"' -f 4); \
     else \
-      PI_URL="https://github.com/badlogic/pi-mono/releases/download/${PI_VERSION}/pi-linux-${ARCH}.tar.gz"; \
+      PI_URL="https://github.com/badlogic/pi-mono/releases/download/v${PI_VERSION}/pi-linux-${ARCH}.tar.gz"; \
     fi && \
     curl -fsSL "$PI_URL" -o /tmp/pi.tar.gz && \
     mkdir -p /opt/pi && \

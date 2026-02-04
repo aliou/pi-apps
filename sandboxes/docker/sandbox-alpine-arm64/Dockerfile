@@ -7,7 +7,7 @@
 
 FROM --platform=linux/arm64 node:22-alpine AS builder
 
-ARG PI_VERSION=0.50.9
+ARG PI_VERSION=0.51.5
 RUN npm install -g @mariozechner/pi-coding-agent@${PI_VERSION}
 
 # ---

@@ -11,7 +11,7 @@ Published to GHCR as `ghcr.io/aliou/pi-sandbox-alpine-arm64`.
 docker build -t pi-sandbox-alpine-arm64:local .
 
 # Build with specific pi version
-docker build --build-arg PI_VERSION=v0.50.6 -t pi-sandbox-alpine-arm64:local .
+docker build --build-arg PI_VERSION=0.51.5 -t pi-sandbox-alpine-arm64:local .
 ```
 
 ## Image Details

@@ -174,6 +174,12 @@ public struct ClearConversationCommand: RPCCommand, Sendable {
     public init() {}
 }
 
+/// Get available slash commands
+public struct GetCommandsCommand: RPCCommand, Sendable {
+    public let type = "get_commands"
+    public init() {}
+}
+
 // MARK: - RPC Response
 
 /// Generic RPC response wrapper
@@ -1063,4 +1069,48 @@ public struct NewSessionResponse: Decodable, Sendable {
 
 public struct SwitchSessionResponse: Decodable, Sendable {
     public let cancelled: Bool
+}
+
+// MARK: - Commands (0.51.3+)
+
+/// Slash command source type
+public enum SlashCommandSource: String, Codable, Sendable {
+    case `extension`
+    case prompt  // Changed from "template" in 0.51.3
+    case skill
+}
+
+/// Slash command location
+public enum SlashCommandLocation: String, Codable, Sendable {
+    case user
+    case project
+    case path
+}
+
+/// Information about an available slash command
+public struct SlashCommandInfo: Codable, Sendable {
+    public let name: String
+    public let description: String?
+    public let source: SlashCommandSource
+    public let location: SlashCommandLocation?
+    public let path: String?
+
+    public init(
+        name: String,
+        description: String? = nil,
+        source: SlashCommandSource,
+        location: SlashCommandLocation? = nil,
+        path: String? = nil
+    ) {
+        self.name = name
+        self.description = description
+        self.source = source
+        self.location = location
+        self.path = path
+    }
+}
+
+/// Response for get_commands command
+public struct GetCommandsResponse: Decodable, Sendable {
+    public let commands: [SlashCommandInfo]
 }

@@ -53,6 +53,24 @@ runs:
       shell: bash
       run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
+    - name: Extract Pi version from Dockerfile
+      id: pi-version
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.context }}/Dockerfile" ]; then
+          PI_VERSION=$(grep '^ARG PI_VERSION=' "${{ inputs.context }}/Dockerfile" | cut -d'=' -f2)
+          if [ -n "$PI_VERSION" ]; then
+            echo "version=${PI_VERSION}" >> $GITHUB_OUTPUT
+            echo "Found PI_VERSION: ${PI_VERSION}"
+          else
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "No PI_VERSION found in Dockerfile"
+          fi
+        else
+          echo "version=" >> $GITHUB_OUTPUT
+          echo "No Dockerfile found at ${{ inputs.context }}/Dockerfile"
+        fi
+
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -62,6 +80,7 @@ runs:
           type=sha,prefix=,format=short
           type=ref,event=branch
           type=ref,event=pr
+          type=raw,value=${{ steps.pi-version.outputs.version }},enable=${{ steps.pi-version.outputs.version != '' }}
 
     - name: Build and push
       id: build

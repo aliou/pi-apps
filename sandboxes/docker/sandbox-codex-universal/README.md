@@ -10,8 +10,8 @@ Published to GHCR as `ghcr.io/aliou/pi-sandbox-codex-universal`.
 # Build locally
 docker build -t pi-sandbox-codex-universal:local .
 
-# Build with specific pi version
-docker build --build-arg PI_VERSION=v0.50.6 -t pi-sandbox-codex-universal:local .
+# Build with specific pi version (GitHub release expects v prefix, added automatically)
+docker build --build-arg PI_VERSION=0.51.5 -t pi-sandbox-codex-universal:local .
 ```
 
 ## Image Details
