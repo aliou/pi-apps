@@ -1,0 +1,27 @@
+:3000 {
+	# ── Reverse-proxy: API ──────────────────────────────────────────────
+	handle /api* {
+		reverse_proxy relay-server:31415
+	}
+
+	# ── Reverse-proxy: WebSocket + HTTP on /ws ──────────────────────────
+	handle /ws* {
+		reverse_proxy relay-server:31415
+	}
+
+	# ── Reverse-proxy: Health check ─────────────────────────────────────
+	handle /health {
+		reverse_proxy relay-server:31415
+	}
+
+	# ── SPA: serve static files, fall back to index.html ────────────────
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+
+		# Cache static assets
+		@assets path *.js *.css *.png *.jpg *.jpeg *.gif *.ico *.svg *.woff *.woff2 *.ttf *.eot
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+	}
+}
