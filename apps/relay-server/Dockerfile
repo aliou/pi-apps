@@ -30,6 +30,9 @@ WORKDIR /app
 # Install only the native module required at runtime (externalized by esbuild)
 RUN npm install --no-save better-sqlite3@11.8.1
 
+# The esbuild bundle uses format:"esm", so Node must treat .js as ESM
+RUN echo '{"type":"module"}' > package.json
+
 # Copy bundled server + migrations from build stage
 COPY --from=builder /app/apps/relay-server/dist ./dist
 
