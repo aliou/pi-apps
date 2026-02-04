@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { createServer as createHTTPSServer } from "node:https";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
@@ -155,17 +157,43 @@ async function main() {
   );
   app.get("/ws/sessions/:id", wsHandler);
 
+  // Validate TLS configuration
+  if (config.tlsCert && !config.tlsKey) {
+    console.error("--tls-key is required when --tls-cert is provided");
+    process.exit(1);
+  }
+  if (config.tlsKey && !config.tlsCert) {
+    console.error("--tls-cert is required when --tls-key is provided");
+    process.exit(1);
+  }
+
+  const tls =
+    config.tlsCert && config.tlsKey
+      ? { cert: readFileSync(config.tlsCert), key: readFileSync(config.tlsKey) }
+      : null;
+
   // Start server with WebSocket support
-  const server = serve({
-    fetch: app.fetch,
-    port: config.port,
-    hostname: config.host,
-  });
+  const server = tls
+    ? serve({
+        fetch: app.fetch,
+        port: config.port,
+        hostname: config.host,
+        createServer: createHTTPSServer,
+        serverOptions: tls,
+      })
+    : serve({
+        fetch: app.fetch,
+        port: config.port,
+        hostname: config.host,
+      });
 
   // Inject WebSocket into server
   injectWebSocket(server);
 
-  console.log(`Server listening on http://${config.host}:${config.port}`);
+  const protocol = tls ? "https" : "http";
+  console.log(
+    `Server listening on ${protocol}://${config.host}:${config.port}`,
+  );
   console.log("Press Ctrl+C to stop");
 
   // Graceful shutdown

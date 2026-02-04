@@ -55,4 +55,23 @@ volumes:
 #
 #   mkdir -p ./data/db ./data/state
 #   docker compose up
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# TLS / HTTPS
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# By default the dashboard (Caddy) sits in front and can handle TLS for you
+# automatically.  Internal traffic between Caddy and the relay server stays
+# plain HTTP inside the Docker network.
+#
+# If you need TLS on the relay server itself (e.g. exposing it directly),
+# mount your certificate and key and set the environment variables:
+#
+#   relay-server:
+#     volumes:
+#       - ./certs/cert.pem:/certs/cert.pem:ro
+#       - ./certs/key.pem:/certs/key.pem:ro
+#     environment:
+#       - PI_RELAY_TLS_CERT=/certs/cert.pem
+#       - PI_RELAY_TLS_KEY=/certs/key.pem
 # ─────────────────────────────────────────────────────────────────────────────
