@@ -19,14 +19,12 @@ COPY apps/relay-dashboard/ apps/relay-dashboard/
 RUN pnpm --filter pi-relay-dashboard run build
 
 # ---- Production stage ----
-FROM nginx:alpine
+FROM caddy:2-alpine
 
 # Copy built static files from the React Router SPA build
-COPY --from=builder /app/apps/relay-dashboard/dist/client /usr/share/nginx/html
+COPY --from=builder /app/apps/relay-dashboard/dist/client /srv
 
-# Custom nginx config: SPA routing + reverse proxy to relay-server
-COPY apps/relay-dashboard/nginx.conf /etc/nginx/conf.d/default.conf
+# Custom Caddyfile: SPA routing + reverse proxy to relay-server
+COPY apps/relay-dashboard/Caddyfile /etc/caddy/Caddyfile
 
 EXPOSE 3000
-
-CMD ["nginx", "-g", "daemon off;"]
