@@ -1,0 +1,82 @@
+name: Vendor Documentation
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "pi-mono branch or tag to pull docs from"
+        required: false
+        default: "main"
+
+permissions:
+  contents: write
+
+jobs:
+  vendor-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pi-apps
+        uses: actions/checkout@v4
+
+      - name: Checkout pi-mono docs
+        uses: actions/checkout@v4
+        with:
+          repository: badlogic/pi-mono
+          ref: ${{ inputs.ref }}
+          path: _pi-mono
+          sparse-checkout: |
+            packages/coding-agent
+            packages/agent
+            packages/ai
+            AGENTS.md
+
+      - name: Vendor documentation
+        run: |
+          set -euo pipefail
+
+          DEST=docs/vendor/pi-coding-agent
+          rm -rf "$DEST"
+          mkdir -p "$DEST/docs"
+
+          # Core coding-agent README
+          cp _pi-mono/packages/coding-agent/README.md "$DEST/README.md"
+
+          # All docs/ markdown files
+          cp _pi-mono/packages/coding-agent/docs/*.md "$DEST/docs/"
+
+          # Supporting library READMEs (useful context for agents)
+          cp _pi-mono/packages/agent/README.md  "$DEST/agent-core.md"
+          cp _pi-mono/packages/ai/README.md     "$DEST/ai.md"
+
+          # Repo-level AGENTS.md (dev rules for the upstream repo)
+          cp _pi-mono/AGENTS.md "$DEST/AGENTS.md"
+
+          # Record provenance
+          SHA=$(cd _pi-mono && git rev-parse HEAD)
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          cat > "$DEST/.vendored" <<EOF
+          source: badlogic/pi-mono
+          ref: ${{ inputs.ref }}
+          sha: ${SHA}
+          vendored_at: ${DATE}
+          EOF
+
+          rm -rf _pi-mono
+
+      - name: Check for changes
+        id: diff
+        run: |
+          git add docs/vendor
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: vendor pi-coding-agent documentation from badlogic/pi-mono@$(grep sha docs/vendor/pi-coding-agent/.vendored | awk '{print $2}' | cut -c1-7)"
+          git push
