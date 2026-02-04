@@ -1,0 +1,75 @@
+# Build artifacts & dependencies
+node_modules/
+dist/
+build/
+.turbo/
+
+# Git
+.git/
+
+# Native apps (not needed for Docker builds)
+apps/desktop/
+apps/mobile/
+
+# Swift packages
+packages/
+
+# Sandbox Docker images
+sandboxes/docker/
+
+# Cloudflare worker source (only package.json needed for workspace resolution)
+sandboxes/cloudflare/Dockerfile
+sandboxes/cloudflare/worker/src/
+sandboxes/cloudflare/worker/node_modules/
+sandboxes/cloudflare/worker/dist/
+sandboxes/cloudflare/worker/wrangler.jsonc
+
+# Dev environments
+.direnv/
+.dev/
+.build/
+tmp/
+result
+result-*
+
+# Nix
+flake.nix
+flake.lock
+
+# Build config (Xcode)
+Config/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Environment files (pass via docker-compose environment)
+*.env
+!*.env.example
+!*.env.sample
+
+# Misc
+.pre-commit-config.yaml
+.swiftlint/
+.agents/
+.osgrep
+.pi/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.app
+*.dmg
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+.swiftpm/

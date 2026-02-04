@@ -1,0 +1,58 @@
+services:
+  relay-server:
+    build:
+      context: .
+      dockerfile: apps/relay-server/Dockerfile
+    ports:
+      - "31415:31415"
+    volumes:
+      # Docker socket – required when SANDBOX_PROVIDER=docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent data (contains relay.db SQLite database)
+      - relay-data:/data
+      # Persistent state (session data, logs)
+      - relay-state:/state
+    environment:
+      - RELAY_ENCRYPTION_KEY=${RELAY_ENCRYPTION_KEY}
+      - RELAY_ENCRYPTION_KEY_VERSION=${RELAY_ENCRYPTION_KEY_VERSION:-1}
+      - SANDBOX_PROVIDER=${SANDBOX_PROVIDER:-mock}
+      - SANDBOX_DOCKER_IMAGE=${SANDBOX_DOCKER_IMAGE:-pi-sandbox:local}
+    restart: unless-stopped
+
+  relay-dashboard:
+    build:
+      context: .
+      dockerfile: apps/relay-dashboard/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - relay-server
+    restart: unless-stopped
+
+volumes:
+  relay-data:
+  relay-state:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bind-mounting SQLite database files to a host directory
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Replace the named "relay-data" volume with a host path to keep the SQLite
+# database files (relay.db, relay.db-wal, relay.db-shm) on your host machine:
+#
+#   volumes:
+#     - /var/run/docker.sock:/var/run/docker.sock
+#     - ./data/db:/data          # ← SQLite files stored in ./data/db on host
+#     - ./data/state:/state      # ← session data stored in ./data/state on host
+#
+# Then remove the named volumes from the bottom of the file:
+#
+#   volumes:
+#     relay-data:    ← delete
+#     relay-state:   ← delete
+#
+# Make sure the host directories exist before starting:
+#
+#   mkdir -p ./data/db ./data/state
+#   docker compose up
+# ─────────────────────────────────────────────────────────────────────────────
