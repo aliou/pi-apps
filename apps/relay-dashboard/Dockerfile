@@ -22,7 +22,7 @@ RUN pnpm --filter pi-relay-dashboard run build
 FROM caddy:2-alpine
 
 # Copy built static files from the React Router SPA build
-COPY --from=builder /app/apps/relay-dashboard/dist/client /srv
+COPY --from=builder /app/apps/relay-dashboard/build/client /srv
 
 # Custom Caddyfile: SPA routing + reverse proxy to relay-server
 COPY apps/relay-dashboard/Caddyfile /etc/caddy/Caddyfile

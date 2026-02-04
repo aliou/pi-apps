@@ -1,0 +1,157 @@
+name: Docker Relay Build & Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay-server/**"
+      - "apps/relay-dashboard/**"
+      - "docker-compose.yml"
+      - ".dockerignore"
+      - ".github/workflows/docker-relay.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/relay-server/**"
+      - "apps/relay-dashboard/**"
+      - "docker-compose.yml"
+      - ".dockerignore"
+      - ".github/workflows/docker-relay.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Build each image and verify it works on its own ────────────────────────
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Build images ─────────────────────────────────────────────────────
+      - name: Build relay-server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/relay-server/Dockerfile
+          load: true
+          tags: pi-relay-server:test
+          cache-from: type=gha,scope=relay-server
+          cache-to: type=gha,scope=relay-server,mode=max
+
+      - name: Build relay-dashboard image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/relay-dashboard/Dockerfile
+          load: true
+          tags: pi-relay-dashboard:test
+          cache-from: type=gha,scope=relay-dashboard
+          cache-to: type=gha,scope=relay-dashboard,mode=max
+
+      # ── Isolation: relay-server ──────────────────────────────────────────
+      - name: Test relay-server in isolation
+        run: |
+          ENCRYPTION_KEY=$(openssl rand -base64 32)
+
+          docker run -d --name relay-server \
+            -p 31415:31415 \
+            -e RELAY_ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+            pi-relay-server:test
+
+          # Wait for the server to become healthy
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:31415/health > /dev/null 2>&1; then
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "::error::relay-server failed to start"
+              docker logs relay-server
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Verify endpoints
+          curl -sf http://localhost:31415/health | jq .
+          curl -sf http://localhost:31415/api    | jq .
+
+          docker rm -f relay-server
+
+      # ── Isolation: relay-dashboard ───────────────────────────────────────
+      - name: Test relay-dashboard in isolation
+        run: |
+          docker run -d --name relay-dashboard \
+            -p 3000:3000 \
+            pi-relay-dashboard:test
+
+          # Caddy starts fast but give it a moment
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+              break
+            fi
+            if [ "$i" -eq 15 ]; then
+              echo "::error::relay-dashboard failed to start"
+              docker logs relay-dashboard
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Verify it returns HTML
+          curl -sf http://localhost:3000 | grep -q '</html>'
+
+          docker rm -f relay-dashboard
+
+  # ── Full stack via docker compose ──────────────────────────────────────────
+  compose:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start stack
+        run: |
+          export RELAY_ENCRYPTION_KEY=$(openssl rand -base64 32)
+          docker compose up -d --build
+
+      - name: Wait for services
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+              echo "Stack is healthy"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "::error::docker compose stack failed to start"
+              docker compose logs
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Verify relay-server via dashboard proxy
+        run: |
+          curl -sf http://localhost:3000/health | jq .
+          curl -sf http://localhost:3000/api    | jq .
+
+      - name: Verify relay-server direct access
+        run: |
+          curl -sf http://localhost:31415/health | jq .
+
+      - name: Verify dashboard serves SPA
+        run: |
+          curl -sf http://localhost:3000 | grep -q '</html>'
+
+      - name: Tear down
+        if: always()
+        run: docker compose down
