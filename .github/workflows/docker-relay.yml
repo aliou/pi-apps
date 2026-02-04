@@ -2,7 +2,6 @@ name: Docker Relay Build & Test
 
 on:
   push:
-    branches: [main]
     paths:
       - "apps/relay-server/**"
       - "apps/relay-dashboard/**"
@@ -10,7 +9,6 @@ on:
       - ".dockerignore"
       - ".github/workflows/docker-relay.yml"
   pull_request:
-    branches: [main]
     paths:
       - "apps/relay-server/**"
       - "apps/relay-dashboard/**"
