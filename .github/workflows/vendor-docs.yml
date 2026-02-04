@@ -3,10 +3,10 @@ name: Vendor Documentation
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: "pi-mono branch or tag to pull docs from"
+      tag:
+        description: "pi release tag (leave empty for latest)"
         required: false
-        default: "main"
+        default: ""
 
 permissions:
   contents: write
@@ -18,50 +18,39 @@ jobs:
       - name: Checkout pi-apps
         uses: actions/checkout@v4
 
-      - name: Checkout pi-mono docs
-        uses: actions/checkout@v4
-        with:
-          repository: badlogic/pi-mono
-          ref: ${{ inputs.ref }}
-          path: _pi-mono
-          sparse-checkout: |
-            packages/coding-agent
-            packages/agent
-            packages/ai
-            AGENTS.md
+      - name: Resolve release tag
+        id: release
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG=$(curl -sf https://api.github.com/repos/badlogic/pi-mono/releases/latest | jq -r .tag_name)
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: $TAG"
 
       - name: Vendor documentation
         run: |
           set -euo pipefail
 
+          TAG="${{ steps.release.outputs.tag }}"
+          URL="https://github.com/badlogic/pi-mono/releases/download/${TAG}/pi-linux-x64.tar.gz"
           DEST=docs/vendor/pi-coding-agent
+
           rm -rf "$DEST"
-          mkdir -p "$DEST/docs"
+          mkdir -p "$DEST"
 
-          # Core coding-agent README
-          cp _pi-mono/packages/coding-agent/README.md "$DEST/README.md"
+          # Extract only the markdown docs from the release tarball
+          curl -sfL "$URL" | tar xz -C "$DEST" --strip-components=2 'pi/docs/'
 
-          # All docs/ markdown files
-          cp _pi-mono/packages/coding-agent/docs/*.md "$DEST/docs/"
-
-          # Supporting library READMEs (useful context for agents)
-          cp _pi-mono/packages/agent/README.md  "$DEST/agent-core.md"
-          cp _pi-mono/packages/ai/README.md     "$DEST/ai.md"
-
-          # Repo-level AGENTS.md (dev rules for the upstream repo)
-          cp _pi-mono/AGENTS.md "$DEST/AGENTS.md"
+          # Remove non-markdown content (images, example subdirs)
+          find "$DEST" -mindepth 1 -type d -exec rm -rf {} + 2>/dev/null || true
 
           # Record provenance
-          SHA=$(cd _pi-mono && git rev-parse HEAD)
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           cat > "$DEST/.vendored" <<EOF
           source: badlogic/pi-mono
-          ref: ${{ inputs.ref }}
-          sha: ${SHA}
-          vendored_at: ${DATE}
+          release: ${TAG}
+          vendored_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
           EOF
-
-          rm -rf _pi-mono
 
       - name: Check for changes
         id: diff
@@ -76,7 +65,8 @@ jobs:
       - name: Commit and push
         if: steps.diff.outputs.changed == 'true'
         run: |
+          TAG="${{ steps.release.outputs.tag }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs: vendor pi-coding-agent documentation from badlogic/pi-mono@$(grep sha docs/vendor/pi-coding-agent/.vendored | awk '{print $2}' | cut -c1-7)"
+          git commit -m "docs: vendor pi-coding-agent docs from pi ${TAG}"
           git push
