@@ -35,7 +35,7 @@ struct ServerSetupView: View {
                     .fontWeight(.bold)
                     .foregroundStyle(Theme.text)
 
-                Text("Pi is your personal AI assistant server. Enter the WebSocket URL where your Pi server is running.")
+                Text("Enter the URL of your Pi relay server.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
@@ -50,7 +50,7 @@ struct ServerSetupView: View {
                         .fontWeight(.medium)
                         .foregroundStyle(Theme.textSecondary)
 
-                    TextField("ws://localhost:31415", text: $urlText)
+                    TextField("http://localhost:31415", text: $urlText)
                         .textFieldStyle(.plain)
                         .padding(12)
                         .background(Theme.inputBg)
@@ -147,15 +147,21 @@ struct ServerSetupView: View {
             return
         }
 
-        // Ensure it's a WebSocket URL
-        guard url.scheme == "ws" || url.scheme == "wss" else {
-            errorMessage = "URL must start with ws:// or wss://"
+        // Ensure it's an HTTP URL
+        guard url.scheme == "http" || url.scheme == "https" else {
+            errorMessage = "URL must start with http:// or https://"
             return
         }
 
-        // Test connection
+        // Test connection via REST health endpoint
         do {
-            try await testConnection(url: url)
+            let client = RelayAPIClient(baseURL: url)
+            let health = try await client.health()
+
+            guard health.ok else {
+                errorMessage = "Server returned unhealthy status"
+                return
+            }
 
             // Success - save URL and notify
             showSuccess = true
@@ -165,81 +171,11 @@ struct ServerSetupView: View {
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
 
             onConnected()
-        } catch let error as RPCTransportError {
+        } catch let error as RelayAPIError {
             errorMessage = error.localizedDescription
         } catch {
             errorMessage = "Connection failed: \(error.localizedDescription)"
         }
-    }
-
-    private func testConnection(url: URL) async throws {
-        // Build WebSocket URL
-        var wsURL = url
-        if !wsURL.path.hasSuffix("/rpc") {
-            wsURL = url.appendingPathComponent("rpc")
-        }
-
-        // Simple WebSocket test without full transport
-        let session = URLSession(configuration: .default)
-        let task = session.webSocketTask(with: wsURL)
-        task.resume()
-
-        // Send hello
-        let hello: [String: Any] = [
-            "v": 1,
-            "kind": "request",
-            "id": "test-hello",
-            "method": "hello",
-            "params": [
-                "client": [
-                    "name": "pi-mobile",
-                    "version": "1.0"
-                ]
-            ]
-        ]
-
-        let helloData = try JSONSerialization.data(withJSONObject: hello)
-        guard let helloString = String(data: helloData, encoding: .utf8) else {
-            throw RPCTransportError.invalidResponse("Failed to encode hello as string")
-        }
-        try await task.send(.string(helloString))
-
-        // Receive response with timeout
-        let response = try await withThrowingTaskGroup(of: URLSessionWebSocketTask.Message.self) { group in
-            group.addTask {
-                try await task.receive()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 10_000_000_000)
-                throw RPCTransportError.timeout
-            }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
-        }
-
-        // Parse response
-        let responseData: Data
-        switch response {
-        case .data(let data):
-            responseData = data
-        case .string(let str):
-            responseData = str.data(using: .utf8) ?? Data()
-        @unknown default:
-            throw RPCTransportError.invalidResponse("Unknown message type")
-        }
-
-        // Verify it's a valid hello response
-        guard let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any],
-              let ok = json["ok"] as? Bool, ok,
-              let result = json["result"] as? [String: Any],
-              result["connectionId"] != nil else {
-            throw RPCTransportError.invalidResponse("Invalid hello response")
-        }
-
-        // Clean up
-        task.cancel(with: .normalClosure, reason: nil)
-        session.invalidateAndCancel()
     }
 }
 
@@ -279,7 +215,7 @@ private struct ServerSetupPreview: View {
                     .fontWeight(.bold)
                     .foregroundStyle(Theme.text)
 
-                Text("Pi is your personal AI assistant server. Enter the WebSocket URL where your Pi server is running.")
+                Text("Enter the URL of your Pi relay server.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
@@ -293,7 +229,7 @@ private struct ServerSetupPreview: View {
                         .fontWeight(.medium)
                         .foregroundStyle(Theme.textSecondary)
 
-                    Text(urlText.isEmpty ? "ws://localhost:31415" : urlText)
+                    Text(urlText.isEmpty ? "http://localhost:31415" : urlText)
                         .foregroundStyle(urlText.isEmpty ? Theme.muted : Theme.text)
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -361,7 +297,7 @@ private struct ServerSetupPreview: View {
 
 #Preview("With URL") {
     ServerSetupPreview(
-        urlText: "wss://pi.example.com",
+        urlText: "https://pi.example.com",
         isConnecting: false,
         errorMessage: nil,
         showSuccess: false
@@ -370,7 +306,7 @@ private struct ServerSetupPreview: View {
 
 #Preview("Connecting") {
     ServerSetupPreview(
-        urlText: "wss://pi.example.com",
+        urlText: "https://pi.example.com",
         isConnecting: true,
         errorMessage: nil,
         showSuccess: false
@@ -379,7 +315,7 @@ private struct ServerSetupPreview: View {
 
 #Preview("Error State") {
     ServerSetupPreview(
-        urlText: "wss://invalid-server.com",
+        urlText: "https://invalid-server.com",
         isConnecting: false,
         errorMessage: "Connection refused - server may be offline",
         showSuccess: false
@@ -388,7 +324,7 @@ private struct ServerSetupPreview: View {
 
 #Preview("Success") {
     ServerSetupPreview(
-        urlText: "wss://pi.example.com",
+        urlText: "https://pi.example.com",
         isConnecting: false,
         errorMessage: nil,
         showSuccess: true
