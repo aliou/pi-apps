@@ -174,6 +174,11 @@ public actor RelaySessionTransport {
         return try await sendAndWaitForResponse(command, responseType: GetMessagesResponse.self)
     }
 
+    public func getCommands() async throws -> GetCommandsResponse {
+        let command: [String: Any] = ["type": "get_commands"]
+        return try await sendAndWaitForResponse(command, responseType: GetCommandsResponse.self)
+    }
+
     public func extensionUIResponse(
         requestId: String,
         value: Any? = nil,

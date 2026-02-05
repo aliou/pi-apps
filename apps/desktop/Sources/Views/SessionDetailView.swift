@@ -19,6 +19,7 @@ struct SessionDetailView: View {
     @State private var expandedToolCalls: Set<String> = []
     @State private var inputText = ""
     @State private var showAuthSetup = false
+    @State private var slashCommandState = SlashCommandState()
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -157,17 +158,62 @@ struct SessionDetailView: View {
     }
 
     private func inputArea(engine: SessionEngine) -> some View {
-        HStack(spacing: 12) {
-            TextField("Message...", text: $inputText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .focused($isInputFocused)
-                .lineLimit(1...5)
-                .onSubmit { sendMessage(engine: engine) }
+        VStack(spacing: 0) {
+            if slashCommandState.isShowing {
+                SlashCommandListView(
+                    commands: slashCommandState.filteredCommands,
+                    highlightedIndex: slashCommandState.highlightedIndex
+                ) { command in
+                    executeSlashCommand(command, engine: engine)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
+            }
 
-            sendOrAbortButton(engine: engine)
+            HStack(spacing: 12) {
+                TextField("Message...", text: $inputText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .focused($isInputFocused)
+                    .lineLimit(1...5)
+                    .onChange(of: inputText) { _, newValue in
+                        slashCommandState.update(text: newValue)
+                    }
+                    .onSubmit {
+                        if let command = slashCommandState.selectedCommand() {
+                            executeSlashCommand(command, engine: engine)
+                        } else {
+                            sendMessage(engine: engine)
+                        }
+                    }
+                    .onKeyPress(.upArrow) {
+                        guard slashCommandState.isShowing else { return .ignored }
+                        slashCommandState.moveUp()
+                        return .handled
+                    }
+                    .onKeyPress(.downArrow) {
+                        guard slashCommandState.isShowing else { return .ignored }
+                        slashCommandState.moveDown()
+                        return .handled
+                    }
+                    .onKeyPress(.escape) {
+                        guard slashCommandState.isShowing else { return .ignored }
+                        slashCommandState.dismiss()
+                        return .handled
+                    }
+                    .onKeyPress(.tab) {
+                        guard let command = slashCommandState.selectedCommand() else { return .ignored }
+                        executeSlashCommand(command, engine: engine)
+                        return .handled
+                    }
+
+                sendOrAbortButton(engine: engine)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .task {
+            await loadSlashCommands()
+        }
     }
 
     @ViewBuilder
@@ -231,6 +277,23 @@ struct SessionDetailView: View {
 
         Task {
             await sessionManager.sendMessage(for: session.id, text: text)
+        }
+    }
+
+    private func executeSlashCommand(_ command: SlashCommand, engine: SessionEngine) {
+        slashCommandState.dismiss()
+        inputText = "/\(command.name) "
+        isInputFocused = true
+    }
+
+    private func loadSlashCommands() async {
+        guard let connection = sessionManager.activeConnection, connection.isConnected else { return }
+        do {
+            let response = try await connection.getCommands()
+            let commands = response.commands.map { SlashCommand(from: $0) }
+            slashCommandState.setCommands(commands)
+        } catch {
+            print("[SessionDetailView] Failed to load slash commands: \(error)")
         }
     }
 

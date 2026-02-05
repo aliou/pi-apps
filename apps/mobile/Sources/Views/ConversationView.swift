@@ -48,6 +48,7 @@ struct ConversationView: View {
 
     // Input state
     @State private var inputText = ""
+    @State private var slashCommandState = SlashCommandState()
     @FocusState private var isInputFocused: Bool
 
     // Scroll state
@@ -378,47 +379,87 @@ struct ConversationView: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            Button {
-                // TODO: Show attachment options
-            } label: {
-                Image(systemName: "plus")
+        VStack(spacing: 0) {
+            if slashCommandState.isShowing {
+                SlashCommandListView(
+                    commands: slashCommandState.filteredCommands,
+                    highlightedIndex: slashCommandState.highlightedIndex
+                ) { command in
+                    executeSlashCommand(command)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 4)
             }
-            .buttonStyle(CircleButtonStyle())
 
-            TextField(
-                currentMode == .chat ? "Ask anything..." : "Code anything...",
-                text: $inputText,
-                axis: .vertical
-            )
-            .textFieldStyle(.plain)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .focused($isInputFocused)
-            .onSubmit {
-                let text = trimmedInputText
-                guard !text.isEmpty else { return }
-                inputText = ""
-                isInputFocused = false
-                autoScrollEnabled = true
-                Task { await sendMessage(text) }
-            }
-            .submitLabel(.send)
+            HStack(alignment: .bottom, spacing: 12) {
+                Button {
+                    // TODO: Show attachment options
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(CircleButtonStyle())
 
-            Button {
-                let text = trimmedInputText
-                guard canSendMessage else { return }
-                inputText = ""
-                isInputFocused = false
-                autoScrollEnabled = true
-                Task { await sendMessage(text) }
-            } label: {
-                Image(systemName: "arrow.up")
-                    .fontWeight(.semibold)
+                TextField(
+                    currentMode == .chat ? "Ask anything..." : "Code anything...",
+                    text: $inputText,
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .focused($isInputFocused)
+                .onChange(of: inputText) { _, newValue in
+                    slashCommandState.update(text: newValue)
+                }
+                .onSubmit {
+                    if let command = slashCommandState.selectedCommand() {
+                        executeSlashCommand(command)
+                    } else {
+                        let text = trimmedInputText
+                        guard !text.isEmpty else { return }
+                        inputText = ""
+                        isInputFocused = false
+                        autoScrollEnabled = true
+                        Task { await sendMessage(text) }
+                    }
+                }
+                .submitLabel(.send)
+                .onKeyPress(.upArrow) {
+                    guard slashCommandState.isShowing else { return .ignored }
+                    slashCommandState.moveUp()
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    guard slashCommandState.isShowing else { return .ignored }
+                    slashCommandState.moveDown()
+                    return .handled
+                }
+                .onKeyPress(.escape) {
+                    guard slashCommandState.isShowing else { return .ignored }
+                    slashCommandState.dismiss()
+                    return .handled
+                }
+                .onKeyPress(.tab) {
+                    guard let command = slashCommandState.selectedCommand() else { return .ignored }
+                    executeSlashCommand(command)
+                    return .handled
+                }
+
+                Button {
+                    let text = trimmedInputText
+                    guard canSendMessage else { return }
+                    inputText = ""
+                    isInputFocused = false
+                    autoScrollEnabled = true
+                    Task { await sendMessage(text) }
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(CircleButtonStyle(filled: canSendMessage))
+                .disabled(!canSendMessage)
             }
-            .buttonStyle(CircleButtonStyle(filled: canSendMessage))
-            .disabled(!canSendMessage)
         }
     }
 
@@ -628,6 +669,8 @@ extension ConversationView {
             let history = try await connection.getMessages()
             engine.setMessages(history.messages.toConversationItems())
             errorMessage = nil
+
+            await loadSlashCommands()
         } catch {
             errorMessage = error.localizedDescription
             print("[ConversationView] Failed to connect to session: \(error)")
@@ -695,6 +738,22 @@ extension ConversationView {
 // MARK: - Messaging
 
 extension ConversationView {
+    private func executeSlashCommand(_ command: SlashCommand) {
+        slashCommandState.dismiss()
+        inputText = "/\(command.name) "
+        isInputFocused = true
+    }
+
+    private func loadSlashCommands() async {
+        do {
+            let response = try await connection.getCommands()
+            let commands = response.commands.map { SlashCommand(from: $0) }
+            slashCommandState.setCommands(commands)
+        } catch {
+            print("[ConversationView] Failed to load slash commands: \(error)")
+        }
+    }
+
     private func sendMessage(_ text: String) async {
         guard !text.isEmpty else { return }
 

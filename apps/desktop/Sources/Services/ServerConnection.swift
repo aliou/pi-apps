@@ -302,6 +302,17 @@ public final class ServerConnection {
         }
     }
 
+    public func getCommands() async throws -> GetCommandsResponse {
+        guard let connection = agentConnection else {
+            throw ServerConnectionError.sessionNotConnected
+        }
+        do {
+            return try await connection.getCommands()
+        } catch let error as AgentConnectionError {
+            throw ServerConnectionError.agentError(error)
+        }
+    }
+
     // MARK: - Environments (REST)
 
     public func listEnvironments() async throws -> [RelayEnvironment] {

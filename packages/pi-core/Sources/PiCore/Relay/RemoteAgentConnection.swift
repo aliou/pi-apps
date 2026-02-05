@@ -100,6 +100,11 @@ public final class RemoteAgentConnection: AgentConnection {
         return try await transport.getMessages()
     }
 
+    public func getCommands() async throws -> GetCommandsResponse {
+        guard let transport else { throw AgentConnectionError.notConnected }
+        return try await transport.getCommands()
+    }
+
     public func extensionUIResponse(
         requestId: String,
         value: sending Any? = nil,

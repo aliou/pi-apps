@@ -41,6 +41,9 @@ public protocol AgentConnection: AnyObject, Sendable {
 
     /// Get conversation messages
     func getMessages() async throws -> GetMessagesResponse
+
+    /// Get available slash commands
+    func getCommands() async throws -> GetCommandsResponse
 }
 
 /// Errors for agent connections
