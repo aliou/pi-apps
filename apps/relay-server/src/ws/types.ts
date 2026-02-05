@@ -59,13 +59,13 @@ export type ClientCommand =
   | { type: "set_session_name"; name: string; id?: string }
   // Discovery
   | { type: "get_commands"; id?: string }
-  // Native tool (relay-specific, not in pi RPC docs)
+  // Extension UI response (forwarded to pi process)
   | {
-      type: "native_tool_response";
-      toolCallId: string;
-      result: unknown;
-      isError: boolean;
-      id?: string;
+      type: "extension_ui_response";
+      id: string;
+      value?: unknown;
+      confirmed?: boolean;
+      cancelled?: boolean;
     };
 
 // All valid client command type strings.
@@ -99,7 +99,7 @@ const CLIENT_COMMAND_TYPES: ReadonlySet<string> = new Set([
   "get_last_assistant_text",
   "set_session_name",
   "get_commands",
-  "native_tool_response",
+  "extension_ui_response",
 ]);
 
 // Server -> Client (events from pi + server events)
@@ -182,12 +182,12 @@ export type PiEvent =
       event: string;
       error: string;
     }
-  // Native tool (relay-specific)
+  // Extension UI
   | {
-      type: "native_tool_request";
-      toolCallId: string;
-      toolName: string;
-      args: unknown;
+      type: "extension_ui_request";
+      id: string;
+      method: string;
+      [key: string]: unknown;
     }
   // RPC response
   | {

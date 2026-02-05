@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import process from "node:process";
 import readline from "node:readline";
 import { type Duplex, PassThrough } from "node:stream";
@@ -28,6 +28,12 @@ const RESOURCE_TIER_LIMITS: Record<
 };
 
 const DEFAULT_TIER: SandboxResourceTier = "medium";
+
+/** Host path to the native bridge extension file. */
+const NATIVE_BRIDGE_EXTENSION = resolve(
+  import.meta.dirname,
+  "../../extensions/native-bridge.ts",
+);
 
 /**
  * Get the host process UID:GID string for container User field.
@@ -148,6 +154,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       repoUrl,
       repoBranch,
       githubToken,
+      nativeToolsEnabled,
     } = options;
 
     // Check cache for existing running handle
@@ -200,6 +207,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       containerEnv.push("PI_SECRETS_DIR=/run/secrets");
     }
 
+    // Mount native bridge extension if enabled
+    const containerExtensionPaths: string[] = [];
+    if (nativeToolsEnabled) {
+      const containerPath = "/run/extensions/native-bridge.ts";
+      binds.push(`${NATIVE_BRIDGE_EXTENSION}:${containerPath}:ro`);
+      containerExtensionPaths.push(containerPath);
+    }
+
     // Resource limits from tier
     const tier = options.resourceTier ?? DEFAULT_TIER;
     const limits = RESOURCE_TIER_LIMITS[tier];
@@ -208,6 +223,17 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     const hostUser = getHostUser();
 
+    // Build Cmd: override image default if extensions are provided
+    const cmd =
+      containerExtensionPaths.length > 0
+        ? [
+            "pi",
+            "--mode",
+            "rpc",
+            ...containerExtensionPaths.flatMap((p) => ["-e", p]),
+          ]
+        : undefined; // use image default CMD
+
     // Create container
     const container = await this.docker.createContainer({
       name: containerName,
@@ -215,6 +241,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       User: hostUser,
       Env: containerEnv,
       WorkingDir: "/workspace",
+      ...(cmd && { Cmd: cmd }),
       AttachStdin: true,
       AttachStdout: true,
       AttachStderr: true,

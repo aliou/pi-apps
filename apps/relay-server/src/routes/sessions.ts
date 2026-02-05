@@ -15,6 +15,8 @@ interface CreateSessionRequest {
   modelProvider?: string;
   modelId?: string;
   systemPrompt?: string;
+  /** Enable native tools bridge extension in the sandbox. */
+  nativeToolsEnabled?: boolean;
 }
 
 export function sessionsRoutes(): Hono<AppEnv> {
@@ -167,6 +169,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
             githubToken,
             secrets,
             resourceTier: environmentConfig?.resourceTier,
+            nativeToolsEnabled: body.nativeToolsEnabled,
           },
           sandboxProvider,
         )

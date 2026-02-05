@@ -12,6 +12,7 @@ const readline = require("readline");
 const PORT = parseInt(process.env.BRIDGE_PORT || "4000", 10);
 const WAIT_FOR_RESTORE = process.env.WAIT_FOR_RESTORE === "true";
 const PI_COMMAND = process.env.PI_COMMAND || "pi";
+const PI_EXTENSIONS = process.env.PI_EXTENSIONS || ""; // Comma-separated extension paths
 const RESTORE_TIMEOUT_MS = 60_000;
 
 let piProcess = null;
@@ -25,9 +26,18 @@ const wsClients = new Set();
 function startPi() {
   if (piProcess) return;
 
-  console.log(`[bridge] Starting pi: ${PI_COMMAND} --mode rpc`);
+  // Build args: always --mode rpc, plus -e flags for any extensions
+  const extensionArgs = PI_EXTENSIONS
+    ? PI_EXTENSIONS.split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .flatMap((p) => ["-e", p])
+    : [];
 
-  const args = PI_COMMAND === "pi" ? ["--mode", "rpc"] : [];
+  const args =
+    PI_COMMAND === "pi" ? ["--mode", "rpc", ...extensionArgs] : extensionArgs;
+
+  console.log(`[bridge] Starting pi: ${PI_COMMAND} ${args.join(" ")}`);
   piProcess = spawn(PI_COMMAND, args, {
     cwd: "/workspace",
     env: { ...process.env, PI_CODING_AGENT_DIR: "/data/agent" },

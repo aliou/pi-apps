@@ -327,15 +327,15 @@ class MockSandboxHandle implements SandboxHandle {
         this.handleGetCommands(command.id);
         break;
 
-      // Native tool (relay-specific)
-      case "native_tool_response":
-        this.handleNativeToolResponse(
+      // Extension UI response (forwarded to pi process in real sandboxes)
+      case "extension_ui_response":
+        this.handleExtensionUIResponse(
           command as {
-            type: "native_tool_response";
-            toolCallId: string;
-            result: unknown;
-            isError: boolean;
-            id?: string;
+            type: "extension_ui_response";
+            id: string;
+            value?: unknown;
+            confirmed?: boolean;
+            cancelled?: boolean;
           },
         );
         break;
@@ -714,24 +714,22 @@ class MockSandboxHandle implements SandboxHandle {
         "get_last_assistant_text",
         "set_session_name",
         "get_commands",
-        "native_tool_response",
+        "extension_ui_response",
       ],
     });
   }
 
-  // -- Native tool (relay-specific) --
+  // -- Extension UI --
 
-  private handleNativeToolResponse(command: {
-    type: "native_tool_response";
-    toolCallId: string;
-    result: unknown;
-    isError: boolean;
-    id?: string;
+  private handleExtensionUIResponse(command: {
+    type: "extension_ui_response";
+    id: string;
+    value?: unknown;
+    confirmed?: boolean;
+    cancelled?: boolean;
   }): void {
-    // Acknowledge receipt of native tool result.
-    this.sendResponse(command.id, "native_tool_response", true, {
-      toolCallId: command.toolCallId,
-    });
+    // Acknowledge receipt - in real sandboxes this is forwarded to pi process.
+    this.sendResponse(command.id, "extension_ui_response", true);
   }
 
   // -- Response generation --

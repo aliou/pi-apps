@@ -22,6 +22,12 @@ COPY bridge/package.json bridge/package-lock.json* ./
 RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
 COPY bridge/bridge.js ./
 
+# Copy extensions (baked into image for Cloudflare -- no bind mounts).
+# Default assumes build context is sandboxes/cloudflare/ with extensions/ dir.
+# CI should copy apps/relay-server/extensions/native-bridge.ts into
+# sandboxes/cloudflare/extensions/ before building.
+COPY extensions/native-bridge.ts /opt/extensions/native-bridge.ts
+
 # Create workspace and agent data directories
 RUN mkdir -p /workspace /data/agent
 

@@ -1,0 +1,4 @@
+# Extensions are copied from apps/relay-server/extensions/ before docker build.
+# Only .gitkeep is tracked.
+*
+!.gitkeep

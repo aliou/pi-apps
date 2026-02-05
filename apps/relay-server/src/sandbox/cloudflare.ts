@@ -377,10 +377,16 @@ export class CloudflareSandboxProvider implements SandboxProvider {
       secrets,
       repoUrl,
       repoBranch,
+      nativeToolsEnabled,
     } = options;
 
     // Merge env overrides and secrets (uppercased)
     const envVars: Record<string, string> = { ...envOverrides };
+
+    // Tell the bridge to load the native bridge extension (baked into image)
+    if (nativeToolsEnabled) {
+      envVars.PI_EXTENSIONS = "/opt/extensions/native-bridge.ts";
+    }
     if (secrets) {
       for (const [key, value] of Object.entries(secrets)) {
         envVars[key.toUpperCase()] = value;

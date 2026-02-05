@@ -119,6 +119,14 @@ export interface CreateSandboxOptions {
 
   /** Timeout settings */
   timeoutSec?: number;
+
+  /**
+   * Enable native tools bridge extension in the sandbox.
+   * When true, the provider loads the native-bridge extension which asks
+   * connected clients for tool definitions via extension_ui_request.
+   * Supported by Docker (bind mount) and Cloudflare (baked into image).
+   */
+  nativeToolsEnabled?: boolean;
 }
 
 /**
