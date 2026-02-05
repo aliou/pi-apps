@@ -1,6 +1,7 @@
 import { getEnvApiKey, getModels, getProviders } from "@mariozechner/pi-ai";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
+import { ModelsIntrospectionService } from "../services/models-introspection.service";
 
 /**
  * Models API - returns available models based on configured secrets.
@@ -46,6 +47,30 @@ export function modelsRoutes(): Hono<AppEnv> {
         }
       }
     }
+  });
+
+  /**
+   * GET /api/models/full
+   *
+   * Returns models from Pi RPC, including extension-defined providers.
+   * Spins up an ephemeral sandbox, sends get_available_models, tears down.
+   */
+  app.get("/full", async (c) => {
+    const sandboxManager = c.get("sandboxManager");
+    const secretsService = c.get("secretsService");
+
+    const introspection = new ModelsIntrospectionService(
+      sandboxManager,
+      secretsService,
+    );
+
+    const result = await introspection.getModels();
+
+    if (result.error) {
+      return c.json({ data: result.models, error: result.error });
+    }
+
+    return c.json({ data: result.models, error: null });
   });
 
   return app;
