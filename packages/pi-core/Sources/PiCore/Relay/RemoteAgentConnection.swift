@@ -100,6 +100,21 @@ public final class RemoteAgentConnection: AgentConnection {
         return try await transport.getMessages()
     }
 
+    public func extensionUIResponse(
+        requestId: String,
+        value: sending Any? = nil,
+        confirmed: Bool? = nil,
+        cancelled: Bool? = nil
+    ) async throws {
+        guard let transport else { throw AgentConnectionError.notConnected }
+        try await transport.extensionUIResponse(
+            requestId: requestId,
+            value: value,
+            confirmed: confirmed,
+            cancelled: cancelled
+        )
+    }
+
     // MARK: - Event Forwarding
 
     private func startEventForwarding() {

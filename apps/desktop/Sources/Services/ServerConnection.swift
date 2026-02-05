@@ -160,7 +160,8 @@ public final class ServerConnection {
             environmentId: environmentId,
             modelProvider: modelProvider,
             modelId: modelId,
-            systemPrompt: systemPrompt
+            systemPrompt: systemPrompt,
+            nativeTools: NativeTool.availableDefinitions
         )
         do {
             return try await api.createSession(params)
@@ -196,6 +197,12 @@ public final class ServerConnection {
             agentConnection = connection
             currentSession = session
             startEventForwarding()
+
+            // Refresh native tools on every connect/reconnect
+            let tools = NativeTool.availableDefinitions
+            if !tools.isEmpty {
+                _ = try? await api.setNativeTools(sessionId: session.id, tools: tools)
+            }
         } catch let error as RelayAPIError {
             throw ServerConnectionError.apiError(error)
         } catch let error as AgentConnectionError {
@@ -361,13 +368,16 @@ public final class ServerConnection {
                 guard let self, !Task.isCancelled else { break }
 
                 switch event {
-                case .nativeToolRequest(let request):
-                    Task {
-                        await self.handleNativeToolRequest(request: request)
+                case .extensionUIRequest(let request):
+                    if case .custom("native_tool_call") = request.method {
+                        Task {
+                            await self.handleNativeToolCall(request: request)
+                        }
+                    } else {
+                        await MainActor.run {
+                            self.broadcastEvent(event)
+                        }
                     }
-
-                case .nativeToolCancel(let callId):
-                    await self.nativeToolExecutor.cancel(callId: callId)
 
                 default:
                     await MainActor.run {
@@ -394,15 +404,33 @@ public final class ServerConnection {
 
     // MARK: - Native Tool Handling
 
-    private func handleNativeToolRequest(request: NativeToolRequest) async {
-        print("[ServerConnection] Handling native tool request: \(request.toolName)")
+    private func handleNativeToolCall(request: ExtensionUIRequest) async {
+        guard let toolName = request.toolName else {
+            print("[ServerConnection] native_tool_call missing toolName")
+            let errorValue: [String: Any] = ["ok": false, "error": ["message": "Missing toolName"]]
+            try? await agentConnection?.extensionUIResponse(requestId: request.id, value: errorValue)
+            return
+        }
+
+        print("[ServerConnection] Handling native tool call: \(toolName)")
+
+        var argsDict: [String: AnyCodable] = [:]
+        if let args = request.args, let dict = args.value as? [String: Any] {
+            argsDict = dict.mapValues { AnyCodable($0) }
+        }
+
+        let nativeRequest = NativeToolRequest(callId: request.id, toolName: toolName, args: argsDict)
 
         do {
-            let resultData = try await nativeToolExecutor.execute(request: request)
-            print("[ServerConnection] Native tool \(request.toolName) succeeded")
-            // Note: Response sending needs relay server native tool support
+            let resultData = try await nativeToolExecutor.execute(request: nativeRequest)
+            let resultObject = try JSONSerialization.jsonObject(with: resultData)
+            let responseValue: [String: Any] = ["ok": true, "result": resultObject]
+            print("[ServerConnection] Native tool \(toolName) succeeded")
+            try await agentConnection?.extensionUIResponse(requestId: request.id, value: responseValue)
         } catch {
-            print("[ServerConnection] Native tool \(request.toolName) failed: \(error)")
+            print("[ServerConnection] Native tool \(toolName) failed: \(error)")
+            let errorValue: [String: Any] = ["ok": false, "error": ["message": error.localizedDescription]]
+            try? await agentConnection?.extensionUIResponse(requestId: request.id, value: errorValue)
         }
     }
 }

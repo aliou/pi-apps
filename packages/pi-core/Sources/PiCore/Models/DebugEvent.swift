@@ -129,15 +129,6 @@ extension DebugEvent {
         case .modelChanged(let model):
             return DebugEvent(eventType: "modelChanged", details: model.name)
 
-        case .nativeToolRequest(let request):
-            return DebugEvent(
-                eventType: "nativeToolRequest",
-                details: "\(request.toolName) (\(request.callId.prefix(8))...)"
-            )
-
-        case .nativeToolCancel(let callId):
-            return DebugEvent(eventType: "nativeToolCancel", details: callId)
-
         case .unknown(let type, _):
             return DebugEvent(eventType: "unknown", details: type)
         }

@@ -418,19 +418,50 @@ public struct SetModelResponse: Decodable, Sendable {
 // MARK: - Extension Events
 
 /// Extension UI request methods
-public enum ExtensionUIMethod: String, Codable, Sendable {
-    // Dialog methods (require responses)
-    case select
-    case confirm
-    case input
-    case editor
-
-    // Fire-and-forget methods (no response expected)
-    case notify
-    case setStatus
-    case setWidget
-    case setTitle
+public enum ExtensionUIMethod: Sendable, Equatable {
+    case select, confirm, input, editor
+    case notify, setStatus, setWidget, setTitle
     case set_editor_text
+    case custom(String)
+
+    public var rawValue: String {
+        switch self {
+        case .select: return "select"
+        case .confirm: return "confirm"
+        case .input: return "input"
+        case .editor: return "editor"
+        case .notify: return "notify"
+        case .setStatus: return "setStatus"
+        case .setWidget: return "setWidget"
+        case .setTitle: return "setTitle"
+        case .set_editor_text: return "set_editor_text"
+        case .custom(let s): return s
+        }
+    }
+}
+
+extension ExtensionUIMethod: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let s = try container.decode(String.self)
+        switch s {
+        case "select": self = .select
+        case "confirm": self = .confirm
+        case "input": self = .input
+        case "editor": self = .editor
+        case "notify": self = .notify
+        case "setStatus": self = .setStatus
+        case "setWidget": self = .setWidget
+        case "setTitle": self = .setTitle
+        case "set_editor_text": self = .set_editor_text
+        default: self = .custom(s)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 /// Extension UI request event
@@ -467,6 +498,10 @@ public struct ExtensionUIRequest: Codable, Sendable {
     // set_editor_text method
     public let text: String?
 
+    // Custom tool fields
+    public let toolName: String?
+    public let args: AnyCodable?
+
     public init(
         id: String,
         method: ExtensionUIMethod,
@@ -482,7 +517,9 @@ public struct ExtensionUIRequest: Codable, Sendable {
         widgetKey: String? = nil,
         widgetLines: [String]? = nil,
         widgetPlacement: String? = nil,
-        text: String? = nil
+        text: String? = nil,
+        toolName: String? = nil,
+        args: AnyCodable? = nil
     ) {
         self.id = id
         self.method = method
@@ -499,6 +536,8 @@ public struct ExtensionUIRequest: Codable, Sendable {
         self.widgetLines = widgetLines
         self.widgetPlacement = widgetPlacement
         self.text = text
+        self.toolName = toolName
+        self.args = args
     }
 }
 
@@ -506,11 +545,11 @@ public struct ExtensionUIRequest: Codable, Sendable {
 public struct ExtensionUIResponseCommand: RPCCommand, Sendable {
     public let type = "extension_ui_response"
     public let id: String
-    public let value: String?
+    public let value: AnyCodable?
     public let confirmed: Bool?
     public let cancelled: Bool?
 
-    public init(id: String, value: String? = nil, confirmed: Bool? = nil, cancelled: Bool? = nil) {
+    public init(id: String, value: AnyCodable? = nil, confirmed: Bool? = nil, cancelled: Bool? = nil) {
         self.id = id
         self.value = value
         self.confirmed = confirmed
@@ -758,17 +797,7 @@ public struct ModelChangedPayload: Decodable, Sendable {
     public let model: ModelInfo
 }
 
-/// native_tool_request event payload (server-specific)
-public struct NativeToolRequestPayload: Decodable, Sendable {
-    public let callId: String
-    public let toolName: String
-    public let args: [String: AnyCodable]?
-}
 
-/// native_tool_cancel event payload (server-specific)
-public struct NativeToolCancelPayload: Decodable, Sendable {
-    public let callId: String
-}
 
 // MARK: - RPC Events
 
@@ -793,8 +822,6 @@ public enum RPCEvent: Sendable {
     case extensionUIRequest(ExtensionUIRequest)
     case stateUpdate(context: StateContext)
     case modelChanged(model: ModelInfo)
-    case nativeToolRequest(NativeToolRequest)
-    case nativeToolCancel(callId: String)
     case unknown(type: String, raw: Data)
 }
 

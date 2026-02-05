@@ -177,7 +177,8 @@ public final class ServerConnection {
             environmentId: environmentId,
             modelProvider: modelProvider,
             modelId: modelId,
-            systemPrompt: systemPrompt
+            systemPrompt: systemPrompt,
+            nativeTools: NativeTool.availableDefinitions
         )
         do {
             return try await api.createSession(params)
@@ -232,6 +233,12 @@ public final class ServerConnection {
             agentConnection = connection
             currentSession = session
             startEventForwarding()
+
+            // Refresh native tools on every connect/reconnect
+            let tools = NativeTool.availableDefinitions
+            if !tools.isEmpty {
+                _ = try? await api.setNativeTools(sessionId: session.id, tools: tools)
+            }
 
             print("[ServerConnection] Connected to session \(session.id)")
         } catch let error as RelayAPIError {
@@ -418,14 +425,16 @@ public final class ServerConnection {
                 else { break }
 
                 switch event {
-                case .nativeToolRequest(let request):
-                    // Handle in background, don't block event stream
-                    Task {
-                        await self.handleNativeToolRequest(request: request)
+                case .extensionUIRequest(let request):
+                    if case .custom("native_tool_call") = request.method {
+                        Task {
+                            await self.handleNativeToolCall(request: request)
+                        }
+                    } else {
+                        await MainActor.run {
+                            self.broadcastEvent(event)
+                        }
                     }
-
-                case .nativeToolCancel(let callId):
-                    await self.nativeToolExecutor.cancel(callId: callId)
 
                 default:
                     // Broadcast other events to subscribers
@@ -457,53 +466,35 @@ public final class ServerConnection {
 
     // MARK: - Native Tool Handling
 
-    private func handleNativeToolRequest(request: NativeToolRequest) async {
-        print("[ServerConnection] Handling native tool request: \(request.toolName)")
+    private func handleNativeToolCall(request: ExtensionUIRequest) async {
+        guard let toolName = request.toolName else {
+            print("[ServerConnection] native_tool_call missing toolName")
+            let errorValue: [String: Any] = ["ok": false, "error": ["message": "Missing toolName"]]
+            try? await agentConnection?.extensionUIResponse(requestId: request.id, value: errorValue)
+            return
+        }
+
+        print("[ServerConnection] Handling native tool call: \(toolName)")
+
+        // Extract args from AnyCodable
+        var argsDict: [String: AnyCodable] = [:]
+        if let args = request.args, let dict = args.value as? [String: Any] {
+            argsDict = dict.mapValues { AnyCodable($0) }
+        }
+
+        let nativeRequest = NativeToolRequest(callId: request.id, toolName: toolName, args: argsDict)
 
         do {
-            let resultData = try await nativeToolExecutor.execute(request: request)
-
-            // Check if result contains _display field for rich content
-            if let parsed = NativeToolExecutor.parseResult(resultData) {
-                // If we have display content, broadcast it to UI
-                if let displayContent = parsed.displayContent {
-                    await MainActor.run {
-                        if let item = ConversationItem.rich(
-                            from: DisplayEnvelope(display: displayContent, summary: parsed.summary),
-                            id: request.callId
-                        ) {
-                            print("[ServerConnection] Rich content detected: \(displayContent)")
-                        }
-                    }
-                }
-            }
-
-            // Convert JSON Data back to dictionary
-            let result = try JSONSerialization.jsonObject(with: resultData) as? [String: Any]
-            print("[ServerConnection] Native tool \(request.toolName) succeeded")
-
-            try await sendNativeToolResponse(
-                callId: request.callId,
-                result: result
-            )
+            let resultData = try await nativeToolExecutor.execute(request: nativeRequest)
+            let resultObject = try JSONSerialization.jsonObject(with: resultData)
+            let responseValue: [String: Any] = ["ok": true, "result": resultObject]
+            print("[ServerConnection] Native tool \(toolName) succeeded")
+            try await agentConnection?.extensionUIResponse(requestId: request.id, value: responseValue)
         } catch {
-            print("[ServerConnection] Native tool \(request.toolName) failed: \(error)")
-
-            try? await sendNativeToolResponse(
-                callId: request.callId,
-                error: error.localizedDescription
-            )
+            print("[ServerConnection] Native tool \(toolName) failed: \(error)")
+            let errorValue: [String: Any] = ["ok": false, "error": ["message": error.localizedDescription]]
+            try? await agentConnection?.extensionUIResponse(requestId: request.id, value: errorValue)
         }
-    }
-
-    private func sendNativeToolResponse(
-        callId: String,
-        result: [String: Any]? = nil,
-        error: String? = nil
-    ) async throws {
-        // For now, native tool responses need to go through the WebSocket
-        // This will be implemented when the relay server supports native tools
-        print("[ServerConnection] Native tool response: \(callId), result: \(result != nil), error: \(error ?? "nil")")
     }
 }
 

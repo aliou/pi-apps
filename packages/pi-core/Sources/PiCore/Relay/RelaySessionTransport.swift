@@ -174,25 +174,9 @@ public actor RelaySessionTransport {
         return try await sendAndWaitForResponse(command, responseType: GetMessagesResponse.self)
     }
 
-    public func nativeToolResponse(
-        toolCallId: String,
-        result: Any?,
-        isError: Bool,
-        id: String? = nil
-    ) async throws {
-        var command: [String: Any] = [
-            "type": "native_tool_response",
-            "toolCallId": toolCallId,
-            "isError": isError
-        ]
-        if let result { command["result"] = result }
-        if let id { command["id"] = id }
-        try await send(command)
-    }
-
     public func extensionUIResponse(
         requestId: String,
-        value: String? = nil,
+        value: Any? = nil,
         confirmed: Bool? = nil,
         cancelled: Bool? = nil
     ) async throws {
@@ -435,22 +419,7 @@ public actor RelaySessionTransport {
             }
             return .unknown(type: type, raw: data)
 
-        case "native_tool_request":
-            let callId = json["callId"] as? String ?? ""
-            let toolName = json["toolName"] as? String ?? ""
-            var args: [String: AnyCodable] = [:]
-            if let argsDict = json["args"] as? [String: Any] {
-                args = argsDict.mapValues { AnyCodable($0) }
-            }
-            return .nativeToolRequest(NativeToolRequest(
-                callId: callId,
-                toolName: toolName,
-                args: args
-            ))
 
-        case "native_tool_cancel":
-            let callId = json["callId"] as? String ?? ""
-            return .nativeToolCancel(callId: callId)
 
         default:
             return .unknown(type: type, raw: data)

@@ -124,6 +124,7 @@ public struct CreateSessionParams: Encodable, Sendable {
     public let modelProvider: String?
     public let modelId: String?
     public let systemPrompt: String?
+    public let nativeTools: [NativeToolDefinition]?
 
     public init(
         mode: SessionMode,
@@ -131,7 +132,8 @@ public struct CreateSessionParams: Encodable, Sendable {
         environmentId: String? = nil,
         modelProvider: String? = nil,
         modelId: String? = nil,
-        systemPrompt: String? = nil
+        systemPrompt: String? = nil,
+        nativeTools: [NativeToolDefinition]? = nil
     ) {
         self.mode = mode
         self.repoId = repoId
@@ -139,7 +141,22 @@ public struct CreateSessionParams: Encodable, Sendable {
         self.modelProvider = modelProvider
         self.modelId = modelId
         self.systemPrompt = systemPrompt
+        self.nativeTools = nativeTools
     }
+}
+
+// MARK: - Native Tools
+
+public struct SetNativeToolsParams: Encodable, Sendable {
+    public let tools: [NativeToolDefinition]
+
+    public init(tools: [NativeToolDefinition]) {
+        self.tools = tools
+    }
+}
+
+public struct SetNativeToolsResponse: Decodable, Sendable {
+    public let count: Int
 }
 
 public struct ActivateResponse: Decodable, Sendable {

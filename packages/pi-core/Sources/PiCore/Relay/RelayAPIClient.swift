@@ -81,6 +81,20 @@ public actor RelayAPIClient {
         let _: RelayResponse<DeleteResult> = try await delete("/api/sessions/\(id)")
     }
 
+    // MARK: - Native Tools
+
+    public func setNativeTools(sessionId: String, tools: [NativeToolDefinition]) async throws -> SetNativeToolsResponse {
+        let params = SetNativeToolsParams(tools: tools)
+        let response: RelayResponse<SetNativeToolsResponse> = try await put(
+            "/api/sessions/\(sessionId)/native-tools",
+            body: params
+        )
+        guard let data = response.data else {
+            throw RelayAPIError.serverError(response.error ?? "Failed to set native tools")
+        }
+        return data
+    }
+
     // MARK: - Models
 
     /// Get available models based on configured secrets.

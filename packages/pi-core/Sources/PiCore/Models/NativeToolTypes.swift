@@ -43,19 +43,6 @@ public struct NativeToolRequest: Sendable {
     }
 }
 
-/// Response params for native_tool_response RPC.
-public struct NativeToolResponseParams: Encodable, Sendable {
-    public let callId: String
-    public let result: AnyCodable?
-    public let error: NativeToolErrorInfo?
-
-    public init(callId: String, result: Any? = nil, error: NativeToolErrorInfo? = nil) {
-        self.callId = callId
-        self.result = result.map { AnyCodable($0) }
-        self.error = error
-    }
-}
-
 public struct NativeToolErrorInfo: Codable, Sendable {
     public let message: String
 

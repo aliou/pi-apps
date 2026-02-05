@@ -832,10 +832,6 @@ extension RPCEvent {
             return "state_update"
         case .modelChanged:
             return "model_changed"
-        case .nativeToolRequest:
-            return "native_tool_request"
-        case .nativeToolCancel:
-            return "native_tool_cancel"
         case .unknown(let type, _):
             return type
         }
@@ -902,10 +898,6 @@ extension RPCEvent {
             return ""
         case .modelChanged(let model):
             return model.name
-        case .nativeToolRequest:
-            return "tool request"
-        case .nativeToolCancel(let id):
-            return id
         case .unknown(let type, _):
             return type
         }
