@@ -2,6 +2,8 @@
 
 Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agent) coding agent.
 
+**Scope:** Single-user personal deployment. No multi-user, no user accounts, no per-user isolation.
+
 ## Protocol Boundaries (READ FIRST)
 
 This project has **two distinct communication layers**. Understanding when to modify each is critical.
