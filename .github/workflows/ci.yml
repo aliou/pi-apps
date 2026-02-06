@@ -13,59 +13,31 @@ concurrency:
 jobs:
   build:
     name: Build & Test
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
       - name: Install dependencies
-        run: brew install xcodegen swiftlint
+        run: pnpm install --frozen-lockfile
 
-      - name: Setup project
-        run: |
-          cp Config/Local.xcconfig.example Config/Local.xcconfig
-          make generate
+      - name: Lint
+        run: pnpm lint
 
-      # Lint
-      - name: SwiftLint
-        run: swiftlint --strict
+      - name: Typecheck
+        run: pnpm typecheck
 
-      # Package
-      - name: Build PiCore (macOS)
-        working-directory: packages/pi-core
-        run: swift build
+      - name: Build
+        run: pnpm build
 
-      - name: Test PiCore
-        working-directory: packages/pi-core
-        run: swift test
-
-      - name: Build PiCore (iOS)
-        working-directory: packages/pi-core
-        run: |
-          xcodebuild build \
-            -scheme PiCore \
-            -destination 'generic/platform=iOS Simulator' \
-            -skipPackagePluginValidation
-
-      # Apps
-      - name: Build Desktop App
-        run: |
-          xcodebuild build \
-            -project apps/desktop/pi-desktop.xcodeproj \
-            -scheme "Pi Desktop" \
-            -configuration Debug \
-            -destination 'platform=macOS' \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-
-      - name: Build Mobile App
-        run: |
-          xcodebuild build \
-            -project apps/mobile/pi-mobile.xcodeproj \
-            -scheme "Pi Mobile" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+      - name: Test
+        run: pnpm test

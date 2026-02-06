@@ -1,54 +1,32 @@
 # Pi Apps
 
-Native Apple clients for the [pi](https://github.com/mariozechner/pi-coding-agent) coding agent.
+Clients for the [pi](https://github.com/mariozechner/pi-coding-agent) coding agent.
+
+**Scope:** Single-user personal deployment. No multi-user, no user accounts, no per-user isolation.
 
 ## Structure
 
 ```
 pi-apps/
 ├── apps/
-│   ├── desktop/           # macOS app (local subprocess or relay)
-│   ├── mobile/            # iOS app (connects to relay)
 │   ├── relay-server/      # Relay API server (Node.js/Hono/SQLite)
 │   └── relay-dashboard/   # Relay admin UI (React Router v7/Vite)
-├── packages/
-│   ├── pi-core/           # RPC types, relay client, transport protocols
-│   └── pi-ui/             # Shared SwiftUI components
 └── sandboxes/
     ├── cloudflare/        # CF Containers sandbox (Worker + bridge + Dockerfile)
     └── docker/            # Docker sandbox images for local/self-hosted relay
 ```
 
+Native macOS/iOS apps were archived. The relay server and dashboard are the active components.
+
 ## Quick Start
 
 ```bash
-# enter nix shell (required for swift apps)
-nix develop
-
-# install all TypeScript dependencies
-pnpm install
-
-# first-time swift/xcode setup
-make setup
-
-# open in xcode
-make xcode
+nix develop       # enter nix shell
+pnpm install      # install all dependencies
+pnpm dev          # run all apps (hot reload)
 ```
 
 ## Apps
-
-### Desktop (macOS)
-
-Dual mode: runs pi locally via subprocess, or connects to relay server.
-
-```bash
-make build        # build debug
-make xcode        # open in xcode
-```
-
-### Mobile (iOS)
-
-Connects to the relay via REST + WebSocket. Cannot run pi locally (iOS limitation).
 
 ### Relay Server
 
@@ -80,26 +58,8 @@ pnpm typecheck    # typecheck (tsc)
 pnpm test         # test (vitest)
 ```
 
-## Configuration
-
-Bundle IDs are developer-specific. On first `make setup`, `Config/Local.xcconfig` is created:
-
-```xcconfig
-PI_DESKTOP_BUNDLE_ID = dev.yourname.pi.desktop
-PI_MOBILE_BUNDLE_ID = dev.yourname.pi.mobile
-```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `make setup` | First-time setup |
-| `make build` | Build desktop (debug) |
-| `make test` | Run tests |
-| `make xcode` | Open workspace in Xcode |
-| `make clean` | Remove build artifacts |
-
 ## Requirements
 
-- macOS with Xcode 26+
 - Nix (for development shell)
+- Node.js 22+
+- pnpm

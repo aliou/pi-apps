@@ -1,5 +1,5 @@
 {
-  description = "Pi Apps - Native Apple platform clients for Pi";
+  description = "Pi Apps - Clients for Pi";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -68,16 +68,6 @@
               language = "system";
               pass_filenames = false;
             };
-            swift-test = {
-              enable = true;
-              name = "swift-test";
-              description = "Run Swift package tests";
-              entry = "${pkgs.bash}/bin/bash -c 'for pkg in packages/pi-core packages/pi-ui; do if [ -f \"$pkg/Package.swift\" ] && [ -d \"$pkg/Tests\" ]; then echo \"Testing $pkg...\"; (cd \"$pkg\" && swift test) || exit 1; fi; done'";
-              files = "\\.swift$";
-              language = "system";
-              pass_filenames = false;
-              stages = [ "pre-push" ];
-            };
           };
 
           devShells.default = pkgs.mkShellNoCC {
@@ -99,7 +89,6 @@
               ${config.pre-commit.installationScript}
 
               # Local dev directories (isolated from system XDG)
-              # This prevents dev from polluting ~/.local/share, ~/.config, etc.
               export PI_RELAY_DATA_DIR="$PWD/.dev/relay/data"
               export PI_RELAY_CONFIG_DIR="$PWD/.dev/relay/config"
               export PI_RELAY_CACHE_DIR="$PWD/.dev/relay/cache"
@@ -122,15 +111,15 @@
               echo "  pnpm install  - Install all dependencies"
               echo "  make setup    - First-time Swift/Xcode setup"
               echo ""
-              echo "Desktop/Mobile (Swift):"
+              echo "Native (Swift):"
               echo "  make xcode    - Open in Xcode"
               echo "  make build    - Build from command line"
               echo ""
               echo "TypeScript (monorepo):"
-              echo "  pnpm dev      - Run all apps"
+              echo "  pnpm dev      - Run all apps (hot reload)"
               echo "  pnpm build    - Build all apps"
-              echo "  pnpm lint     - Lint all apps"
-              echo "  pnpm test     - Test all apps"
+              echo "  pnpm lint     - Lint all (biome)"
+              echo "  pnpm test     - Test all (vitest)"
               echo ""
             '';
           };
