@@ -5,14 +5,14 @@
 # installed package (dist, node_modules, docs, examples) to a clean runtime
 # image with just the Node.js runtime (no npm).
 
-FROM --platform=linux/arm64 node:22-alpine AS builder
+FROM node:22-alpine AS builder
 
 ARG PI_VERSION=0.51.5
 RUN npm install -g @mariozechner/pi-coding-agent@${PI_VERSION}
 
 # ---
 
-FROM --platform=linux/arm64 alpine:3.21
+FROM alpine:3.21
 
 # Install Node.js runtime (no npm) and base tools
 RUN apk add --no-cache \
