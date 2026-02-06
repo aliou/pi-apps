@@ -417,6 +417,26 @@ function SandboxProvidersSection() {
     setCfError(null);
     setCfSuccess(false);
 
+    // Verify token with Cloudflare before saving
+    const verifyRes = await api.post<{
+      valid: boolean;
+      error?: string;
+      expiresOn?: string;
+    }>("/settings/verify-cf-token", { token: cfToken.trim() });
+
+    if (verifyRes.error) {
+      setCfError(verifyRes.error);
+      setSavingCf(false);
+      return;
+    }
+
+    if (!verifyRes.data?.valid) {
+      setCfError(verifyRes.data?.error ?? "Invalid token");
+      setSavingCf(false);
+      return;
+    }
+
+    // Token is valid, save it
     const cfSecret = secrets.find((s) => s.envVar === "SANDBOX_CF_API_TOKEN");
 
     try {
