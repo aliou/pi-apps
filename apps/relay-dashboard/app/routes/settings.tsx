@@ -1,5 +1,6 @@
 import {
   CheckCircleIcon,
+  CubeIcon,
   EyeIcon,
   EyeSlashIcon,
   FloppyDiskIcon,
@@ -49,7 +50,7 @@ interface UpdateSecretBody {
 
 // --- Filter tabs ---
 
-type KindFilter = "all" | "ai_provider" | "env_var";
+type KindFilter = "all" | "ai_provider" | "env_var" | "sandbox_provider";
 
 // --- Add Secret Form ---
 
@@ -174,6 +175,7 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
           >
             <option value="ai_provider">AI Provider</option>
             <option value="env_var">Env Var</option>
+            <option value="sandbox_provider">Sandbox</option>
           </select>
         </label>
         <div className="flex items-end">
@@ -276,10 +278,16 @@ function SecretRow({
             className={`rounded-full px-2 py-0.5 text-xs ${
               secret.kind === "ai_provider"
                 ? "bg-blue-500/10 text-blue-500"
-                : "bg-purple-500/10 text-purple-500"
+                : secret.kind === "sandbox_provider"
+                  ? "bg-orange-500/10 text-orange-500"
+                  : "bg-purple-500/10 text-purple-500"
             }`}
           >
-            {secret.kind === "ai_provider" ? "AI Provider" : "Env Var"}
+            {secret.kind === "ai_provider"
+              ? "AI Provider"
+              : secret.kind === "sandbox_provider"
+                ? "Sandbox"
+                : "Env Var"}
           </span>
           {secret.enabled ? (
             <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs text-green-500">
@@ -430,6 +438,9 @@ export default function SettingsPage() {
 
   const aiCount = secrets.filter((s) => s.kind === "ai_provider").length;
   const envCount = secrets.filter((s) => s.kind === "env_var").length;
+  const sandboxCount = secrets.filter(
+    (s) => s.kind === "sandbox_provider",
+  ).length;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -470,6 +481,12 @@ export default function SettingsPage() {
                 icon: TerminalIcon,
                 count: envCount,
               },
+              {
+                key: "sandbox_provider",
+                label: "Sandbox",
+                icon: CubeIcon,
+                count: sandboxCount,
+              },
             ] as const
           ).map((tab) => (
             <button
@@ -504,7 +521,7 @@ export default function SettingsPage() {
                 <div className="py-6 text-center text-sm text-muted">
                   {kindFilter === "all"
                     ? "No secrets configured."
-                    : `No ${kindFilter === "ai_provider" ? "AI provider" : "env var"} secrets.`}
+                    : `No ${kindFilter === "ai_provider" ? "AI provider" : kindFilter === "sandbox_provider" ? "sandbox" : "env var"} secrets.`}
                 </div>
               ) : (
                 filtered.map((secret) => (
