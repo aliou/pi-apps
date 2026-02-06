@@ -17,7 +17,11 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type SandboxProviderStatus } from "../lib/api";
+import {
+  api,
+  type CfTokenVerifyResult,
+  type SandboxProviderStatus,
+} from "../lib/api";
 
 // --- Types matching Phase 1 backend ---
 
@@ -410,18 +414,44 @@ function SandboxProvidersSection() {
     loadSecrets();
   }, [loadStatus, loadSecrets]);
 
+  const [cfVerifyResult, setCfVerifyResult] =
+    useState<CfTokenVerifyResult | null>(null);
+
   const handleSaveCfToken = async () => {
     if (!cfToken.trim()) return;
 
     setSavingCf(true);
     setCfError(null);
     setCfSuccess(false);
+    setCfVerifyResult(null);
 
+    // Verify token with Cloudflare first
+    const verifyRes = await api.post<CfTokenVerifyResult>(
+      "/settings/verify-cf-token",
+      { token: cfToken.trim() },
+    );
+
+    if (verifyRes.error) {
+      setCfError(verifyRes.error);
+      setSavingCf(false);
+      return;
+    }
+
+    const verify = verifyRes.data;
+    if (!verify?.valid) {
+      setCfError(verify?.error ?? "Invalid token");
+      setCfVerifyResult(verify);
+      setSavingCf(false);
+      return;
+    }
+
+    setCfVerifyResult(verify);
+
+    // Token is valid, save it
     const cfSecret = secrets.find((s) => s.envVar === "SANDBOX_CF_API_TOKEN");
 
     try {
       if (cfSecret) {
-        // Update existing
         const body: UpdateSecretBody = { value: cfToken.trim() };
         const res = await api.put<{ ok: boolean }>(
           `/secrets/${cfSecret.id}`,
@@ -433,10 +463,10 @@ function SandboxProvidersSection() {
           setCfSuccess(true);
           setCfToken("");
           await loadSecrets();
-          setTimeout(() => setCfSuccess(false), 2000);
+          await loadStatus();
+          setTimeout(() => setCfSuccess(false), 3000);
         }
       } else {
-        // Create new
         const body: CreateSecretBody = {
           name: "Cloudflare API Token",
           envVar: "SANDBOX_CF_API_TOKEN",
@@ -451,7 +481,8 @@ function SandboxProvidersSection() {
           setCfSuccess(true);
           setCfToken("");
           await loadSecrets();
-          setTimeout(() => setCfSuccess(false), 2000);
+          await loadStatus();
+          setTimeout(() => setCfSuccess(false), 3000);
         }
       }
     } finally {
@@ -552,9 +583,23 @@ function SandboxProvidersSection() {
 
             {cfError && <div className="text-xs text-red-500">{cfError}</div>}
             {cfSuccess && (
-              <div className="flex items-center gap-1 text-xs text-green-500">
-                <CheckCircleIcon className="size-3" weight="fill" />
-                {cfConfigured ? "Token updated" : "Token configured"}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 text-xs text-green-500">
+                  <CheckCircleIcon className="size-3" weight="fill" />
+                  Token verified and saved
+                </div>
+                {cfVerifyResult?.permissions &&
+                  cfVerifyResult.permissions.length > 0 && (
+                    <div className="text-xs text-muted">
+                      Permissions: {cfVerifyResult.permissions.join(", ")}
+                    </div>
+                  )}
+                {cfVerifyResult?.expiresOn && (
+                  <div className="text-xs text-muted">
+                    Expires:{" "}
+                    {new Date(cfVerifyResult.expiresOn).toLocaleDateString()}
+                  </div>
+                )}
               </div>
             )}
 
@@ -565,7 +610,11 @@ function SandboxProvidersSection() {
               className="w-fit flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <FloppyDiskIcon className="size-4" />
-              {savingCf ? "Saving..." : cfConfigured ? "Update" : "Configure"}
+              {savingCf
+                ? "Verifying..."
+                : cfConfigured
+                  ? "Verify & Update"
+                  : "Verify & Save"}
             </button>
           </div>
         </div>

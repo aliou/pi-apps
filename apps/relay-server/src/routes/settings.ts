@@ -6,8 +6,105 @@ import { settings } from "../db/schema";
 // Keys that should not be exposed via the general settings API
 const PROTECTED_KEYS = ["github_repos_access_token"];
 
+interface CfTokenVerifyResult {
+  valid: boolean;
+  status?: string;
+  tokenId?: string;
+  expiresOn?: string;
+  permissions?: string[];
+  error?: string;
+}
+
+/**
+ * Verify a Cloudflare API token and attempt to read its permissions.
+ * Uses /user/tokens/verify for validity, then /user/tokens/{id} for perms.
+ */
+async function verifyCfToken(token: string): Promise<CfTokenVerifyResult> {
+  const headers = { Authorization: `Bearer ${token}` };
+
+  // Step 1: Verify token is valid
+  const verifyRes = await fetch(
+    "https://api.cloudflare.com/client/v4/user/tokens/verify",
+    { headers },
+  );
+
+  if (!verifyRes.ok) {
+    return { valid: false, error: `HTTP ${verifyRes.status}` };
+  }
+
+  const verifyJson = (await verifyRes.json()) as {
+    success: boolean;
+    result?: { id: string; status: string; expires_on?: string };
+    errors?: Array<{ message: string }>;
+  };
+
+  if (!verifyJson.success || !verifyJson.result) {
+    const msg = verifyJson.errors?.[0]?.message ?? "Token verification failed";
+    return { valid: false, error: msg };
+  }
+
+  const { id, status, expires_on } = verifyJson.result;
+
+  if (status !== "active") {
+    return { valid: false, status, tokenId: id, error: `Token is ${status}` };
+  }
+
+  const result: CfTokenVerifyResult = {
+    valid: true,
+    status,
+    tokenId: id,
+    expiresOn: expires_on ?? undefined,
+  };
+
+  // Step 2: Try to read permissions (best-effort, needs API Tokens Read)
+  try {
+    const tokenRes = await fetch(
+      `https://api.cloudflare.com/client/v4/user/tokens/${id}`,
+      { headers },
+    );
+
+    if (tokenRes.ok) {
+      const tokenJson = (await tokenRes.json()) as {
+        success: boolean;
+        result?: {
+          policies?: Array<{
+            permission_groups?: Array<{ name: string }>;
+          }>;
+        };
+      };
+
+      if (tokenJson.success && tokenJson.result?.policies) {
+        result.permissions = tokenJson.result.policies.flatMap(
+          (p) => p.permission_groups?.map((g) => g.name) ?? [],
+        );
+      }
+    }
+  } catch {
+    // Permission read failed -- token may not have API Tokens Read scope
+  }
+
+  return result;
+}
+
 export function settingsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+
+  // Verify a Cloudflare API token
+  app.post("/verify-cf-token", async (c) => {
+    let body: { token?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ data: null, error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.token || typeof body.token !== "string" || !body.token.trim()) {
+      return c.json({ data: null, error: "token is required" }, 400);
+    }
+
+    const result = await verifyCfToken(body.token.trim());
+    return c.json({ data: result, error: null });
+  });
 
   // Get sandbox provider status
   app.get("/sandbox-providers", async (c) => {
