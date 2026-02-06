@@ -8,14 +8,9 @@ import { runMigrations } from "./db/migrate";
 import {
   getRelayEncryptionKey,
   getRelayEncryptionKeyVersion,
-  getSandboxCloudflareApiToken,
-  getSandboxCloudflareWorkerUrl,
-  getSandboxDockerImage,
-  getSandboxProvider,
   loadEnv,
 } from "./env";
 import { SandboxManager } from "./sandbox/manager";
-import type { SandboxProviderType } from "./sandbox/provider-types";
 import { CryptoService } from "./services/crypto.service";
 import { EnvironmentService } from "./services/environment.service";
 import { EventJournal } from "./services/event-journal";
@@ -73,31 +68,19 @@ async function main() {
   const secretsService = new SecretsService(db, cryptoService);
   console.log("Secrets service initialized");
 
-  // Initialize sandbox manager based on config
-  const sandboxProvider = getSandboxProvider();
+  // Initialize sandbox manager — providers are built on-demand from
+  // per-environment config. CF API token is fetched from secrets table.
   const sessionDataDir = join(paths.stateDir, "sessions");
 
-  const cfWorkerUrl = getSandboxCloudflareWorkerUrl();
-  const cfApiToken = getSandboxCloudflareApiToken();
-
   const sandboxManager = new SandboxManager({
-    defaultProvider: sandboxProvider as SandboxProviderType,
     docker: {
-      image: getSandboxDockerImage(),
-      sessionDataDir, // Per-session host dirs for workspace + agent data
-      secretsBaseDir: paths.stateDir, // Use state dir for temp secrets (Lima-compatible)
+      sessionDataDir,
+      secretsBaseDir: paths.stateDir,
     },
-    cloudflare:
-      cfWorkerUrl && cfApiToken
-        ? { workerUrl: cfWorkerUrl, apiToken: cfApiToken }
-        : undefined,
+    getCfApiToken: () =>
+      secretsService.getValueByEnvVar("SANDBOX_CF_API_TOKEN"),
   });
-  console.log(
-    `Default sandbox provider: ${sandboxManager.defaultProviderName}`,
-  );
-  console.log(
-    `Enabled providers: ${sandboxManager.enabledProviders.join(", ")}`,
-  );
+  console.log("Sandbox manager initialized (on-demand providers)");
 
   // Load initial secrets snapshot for new sandbox creations
   const initialSecrets = await secretsService.getAllAsEnv();
@@ -105,15 +88,6 @@ async function main() {
   console.log(
     `Secrets loaded: ${Object.keys(initialSecrets).length} enabled secret(s)`,
   );
-
-  // Check availability on startup
-  const available = await sandboxManager.isProviderAvailable();
-  if (!available) {
-    console.warn(`Sandbox provider "${sandboxProvider}" is not available`);
-    if (sandboxProvider === "docker") {
-      console.warn("Is Docker running?");
-    }
-  }
 
   // Initialize environment service
   const environmentService = new EnvironmentService(db);
@@ -157,6 +131,7 @@ async function main() {
       sandboxManager,
       sessionService,
       eventJournal,
+      environmentService,
     },
     connectionManager,
   );

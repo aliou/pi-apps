@@ -3,8 +3,17 @@ import type { AppDatabase } from "../db/connection";
 import { type Environment, environments } from "../db/schema";
 import type { SandboxResourceTier } from "../sandbox/provider-types";
 
+/**
+ * Per-environment config stored as JSON in the environments table.
+ * Fields are provider-specific:
+ * - Docker: image (required), resourceTier (optional)
+ * - Cloudflare: workerUrl (required), resourceTier (optional)
+ */
 export interface EnvironmentConfig {
-  image: string;
+  /** Docker image name (required for docker type) */
+  image?: string;
+  /** Cloudflare Worker URL (required for cloudflare type) */
+  workerUrl?: string;
   resourceTier?: SandboxResourceTier;
 }
 

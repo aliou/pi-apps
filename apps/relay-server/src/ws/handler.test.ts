@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AppDatabase } from "../db/connection";
 import { SandboxManager } from "../sandbox/manager";
+import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { SessionService } from "../services/session.service";
 import { createTestDatabase } from "../test-helpers";
@@ -20,7 +21,14 @@ describe("WebSocket Handler", () => {
     deps = {
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
-      sandboxManager: new SandboxManager({ defaultProvider: "mock" }),
+      sandboxManager: new SandboxManager({
+        docker: {
+          sessionDataDir: "/tmp/pi-test-sessions",
+          secretsBaseDir: "/tmp/pi-test-secrets",
+        },
+        getCfApiToken: async () => null,
+      }),
+      environmentService: new EnvironmentService(db),
     };
     connectionManager = new ConnectionManager();
   });
@@ -80,6 +88,7 @@ describe("WebSocket Handler", () => {
       expect(deps.sessionService).toBeDefined();
       expect(deps.eventJournal).toBeDefined();
       expect(deps.sandboxManager).toBeDefined();
+      expect(deps.environmentService).toBeDefined();
     });
   });
 });

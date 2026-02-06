@@ -269,12 +269,14 @@ See `src/env.ts` and `src/config.ts` for all environment variables.
 
 Key variables:
 - `PORT` - Server port (default: 31415)
-- `RELAY_ENCRYPTION_KEY` - Required. Base64-encoded 32-byte key for secrets at rest
+- `RELAY_ENCRYPTION_KEY` - Required. Base64-encoded 32-byte key for secrets at rest. Server fails to start with a clear error and generation command if missing.
 - `RELAY_ENCRYPTION_KEY_VERSION` - Key version for rotation (default: 1)
-- `SANDBOX_PROVIDER` - `mock`, `docker`, or `cloudflare` (default: mock)
-- `SANDBOX_DOCKER_IMAGE` - Docker image for sandboxes (default: pi-sandbox:local)
-- `SANDBOX_CF_WORKER_URL` - Cloudflare Worker URL (required when provider is `cloudflare`)
-- `SANDBOX_CF_API_TOKEN` - Shared secret for CF Worker auth (must match Worker's `RELAY_SECRET`)
+
+Sandbox provider configuration is managed via the dashboard UI and stored in the database:
+- Per-environment settings (Docker image, CF Worker URL) are stored in the `environments` table's `config` JSON column
+- Cloudflare API token is stored as a global encrypted secret (`SANDBOX_CF_API_TOKEN`, kind: `sandbox_provider`) in the `secrets` table
+- Docker availability is detected automatically from the Docker daemon
+- Mock provider is used internally for chat mode and tests, never exposed in UI
 
 Provider API keys (stored as encrypted secrets via `/api/secrets`, injected into sandboxes at runtime):
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, etc.

@@ -62,8 +62,11 @@ export function testTimestamp(): string {
  */
 export function createTestSandboxManager(): SandboxManager {
   return new SandboxManager({
-    defaultProvider: "mock",
-    enabledProviders: ["mock"],
+    docker: {
+      sessionDataDir: "/tmp/pi-test-sessions",
+      secretsBaseDir: "/tmp/pi-test-secrets",
+    },
+    getCfApiToken: async () => null,
   });
 }
 

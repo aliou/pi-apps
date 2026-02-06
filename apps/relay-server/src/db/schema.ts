@@ -102,7 +102,7 @@ export const secrets = sqliteTable(
     /** Environment variable name to inject into sandbox (stored as-is, trimmed) */
     envVar: text("env_var").notNull(),
     /** Grouping kind: ai_provider for model credentials, env_var for arbitrary env */
-    kind: text("kind", { enum: ["ai_provider", "env_var"] })
+    kind: text("kind", { enum: ["ai_provider", "env_var", "sandbox_provider"] })
       .notNull()
       .default("env_var"),
     /** Whether this secret is injected into new sandboxes */

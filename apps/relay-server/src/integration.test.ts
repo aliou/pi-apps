@@ -27,7 +27,13 @@ describe("Session Protocol Integration", () => {
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
       githubService: new GitHubService(),
-      sandboxManager: new SandboxManager({ defaultProvider: "mock" }),
+      sandboxManager: new SandboxManager({
+        docker: {
+          sessionDataDir: "/tmp/pi-test-sessions",
+          secretsBaseDir: "/tmp/pi-test-secrets",
+        },
+        getCfApiToken: async () => null,
+      }),
       secretsService: createTestSecretsService(db),
       environmentService: new EnvironmentService(db),
       sessionDataDir: "/tmp/test-session-data",

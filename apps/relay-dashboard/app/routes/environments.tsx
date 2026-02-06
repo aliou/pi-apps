@@ -1,9 +1,12 @@
 import {
+  CheckCircleIcon,
+  CloudIcon,
   CubeIcon,
   PencilSimpleIcon,
   PlusIcon,
   StarIcon,
   TrashIcon,
+  WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
@@ -12,6 +15,7 @@ import {
   api,
   type CreateEnvironmentRequest,
   type Environment,
+  type ProbeResult,
   type UpdateEnvironmentRequest,
 } from "../lib/api";
 
@@ -32,30 +36,66 @@ function EnvironmentDialog({
 }) {
   const isEdit = !!environment;
   const [name, setName] = useState(environment?.name ?? "");
+  const [sandboxType, setSandboxType] = useState<"docker" | "cloudflare">(
+    environment?.sandboxType ?? "docker",
+  );
   const [image, setImage] = useState(
     environment?.config.image ?? images[0]?.image ?? "",
   );
+  const [workerUrl, setWorkerUrl] = useState(
+    environment?.config.workerUrl ?? "",
+  );
   const [isDefault, setIsDefault] = useState(environment?.isDefault ?? false);
   const [saving, setSaving] = useState(false);
+  const [probeStatus, setProbeStatus] = useState<
+    null | "probing" | "available" | "unavailable"
+  >(null);
+  const [probeError, setProbeError] = useState<string | null>(null);
+
+  const handleProbe = async () => {
+    setProbeStatus("probing");
+    setProbeError(null);
+
+    const config = sandboxType === "docker" ? { image } : { workerUrl };
+
+    const res = await api.post<ProbeResult>("/environments/probe", {
+      sandboxType,
+      config,
+    });
+
+    if (res.error) {
+      setProbeStatus("unavailable");
+      setProbeError(res.error);
+    } else if (res.data?.available) {
+      setProbeStatus("available");
+    } else {
+      setProbeStatus("unavailable");
+      setProbeError(res.data?.error ?? "Probe failed");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !image) return;
+    if (!name.trim()) return;
+    if (sandboxType === "docker" && !image) return;
+    if (sandboxType === "cloudflare" && !workerUrl.trim()) return;
 
     setSaving(true);
     try {
+      const config = sandboxType === "docker" ? { image } : { workerUrl };
+
       if (isEdit) {
         const update: UpdateEnvironmentRequest = {
           name: name.trim(),
-          config: { image },
+          config,
           isDefault,
         };
         await onSave(update);
       } else {
         const create: CreateEnvironmentRequest = {
           name: name.trim(),
-          sandboxType: "docker",
-          config: { image },
+          sandboxType,
+          config,
           isDefault,
         };
         await onSave(create);
@@ -108,30 +148,130 @@ function EnvironmentDialog({
             />
           </div>
 
-          {/* Image */}
+          {/* Sandbox Type */}
           <div>
-            <label
-              htmlFor="env-image"
-              className="mb-1.5 block text-xs font-medium text-muted"
+            <span className="mb-2.5 block text-xs font-medium text-muted">
+              Sandbox Type
+            </span>
+            <div className="flex gap-3">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  value="docker"
+                  checked={sandboxType === "docker"}
+                  onChange={(e) =>
+                    setSandboxType(e.target.value as "docker" | "cloudflare")
+                  }
+                  className="size-4 border-border accent-accent"
+                />
+                <span className="text-sm text-fg">Docker</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  value="cloudflare"
+                  checked={sandboxType === "cloudflare"}
+                  onChange={(e) =>
+                    setSandboxType(e.target.value as "docker" | "cloudflare")
+                  }
+                  className="size-4 border-border accent-accent"
+                />
+                <span className="text-sm text-fg">Cloudflare</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Image (Docker only) */}
+          {sandboxType === "docker" && (
+            <div>
+              <label
+                htmlFor="env-image"
+                className="mb-1.5 block text-xs font-medium text-muted"
+              >
+                Docker Image
+              </label>
+              <select
+                id="env-image"
+                value={image}
+                onChange={(e) => setImage(e.target.value)}
+                className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+              >
+                {images.map((img) => (
+                  <option key={img.id} value={img.image}>
+                    {img.name}
+                  </option>
+                ))}
+              </select>
+              {images.find((img) => img.image === image)?.description && (
+                <p className="mt-1 text-xs text-muted">
+                  {images.find((img) => img.image === image)?.description}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Worker URL (Cloudflare only) */}
+          {sandboxType === "cloudflare" && (
+            <div>
+              <label
+                htmlFor="env-worker-url"
+                className="mb-1.5 block text-xs font-medium text-muted"
+              >
+                Worker URL
+              </label>
+              <input
+                id="env-worker-url"
+                type="text"
+                value={workerUrl}
+                onChange={(e) => setWorkerUrl(e.target.value)}
+                placeholder="https://your-worker.example.com"
+                className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                required
+              />
+            </div>
+          )}
+
+          {/* Probe Status */}
+          <div>
+            <button
+              type="button"
+              onClick={handleProbe}
+              disabled={
+                probeStatus === "probing" ||
+                !name.trim() ||
+                (sandboxType === "docker" && !image) ||
+                (sandboxType === "cloudflare" && !workerUrl.trim())
+              }
+              className="flex items-center gap-1.5 rounded-lg border border-accent px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
             >
-              Docker Image
-            </label>
-            <select
-              id="env-image"
-              value={image}
-              onChange={(e) => setImage(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
-            >
-              {images.map((img) => (
-                <option key={img.id} value={img.image}>
-                  {img.name}
-                </option>
-              ))}
-            </select>
-            {images.find((img) => img.image === image)?.description && (
-              <p className="mt-1 text-xs text-muted">
-                {images.find((img) => img.image === image)?.description}
-              </p>
+              {probeStatus === "probing" ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Checking...
+                </>
+              ) : (
+                "Check Availability"
+              )}
+            </button>
+            {probeStatus === "available" && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-sm">
+                <CheckCircleIcon
+                  className="size-4 text-green-500"
+                  weight="fill"
+                />
+                <span className="text-green-500">Available</span>
+              </div>
+            )}
+            {probeStatus === "unavailable" && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm">
+                <WarningCircleIcon
+                  className="size-4 text-red-500"
+                  weight="fill"
+                />
+                <span className="text-red-500">
+                  {probeError ?? "Not available"}
+                </span>
+              </div>
             )}
           </div>
 
@@ -204,10 +344,22 @@ function EnvironmentRow({
     onDelete(environment.id);
   };
 
+  const isCloudflare = environment.sandboxType === "cloudflare";
+
   return (
     <div className="flex items-center gap-4 rounded-lg border border-border bg-surface/30 p-4">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-        <CubeIcon className="size-5" weight="duotone" />
+      <div
+        className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
+          isCloudflare
+            ? "bg-orange-500/10 text-orange-500"
+            : "bg-accent/10 text-accent"
+        }`}
+      >
+        {isCloudflare ? (
+          <CloudIcon className="size-5" weight="duotone" />
+        ) : (
+          <CubeIcon className="size-5" weight="duotone" />
+        )}
       </div>
 
       <div className="min-w-0 flex-1">
@@ -221,7 +373,9 @@ function EnvironmentRow({
           )}
         </div>
         <p className="mt-0.5 text-xs text-muted">
-          {imageMeta?.name ?? environment.config.image}
+          {isCloudflare
+            ? environment.config.workerUrl
+            : (imageMeta?.name ?? environment.config.image)}
         </p>
       </div>
 

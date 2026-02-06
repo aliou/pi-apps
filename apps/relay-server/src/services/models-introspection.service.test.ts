@@ -12,8 +12,11 @@ function makeMockSecretsService(): SecretsService {
 describe("ModelsIntrospectionService", () => {
   it("returns models from an ephemeral sandbox via RPC", async () => {
     const manager = new SandboxManager({
-      defaultProvider: "mock",
-      enabledProviders: ["mock"],
+      docker: {
+        sessionDataDir: "/tmp/pi-test-sessions",
+        secretsBaseDir: "/tmp/pi-test-secrets",
+      },
+      getCfApiToken: async () => null,
     });
 
     const service = new ModelsIntrospectionService(
@@ -28,22 +31,5 @@ describe("ModelsIntrospectionService", () => {
     expect(result.models.length).toBeGreaterThan(0);
     expect(result.models[0]).toHaveProperty("provider");
     expect(result.models[0]).toHaveProperty("modelId");
-  });
-
-  it("returns error when sandbox provider is unavailable", async () => {
-    const manager = new SandboxManager({
-      defaultProvider: "docker",
-      enabledProviders: [],
-    });
-
-    const service = new ModelsIntrospectionService(
-      manager,
-      makeMockSecretsService(),
-    );
-
-    const result = await service.getModels();
-
-    expect(result.error).toBeTruthy();
-    expect(result.models).toEqual([]);
   });
 });

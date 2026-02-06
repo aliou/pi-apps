@@ -1,10 +1,7 @@
-import {
-  type CloudflareProviderConfig,
-  CloudflareSandboxProvider,
-} from "./cloudflare";
-import { type DockerProviderConfig, DockerSandboxProvider } from "./docker";
+import { CloudflareSandboxProvider } from "./cloudflare";
+import { DockerSandboxProvider } from "./docker";
 import { MockSandboxProvider } from "./mock";
-import { ALL_PROVIDER_TYPES, type SandboxProviderType } from "./provider-types";
+import type { SandboxProviderType } from "./provider-types";
 import type {
   CleanupResult,
   CreateSandboxOptions,
@@ -14,84 +11,126 @@ import type {
   SandboxProvider,
 } from "./types";
 
+/**
+ * Per-environment sandbox config as stored in the environments table.
+ * The manager uses this to build provider instances on-demand.
+ */
+export interface EnvironmentSandboxConfig {
+  sandboxType: "docker" | "cloudflare";
+  /** Docker image name (for docker type) */
+  image?: string;
+  /** Cloudflare worker URL (for cloudflare type) */
+  workerUrl?: string;
+}
+
 export interface SandboxManagerConfig {
-  /** Default provider for new sessions */
-  defaultProvider: SandboxProviderType;
-  /** Docker provider config (required if docker is enabled) */
-  docker?: DockerProviderConfig;
-  /** Cloudflare provider config (required if cloudflare is enabled) */
-  cloudflare?: CloudflareProviderConfig;
-  /** Which providers to enable (default: all) */
-  enabledProviders?: SandboxProviderType[];
+  /**
+   * Base Docker config (host paths, etc). Provider instances are built
+   * on-demand with per-environment image overrides.
+   */
+  docker: {
+    sessionDataDir: string;
+    secretsBaseDir: string;
+  };
+  /**
+   * Callback to fetch the global Cloudflare API token from the secrets table.
+   * Called on-demand when a cloudflare provider instance is needed.
+   */
+  getCfApiToken: () => Promise<string | null>;
 }
 
 /**
  * Manages sandbox lifecycle with support for multiple providers.
- * Stateless — does not track sessions in memory.
- * The DB is the source of truth for session → provider/providerId mappings.
+ * Builds provider instances on-demand from per-environment config
+ * rather than creating them once at boot.
+ *
+ * Stateless -- does not track sessions in memory.
+ * The DB is the source of truth for session -> provider/providerId mappings.
  */
 export class SandboxManager {
-  private providers = new Map<SandboxProviderType, SandboxProvider>();
-  private defaultProvider: SandboxProviderType;
+  private config: SandboxManagerConfig;
+  /** Cached provider instances keyed by a config fingerprint. */
+  private providerCache = new Map<string, SandboxProvider>();
+  /** Mock provider singleton (for tests only). */
+  private mockProvider: MockSandboxProvider | null = null;
   /** Cached secrets snapshot for new sandbox creation. */
   private secretsSnapshot: Record<string, string> = {};
 
   constructor(config: SandboxManagerConfig) {
-    this.defaultProvider = config.defaultProvider;
-
-    const enabled = config.enabledProviders ?? ALL_PROVIDER_TYPES;
-
-    if (enabled.includes("mock")) {
-      this.providers.set("mock", new MockSandboxProvider());
-    }
-    if (enabled.includes("docker") && config.docker) {
-      this.providers.set("docker", new DockerSandboxProvider(config.docker));
-    }
-    if (enabled.includes("cloudflare") && config.cloudflare) {
-      this.providers.set(
-        "cloudflare",
-        new CloudflareSandboxProvider(config.cloudflare),
-      );
-    }
+    this.config = config;
   }
 
-  get defaultProviderName(): SandboxProviderType {
-    return this.defaultProvider;
+  /**
+   * Get or create a provider instance for a given environment config.
+   * Docker providers are keyed by image name.
+   * Cloudflare providers are keyed by workerUrl.
+   * Mock provider is a singleton.
+   */
+  private async getProvider(
+    envConfig: EnvironmentSandboxConfig,
+  ): Promise<SandboxProvider> {
+    if (envConfig.sandboxType === "docker") {
+      const image = envConfig.image ?? "pi-sandbox:local";
+      const cacheKey = `docker:${image}`;
+
+      let provider = this.providerCache.get(cacheKey);
+      if (!provider) {
+        provider = new DockerSandboxProvider({
+          image,
+          sessionDataDir: this.config.docker.sessionDataDir,
+          secretsBaseDir: this.config.docker.secretsBaseDir,
+        });
+        this.providerCache.set(cacheKey, provider);
+      }
+      return provider;
+    }
+
+    if (envConfig.sandboxType === "cloudflare") {
+      const workerUrl = envConfig.workerUrl;
+      if (!workerUrl) {
+        throw new Error("Cloudflare environment missing workerUrl in config");
+      }
+
+      const apiToken = await this.config.getCfApiToken();
+      if (!apiToken) {
+        throw new Error(
+          "Cloudflare API token not configured. Add it in Settings > Sandbox Providers.",
+        );
+      }
+
+      const cacheKey = `cloudflare:${workerUrl}`;
+
+      // Always rebuild -- token may have changed.
+      const provider = new CloudflareSandboxProvider({ workerUrl, apiToken });
+      this.providerCache.set(cacheKey, provider);
+      return provider;
+    }
+
+    throw new Error(`Unknown sandbox type: ${envConfig.sandboxType}`);
   }
 
-  /** List all enabled provider names */
-  get enabledProviders(): SandboxProviderType[] {
-    return Array.from(this.providers.keys());
+  /**
+   * Get the mock provider (for tests/dev). Not exposed in UI.
+   */
+  getMockProvider(): MockSandboxProvider {
+    if (!this.mockProvider) {
+      this.mockProvider = new MockSandboxProvider();
+    }
+    return this.mockProvider;
   }
 
-  /** Check if a specific provider is available */
+  /**
+   * Check if a provider type is available for a given config.
+   */
   async isProviderAvailable(
-    providerType?: SandboxProviderType,
+    envConfig: EnvironmentSandboxConfig,
   ): Promise<boolean> {
-    const type = providerType ?? this.defaultProvider;
-    const provider = this.providers.get(type);
-    if (!provider) return false;
-    return provider.isAvailable();
-  }
-
-  /** Check availability of all enabled providers */
-  async getProviderStatus(): Promise<
-    Record<SandboxProviderType, { enabled: boolean; available: boolean }>
-  > {
-    const status: Record<string, { enabled: boolean; available: boolean }> = {};
-
-    for (const type of ALL_PROVIDER_TYPES) {
-      const provider = this.providers.get(type);
-      status[type] = {
-        enabled: !!provider,
-        available: provider ? await provider.isAvailable() : false,
-      };
+    try {
+      const provider = await this.getProvider(envConfig);
+      return provider.isAvailable();
+    } catch {
+      return false;
     }
-
-    return status as Record<
-      SandboxProviderType,
-      { enabled: boolean; available: boolean }
-    >;
   }
 
   /**
@@ -110,39 +149,60 @@ export class SandboxManager {
   }
 
   /**
-   * Create a sandbox for a session.
+   * Create a sandbox for a session using environment config.
    * Returns the handle. Caller should persist handle.providerId to DB.
    */
   async createForSession(
     sessionId: string,
+    envConfig: EnvironmentSandboxConfig,
     options?: Omit<CreateSandboxOptions, "sessionId">,
-    providerType?: SandboxProviderType,
   ): Promise<SandboxHandle> {
-    const type = providerType ?? this.defaultProvider;
-    const provider = this.providers.get(type);
+    const provider = await this.getProvider(envConfig);
+    return provider.createSandbox({ sessionId, ...options });
+  }
 
-    if (!provider) {
-      throw new Error(`Provider "${type}" is not enabled`);
-    }
-
+  /**
+   * Create a sandbox using the mock provider (for tests/dev).
+   */
+  async createMockForSession(
+    sessionId: string,
+    options?: Omit<CreateSandboxOptions, "sessionId">,
+  ): Promise<SandboxHandle> {
+    const provider = this.getMockProvider();
     return provider.createSandbox({ sessionId, ...options });
   }
 
   /**
    * Get sandbox handle for a session by its provider-specific ID.
-   * Checks real provider state (e.g., Docker API).
-   * Throws if sandbox doesn't exist.
+   * Needs environment config to resolve the correct provider instance.
    */
   async getHandle(
-    providerType: SandboxProviderType,
+    envConfig: EnvironmentSandboxConfig,
     providerId: string,
   ): Promise<SandboxHandle> {
-    const provider = this.providers.get(providerType);
-    if (!provider) {
-      throw new Error(`Provider "${providerType}" is not enabled`);
-    }
-
+    const provider = await this.getProvider(envConfig);
     return provider.getSandbox(providerId);
+  }
+
+  /**
+   * Get handle using raw provider type + providerId.
+   * Used when environment config is not available (e.g., mock sessions).
+   * Falls back to mock provider for "mock" type.
+   */
+  async getHandleByType(
+    providerType: SandboxProviderType,
+    providerId: string,
+    envConfig?: EnvironmentSandboxConfig,
+  ): Promise<SandboxHandle> {
+    if (providerType === "mock") {
+      return this.getMockProvider().getSandbox(providerId);
+    }
+    if (!envConfig) {
+      throw new Error(
+        `Environment config required for provider type "${providerType}"`,
+      );
+    }
+    return this.getHandle(envConfig, providerId);
   }
 
   /**
@@ -152,23 +212,33 @@ export class SandboxManager {
   async resumeSession(
     providerType: SandboxProviderType,
     providerId: string,
+    envConfig?: EnvironmentSandboxConfig,
     secrets?: Record<string, string>,
     githubToken?: string,
   ): Promise<SandboxHandle> {
-    const handle = await this.getHandle(providerType, providerId);
+    const handle = await this.getHandleByType(
+      providerType,
+      providerId,
+      envConfig,
+    );
     await handle.resume(secrets, githubToken);
     return handle;
   }
 
   /**
-   * Attach to a sandbox: get handle + streams in one call.
+   * Attach to a sandbox: get handle + channel in one call.
    * Used by the WS handler.
    */
   async attachSession(
     providerType: SandboxProviderType,
     providerId: string,
+    envConfig?: EnvironmentSandboxConfig,
   ): Promise<{ handle: SandboxHandle; channel: SandboxChannel }> {
-    const handle = await this.getHandle(providerType, providerId);
+    const handle = await this.getHandleByType(
+      providerType,
+      providerId,
+      envConfig,
+    );
     const channel = await handle.attach();
     return { handle, channel };
   }
@@ -179,38 +249,57 @@ export class SandboxManager {
   async terminateByProviderId(
     providerType: SandboxProviderType,
     providerId: string,
+    envConfig?: EnvironmentSandboxConfig,
   ): Promise<void> {
     try {
-      const handle = await this.getHandle(providerType, providerId);
+      const handle = await this.getHandleByType(
+        providerType,
+        providerId,
+        envConfig,
+      );
       await handle.terminate();
     } catch {
-      // Sandbox already gone — that's fine
+      // Sandbox already gone -- that's fine
     }
   }
 
-  /** List all active sandboxes across all providers */
+  /** List all active sandboxes across all cached providers */
   async listAll(): Promise<
     (SandboxInfo & { provider: SandboxProviderType })[]
   > {
     const results: (SandboxInfo & { provider: SandboxProviderType })[] = [];
 
-    for (const [type, provider] of this.providers) {
+    for (const [key, provider] of this.providerCache) {
+      const type = key.split(":")[0] as SandboxProviderType;
       const sandboxes = await provider.listSandboxes();
       for (const sandbox of sandboxes) {
         results.push({ ...sandbox, provider: type });
       }
     }
 
+    if (this.mockProvider) {
+      const sandboxes = await this.mockProvider.listSandboxes();
+      for (const sandbox of sandboxes) {
+        results.push({ ...sandbox, provider: "mock" });
+      }
+    }
+
     return results;
   }
 
-  /** Cleanup stopped sandboxes across all providers */
+  /** Cleanup stopped sandboxes across all cached providers */
   async cleanup(): Promise<CleanupResult> {
     let sandboxesRemoved = 0;
     let artifactsRemoved = 0;
 
-    for (const provider of this.providers.values()) {
+    for (const provider of this.providerCache.values()) {
       const result = await provider.cleanup();
+      sandboxesRemoved += result.sandboxesRemoved;
+      artifactsRemoved += result.artifactsRemoved;
+    }
+
+    if (this.mockProvider) {
+      const result = await this.mockProvider.cleanup();
       sandboxesRemoved += result.sandboxesRemoved;
       artifactsRemoved += result.artifactsRemoved;
     }

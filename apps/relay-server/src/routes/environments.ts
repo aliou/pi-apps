@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
+import type { EnvironmentSandboxConfig } from "../sandbox/manager";
 import {
   AVAILABLE_DOCKER_IMAGES,
   type EnvironmentConfig,
@@ -15,8 +16,55 @@ interface CreateEnvironmentRequest {
 
 interface UpdateEnvironmentRequest {
   name?: string;
+  sandboxType?: SandboxType;
   config?: EnvironmentConfig;
   isDefault?: boolean;
+}
+
+/**
+ * Build an EnvironmentSandboxConfig from environment type + config.
+ */
+function toSandboxConfig(
+  sandboxType: SandboxType,
+  config: EnvironmentConfig,
+): EnvironmentSandboxConfig {
+  return {
+    sandboxType,
+    image: config.image,
+    workerUrl: config.workerUrl,
+  };
+}
+
+/**
+ * Validate environment config for a given sandbox type.
+ * Returns error message or null if valid.
+ */
+function validateConfig(
+  sandboxType: SandboxType,
+  config: EnvironmentConfig,
+): string | null {
+  if (sandboxType === "docker") {
+    if (!config.image) {
+      return "config.image is required for docker environments";
+    }
+    // Validate image is in allowed list
+    const validImages: string[] = AVAILABLE_DOCKER_IMAGES.map(
+      (img) => img.image,
+    );
+    if (!validImages.includes(config.image)) {
+      return `Invalid image. Must be one of: ${validImages.join(", ")}`;
+    }
+  } else if (sandboxType === "cloudflare") {
+    if (!config.workerUrl) {
+      return "config.workerUrl is required for cloudflare environments";
+    }
+    try {
+      new URL(config.workerUrl);
+    } catch {
+      return "config.workerUrl must be a valid URL";
+    }
+  }
+  return null;
 }
 
 export function environmentsRoutes(): Hono<AppEnv> {
@@ -25,6 +73,49 @@ export function environmentsRoutes(): Hono<AppEnv> {
   // List available Docker images (hardcoded)
   app.get("/images", (c) => {
     return c.json({ data: AVAILABLE_DOCKER_IMAGES, error: null });
+  });
+
+  // Probe provider availability for a given config
+  app.post("/probe", async (c) => {
+    const sandboxManager = c.get("sandboxManager");
+
+    let body: { sandboxType: SandboxType; config: EnvironmentConfig };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ data: null, error: "Invalid JSON body" }, 400);
+    }
+
+    const validTypes: SandboxType[] = ["docker", "cloudflare"];
+    if (!body.sandboxType || !validTypes.includes(body.sandboxType)) {
+      return c.json(
+        {
+          data: null,
+          error: `sandboxType must be one of: ${validTypes.join(", ")}`,
+        },
+        400,
+      );
+    }
+
+    const configError = validateConfig(body.sandboxType, body.config ?? {});
+    if (configError) {
+      return c.json({ data: null, error: configError }, 400);
+    }
+
+    try {
+      const envConfig = toSandboxConfig(body.sandboxType, body.config);
+      const available = await sandboxManager.isProviderAvailable(envConfig);
+      return c.json({
+        data: { available, sandboxType: body.sandboxType },
+        error: null,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Probe failed";
+      return c.json({
+        data: { available: false, error: message },
+        error: null,
+      });
+    }
   });
 
   // List all environments
@@ -68,22 +159,9 @@ export function environmentsRoutes(): Hono<AppEnv> {
       );
     }
 
-    if (!body.config?.image) {
-      return c.json({ data: null, error: "config.image is required" }, 400);
-    }
-
-    // Validate image is in allowed list
-    const validImages: string[] = AVAILABLE_DOCKER_IMAGES.map(
-      (img) => img.image,
-    );
-    if (!validImages.includes(body.config.image)) {
-      return c.json(
-        {
-          data: null,
-          error: `Invalid image. Must be one of: ${validImages.join(", ")}`,
-        },
-        400,
-      );
+    const configError = validateConfig(body.sandboxType, body.config ?? {});
+    if (configError) {
+      return c.json({ data: null, error: configError }, 400);
     }
 
     try {
@@ -138,19 +216,15 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    // Validate image if provided
-    if (body.config?.image) {
-      const validImages: string[] = AVAILABLE_DOCKER_IMAGES.map(
-        (img) => img.image,
-      );
-      if (!validImages.includes(body.config.image)) {
-        return c.json(
-          {
-            data: null,
-            error: `Invalid image. Must be one of: ${validImages.join(", ")}`,
-          },
-          400,
-        );
+    // Use existing sandboxType if not provided in update
+    const sandboxType =
+      body.sandboxType ?? (existing.sandboxType as SandboxType);
+
+    // Validate config if provided
+    if (body.config) {
+      const configError = validateConfig(sandboxType, body.config);
+      if (configError) {
+        return c.json({ data: null, error: configError }, 400);
       }
     }
 

@@ -7,8 +7,9 @@ import type { CryptoService, EncryptedData } from "./crypto.service";
  * Grouping kind for secrets.
  * - ai_provider: model provider API keys (used by /api/models)
  * - env_var: arbitrary environment variables for extensions etc.
+ * - sandbox_provider: sandbox provider configuration
  */
-export type SecretKind = "ai_provider" | "env_var";
+export type SecretKind = "ai_provider" | "env_var" | "sandbox_provider";
 
 /**
  * Secret metadata (without the decrypted value).
@@ -190,6 +191,30 @@ export class SecretsService {
 
     const row = rows[0];
     if (!row) return null;
+
+    const encrypted: EncryptedData = {
+      iv: row.iv,
+      ciphertext: row.ciphertext,
+      tag: row.tag,
+      keyVersion: row.keyVersion,
+    };
+
+    return this.crypto.decrypt(encrypted);
+  }
+
+  /**
+   * Get decrypted value for a secret by its envVar name.
+   * Returns null if not found or not enabled.
+   */
+  async getValueByEnvVar(envVar: string): Promise<string | null> {
+    const rows = await this.db
+      .select()
+      .from(secrets)
+      .where(eq(secrets.envVar, envVar))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row || !row.enabled) return null;
 
     const encrypted: EncryptedData = {
       iv: row.iv,

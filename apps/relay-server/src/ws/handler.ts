@@ -1,6 +1,7 @@
 import type { UpgradeWebSocket } from "hono/ws";
 import type { SandboxManager } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
+import type { EnvironmentService } from "../services/environment.service";
 import type { EventJournal } from "../services/event-journal";
 import type { SessionService } from "../services/session.service";
 import { type ConnectionManager, WebSocketConnection } from "./connection";
@@ -26,6 +27,7 @@ export interface WebSocketHandlerDeps {
   sandboxManager: SandboxManager;
   sessionService: SessionService;
   eventJournal: EventJournal;
+  environmentService: EnvironmentService;
 }
 
 /**
@@ -36,7 +38,8 @@ export function createWebSocketHandler(
   deps: WebSocketHandlerDeps,
   connectionManager: ConnectionManager,
 ) {
-  const { sandboxManager, sessionService, eventJournal } = deps;
+  const { sandboxManager, sessionService, eventJournal, environmentService } =
+    deps;
 
   return upgradeWebSocket((c) => {
     const sessionId = c.req.param("id");
@@ -73,8 +76,24 @@ export function createWebSocketHandler(
         const providerType = session.sandboxProvider as SandboxProviderType;
         const providerId = session.sandboxProviderId;
 
+        // Resolve environment config for the sandbox provider
+        let envConfig:
+          | import("../sandbox/manager").EnvironmentSandboxConfig
+          | undefined;
+        if (session.environmentId) {
+          const env = environmentService.get(session.environmentId);
+          if (env) {
+            const config = JSON.parse(env.config);
+            envConfig = {
+              sandboxType: env.sandboxType as "docker" | "cloudflare",
+              image: config.image,
+              workerUrl: config.workerUrl,
+            };
+          }
+        }
+
         sandboxManager
-          .attachSession(providerType, providerId)
+          .attachSession(providerType, providerId, envConfig)
           .then(({ channel }) => {
             wsLog("attached", sessionId);
             connection = new WebSocketConnection(

@@ -39,7 +39,7 @@ export class ModelsIntrospectionService {
       const secrets = await this.secretsService.getAllAsEnv();
 
       // Create ephemeral sandbox
-      handle = await this.sandboxManager.createForSession(sessionId, {
+      handle = await this.sandboxManager.createMockForSession(sessionId, {
         secrets,
       });
 

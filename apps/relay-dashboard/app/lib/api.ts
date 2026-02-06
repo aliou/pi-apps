@@ -127,7 +127,7 @@ export interface SessionHistoryEntry {
 export interface Environment {
   id: string;
   name: string;
-  sandboxType: "docker";
+  sandboxType: "docker" | "cloudflare";
   config: EnvironmentConfig;
   isDefault: boolean;
   createdAt: string;
@@ -135,7 +135,8 @@ export interface Environment {
 }
 
 export interface EnvironmentConfig {
-  image: string;
+  image?: string;
+  workerUrl?: string;
   resources?: {
     cpuShares?: number;
     memoryMB?: number;
@@ -151,7 +152,7 @@ export interface AvailableImage {
 
 export interface CreateEnvironmentRequest {
   name: string;
-  sandboxType: "docker";
+  sandboxType: "docker" | "cloudflare";
   config: EnvironmentConfig;
   isDefault?: boolean;
 }
@@ -160,4 +161,15 @@ export interface UpdateEnvironmentRequest {
   name?: string;
   config?: EnvironmentConfig;
   isDefault?: boolean;
+}
+
+export interface SandboxProviderStatus {
+  docker: { available: boolean };
+  cloudflare: { configured: boolean };
+}
+
+export interface ProbeResult {
+  available: boolean;
+  sandboxType?: string;
+  error?: string;
 }
