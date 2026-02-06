@@ -146,6 +146,45 @@ describe("DockerSandboxProvider", () => {
     );
   });
 
+  describe("image pulling", () => {
+    it.skipIf(!process.env.RUN_DOCKER_TESTS)(
+      "pulls image automatically during sandbox creation",
+      { timeout: 120_000 },
+      async () => {
+        if (!dockerAvailable) return;
+
+        // Creating a sandbox should succeed even if the image
+        // needs to be pulled (pullImage is called before createContainer)
+        const sessionId = `test-pull-${Date.now()}`;
+        const handle = await provider.createSandbox({ sessionId });
+
+        expect(handle.sessionId).toBe(sessionId);
+        expect(handle.status).toBe("running");
+        expect(handle.imageDigest).toBeDefined();
+
+        await handle.terminate();
+      },
+    );
+
+    it.skipIf(!process.env.RUN_DOCKER_TESTS)(
+      "fails with clear error for nonexistent image",
+      { timeout: 30_000 },
+      async () => {
+        if (!dockerAvailable) return;
+
+        const badProvider = new DockerSandboxProvider({
+          image: "ghcr.io/aliou/this-image-does-not-exist:never",
+          sessionDataDir: "/tmp/test-session-data-bad",
+        });
+
+        const sessionId = `test-bad-image-${Date.now()}`;
+        await expect(badProvider.createSandbox({ sessionId })).rejects.toThrow(
+          /not available/,
+        );
+      },
+    );
+  });
+
   describe("cleanup", () => {
     it.skipIf(!process.env.RUN_DOCKER_TESTS)(
       "removes stopped containers",

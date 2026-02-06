@@ -234,6 +234,9 @@ export class DockerSandboxProvider implements SandboxProvider {
           ]
         : undefined; // use image default CMD
 
+    // Always pull to get latest image (digest is stored per-session)
+    await this.pullImage(this.config.image);
+
     // Create container
     const container = await this.docker.createContainer({
       name: containerName,
@@ -380,6 +383,36 @@ export class DockerSandboxProvider implements SandboxProvider {
   // --- Private helpers ---
 
   /**
+   * Pull a Docker image. Always pulls to ensure we have the latest
+   * version and store an up-to-date digest.
+   * Falls back to local image if pull fails (e.g. offline, local-only tag).
+   */
+  private async pullImage(image: string): Promise<void> {
+    try {
+      console.log(`Pulling image ${image}...`);
+      const stream = await this.docker.pull(image);
+      await new Promise<void>((resolve, reject) => {
+        this.docker.modem.followProgress(stream, (err: Error | null) =>
+          err ? reject(err) : resolve(),
+        );
+      });
+      console.log(`Image ${image} pulled successfully`);
+    } catch (err) {
+      // If pull fails, check if image exists locally
+      try {
+        await this.docker.getImage(image).inspect();
+        console.log(
+          `Pull failed for ${image}, using local image: ${err instanceof Error ? err.message : err}`,
+        );
+      } catch {
+        throw new Error(
+          `Image ${image} not available: pull failed and not found locally`,
+        );
+      }
+    }
+  }
+
+  /**
    * Write git credential helper and gitconfig to a directory.
    * The directory is bind-mounted read-only into the container at /data/git.
    * GIT_CONFIG_GLOBAL=/data/git/gitconfig points git to the config.
@@ -443,6 +476,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     const cmd = `git clone ${branchArg} ${effectiveUrl} /workspace${resetRemote}`;
 
     const hostUser = getHostUser();
+
+    await this.pullImage(this.config.image);
 
     const container = await this.docker.createContainer({
       Image: this.config.image,
