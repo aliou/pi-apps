@@ -12,6 +12,6 @@ struct PiNativeApp: App {
 
 struct ContentView: View {
     var body: some View {
-        Text("Pi \(PiCore.piVersion)")
+        Text("Pi \(PiAgent.version)")
     }
 }

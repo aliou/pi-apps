@@ -1,3 +1,3 @@
-public enum PiCore {
-    public static let piVersion = "0.52.6"
+public enum PiAgent {
+    public static let version = "0.52.6"
 }
