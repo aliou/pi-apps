@@ -1,0 +1,78 @@
+name: PiNative
+options:
+  bundleIdPrefix: me.aliou.pi
+  deploymentTarget:
+    macOS: "26.0"
+    iOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  PiCore:
+    path: ../../packages/pi-core
+
+targets:
+  PiNative macOS:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PI_BUNDLE_ID_MACOS)
+        PRODUCT_NAME: Pi
+        GENERATE_INFOPLIST_FILE: true
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+    dependencies:
+      - package: PiCore
+        product: PiCore
+
+  PiNative iOS:
+    type: application
+    platform: iOS
+    supportedDestinations: [iOS]
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PI_BUNDLE_ID_IOS)
+        PRODUCT_NAME: Pi
+        GENERATE_INFOPLIST_FILE: true
+        IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+    dependencies:
+      - package: PiCore
+        product: PiCore
+
+schemes:
+  PiNative macOS:
+    build:
+      targets:
+        PiNative macOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+
+  PiNative iOS:
+    build:
+      targets:
+        PiNative iOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release

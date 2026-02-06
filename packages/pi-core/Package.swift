@@ -9,16 +9,9 @@ let package = Package(
         .iOS(.v26)
     ],
     products: [
-        .library(
-            name: "PiCore",
-            targets: ["PiCore"]
-        )
+        .library(name: "PiCore", targets: ["PiCore"])
     ],
     targets: [
-        .target(name: "PiCore"),
-        .testTarget(
-            name: "PiCoreTests",
-            dependencies: ["PiCore"]
-        )
+        .target(name: "PiCore")
     ]
 )
