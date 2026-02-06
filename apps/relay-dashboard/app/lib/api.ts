@@ -168,15 +168,6 @@ export interface SandboxProviderStatus {
   cloudflare: { configured: boolean };
 }
 
-export interface CfTokenVerifyResult {
-  valid: boolean;
-  status?: string;
-  tokenId?: string;
-  expiresOn?: string;
-  permissions?: string[];
-  error?: string;
-}
-
 export interface ProbeResult {
   available: boolean;
   sandboxType?: string;
