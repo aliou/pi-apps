@@ -45,6 +45,12 @@ export const AVAILABLE_DOCKER_IMAGES = [
     image: "ghcr.io/aliou/pi-sandbox-codex-universal",
     description: "Multi-language environment (Node, Python, Go, Rust, etc.)",
   },
+  {
+    id: "alpine-arm64",
+    name: "Alpine ARM64",
+    image: "ghcr.io/aliou/pi-sandbox-alpine-arm64",
+    description: "Lightweight Alpine-based image for ARM64 hosts.",
+  },
 ] as const;
 
 export type AvailableImage = (typeof AVAILABLE_DOCKER_IMAGES)[number];
