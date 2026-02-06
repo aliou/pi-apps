@@ -1,4 +1,0 @@
-#include "Base.xcconfig"
-
-SWIFT_OPTIMIZATION_LEVEL = -O
-DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
