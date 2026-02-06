@@ -52,27 +52,47 @@ function EnvironmentDialog({
   >(null);
   const [probeError, setProbeError] = useState<string | null>(null);
 
-  const handleProbe = async () => {
-    setProbeStatus("probing");
+  // Auto-probe availability when config changes (debounced)
+  useEffect(() => {
+    setProbeStatus(null);
     setProbeError(null);
 
-    const config = sandboxType === "docker" ? { image } : { workerUrl };
+    const isConfigComplete =
+      (sandboxType === "docker" && !!image) ||
+      (sandboxType === "cloudflare" && !!workerUrl.trim());
 
-    const res = await api.post<ProbeResult>("/environments/probe", {
-      sandboxType,
-      config,
-    });
+    if (!isConfigComplete) return;
 
-    if (res.error) {
-      setProbeStatus("unavailable");
-      setProbeError(res.error);
-    } else if (res.data?.available) {
-      setProbeStatus("available");
-    } else {
-      setProbeStatus("unavailable");
-      setProbeError(res.data?.error ?? "Probe failed");
-    }
-  };
+    let cancelled = false;
+
+    const timeout = setTimeout(async () => {
+      setProbeStatus("probing");
+
+      const config = sandboxType === "docker" ? { image } : { workerUrl };
+
+      const res = await api.post<ProbeResult>("/environments/probe", {
+        sandboxType,
+        config,
+      });
+
+      if (cancelled) return;
+
+      if (res.error) {
+        setProbeStatus("unavailable");
+        setProbeError(res.error);
+      } else if (res.data?.available) {
+        setProbeStatus("available");
+      } else {
+        setProbeStatus("unavailable");
+        setProbeError(res.data?.error ?? "Probe failed");
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [sandboxType, image, workerUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,6 +227,23 @@ function EnvironmentDialog({
                   {images.find((img) => img.image === image)?.description}
                 </p>
               )}
+              {probeStatus === "probing" && (
+                <p className="mt-1.5 text-xs text-muted">
+                  Checking availability...
+                </p>
+              )}
+              {probeStatus === "available" && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs text-green-500">
+                  <CheckCircleIcon className="size-3" weight="fill" />
+                  Available
+                </p>
+              )}
+              {probeStatus === "unavailable" && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
+                  <WarningCircleIcon className="size-3" weight="fill" />
+                  {probeError ?? "Not available"}
+                </p>
+              )}
             </div>
           )}
 
@@ -228,52 +265,25 @@ function EnvironmentDialog({
                 className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
                 required
               />
+              {probeStatus === "probing" && (
+                <p className="mt-1.5 text-xs text-muted">
+                  Checking availability...
+                </p>
+              )}
+              {probeStatus === "available" && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs text-green-500">
+                  <CheckCircleIcon className="size-3" weight="fill" />
+                  Available
+                </p>
+              )}
+              {probeStatus === "unavailable" && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
+                  <WarningCircleIcon className="size-3" weight="fill" />
+                  {probeError ?? "Not available"}
+                </p>
+              )}
             </div>
           )}
-
-          {/* Probe Status */}
-          <div>
-            <button
-              type="button"
-              onClick={handleProbe}
-              disabled={
-                probeStatus === "probing" ||
-                !name.trim() ||
-                (sandboxType === "docker" && !image) ||
-                (sandboxType === "cloudflare" && !workerUrl.trim())
-              }
-              className="flex items-center gap-1.5 rounded-lg border border-accent px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
-            >
-              {probeStatus === "probing" ? (
-                <>
-                  <span className="animate-spin">⏳</span>
-                  Checking...
-                </>
-              ) : (
-                "Check Availability"
-              )}
-            </button>
-            {probeStatus === "available" && (
-              <div className="mt-2 flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-sm">
-                <CheckCircleIcon
-                  className="size-4 text-green-500"
-                  weight="fill"
-                />
-                <span className="text-green-500">Available</span>
-              </div>
-            )}
-            {probeStatus === "unavailable" && (
-              <div className="mt-2 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm">
-                <WarningCircleIcon
-                  className="size-4 text-red-500"
-                  weight="fill"
-                />
-                <span className="text-red-500">
-                  {probeError ?? "Not available"}
-                </span>
-              </div>
-            )}
-          </div>
 
           {/* Default */}
           <label
@@ -308,7 +318,13 @@ function EnvironmentDialog({
             </button>
             <button
               type="submit"
-              disabled={!name.trim() || !image || saving}
+              disabled={
+                !name.trim() ||
+                (sandboxType === "docker" && !image) ||
+                (sandboxType === "cloudflare" && !workerUrl.trim()) ||
+                probeStatus !== "available" ||
+                saving
+              }
               className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {saving ? "Saving..." : isEdit ? "Update" : "Create"}

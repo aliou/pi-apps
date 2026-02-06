@@ -50,9 +50,13 @@ export function secretsRoutes(
     if (typeof value !== "string" || value.trim() === "") {
       return c.json({ data: null, error: "value is required" }, 400);
     }
-    if (kind !== undefined && kind !== "ai_provider" && kind !== "env_var") {
+    const validKinds = ["ai_provider", "env_var", "sandbox_provider"];
+    if (kind !== undefined && !validKinds.includes(kind)) {
       return c.json(
-        { data: null, error: "kind must be 'ai_provider' or 'env_var'" },
+        {
+          data: null,
+          error: `kind must be one of: ${validKinds.join(", ")}`,
+        },
         400,
       );
     }
@@ -105,13 +109,13 @@ export function secretsRoutes(
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    if (
-      body.kind !== undefined &&
-      body.kind !== "ai_provider" &&
-      body.kind !== "env_var"
-    ) {
+    const validKinds = ["ai_provider", "env_var", "sandbox_provider"];
+    if (body.kind !== undefined && !validKinds.includes(body.kind)) {
       return c.json(
-        { data: null, error: "kind must be 'ai_provider' or 'env_var'" },
+        {
+          data: null,
+          error: `kind must be one of: ${validKinds.join(", ")}`,
+        },
         400,
       );
     }
