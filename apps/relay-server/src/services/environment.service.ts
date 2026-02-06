@@ -9,11 +9,19 @@ import type { SandboxResourceTier } from "../sandbox/provider-types";
  * - Docker: image (required), resourceTier (optional)
  * - Cloudflare: workerUrl (required), resourceTier (optional)
  */
+/**
+ * Per-environment config stored as JSON in the environments table.
+ * Fields are provider-specific:
+ * - Docker: image (required), resourceTier (optional)
+ * - Cloudflare: workerUrl (required), secretId (required, references secrets table), resourceTier (optional)
+ */
 export interface EnvironmentConfig {
   /** Docker image name (required for docker type) */
   image?: string;
   /** Cloudflare Worker URL (required for cloudflare type) */
   workerUrl?: string;
+  /** Secret ID referencing the shared secret in the secrets table (required for cloudflare type) */
+  secretId?: string;
   resourceTier?: SandboxResourceTier;
 }
 

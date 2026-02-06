@@ -32,7 +32,6 @@ describe("Session Protocol Integration", () => {
           sessionDataDir: "/tmp/pi-test-sessions",
           secretsBaseDir: "/tmp/pi-test-secrets",
         },
-        getCfApiToken: async () => null,
       }),
       secretsService: createTestSecretsService(db),
       environmentService: new EnvironmentService(db),

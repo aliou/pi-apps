@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
-import type { EnvironmentSandboxConfig } from "../sandbox/manager";
+import {
+  type EnvironmentSandboxConfig,
+  resolveEnvConfig,
+} from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EnvironmentConfig } from "../services/environment.service";
 import type { SessionMode } from "../services/session.service";
@@ -159,18 +162,23 @@ export function sessionsRoutes(): Hono<AppEnv> {
       // Read secrets fresh for sandbox injection
       const secrets = await secretsService.getAllAsEnv();
 
+      // Resolve environment config
+      let resolvedEnvConfig: EnvironmentSandboxConfig | undefined;
+      if (environmentId) {
+        const env = environmentService.get(environmentId);
+        if (env) {
+          resolvedEnvConfig = await resolveEnvConfig(env, secretsService);
+        }
+      }
+
       // Start sandbox provisioning (async, don't await)
       const createPromise =
         sandboxProvider === "mock"
           ? sandboxManager.createMockForSession(session.id, { secrets })
           : sandboxManager.createForSession(
               session.id,
-              {
+              resolvedEnvConfig ?? {
                 sandboxType: sandboxProvider as "docker" | "cloudflare",
-                image: environmentConfig?.image,
-                workerUrl: (
-                  environmentConfig as unknown as Record<string, unknown>
-                )?.workerUrl as string | undefined,
               },
               {
                 repoUrl,
@@ -291,12 +299,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
             const environmentService = c.get("environmentService");
             const env = environmentService.get(current.environmentId);
             if (env) {
-              const config = JSON.parse(env.config);
-              envConfig = {
-                sandboxType: env.sandboxType as "docker" | "cloudflare",
-                image: config.image,
-                workerUrl: config.workerUrl,
-              };
+              envConfig = await resolveEnvConfig(env, secretsService);
             }
           }
           const handle = await sandboxManager.resumeSession(
@@ -422,12 +425,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
         const environmentService = c.get("environmentService");
         const env = environmentService.get(session.environmentId);
         if (env) {
-          const config = JSON.parse(env.config);
-          envConfig = {
-            sandboxType: env.sandboxType as "docker" | "cloudflare",
-            image: config.image,
-            workerUrl: config.workerUrl,
-          };
+          const secretsService = c.get("secretsService");
+          envConfig = await resolveEnvConfig(env, secretsService);
         }
       }
       await sandboxManager.terminateByProviderId(

@@ -4,7 +4,7 @@ import { SandboxManager } from "../sandbox/manager";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { SessionService } from "../services/session.service";
-import { createTestDatabase } from "../test-helpers";
+import { createTestDatabase, createTestSecretsService } from "../test-helpers";
 import { ConnectionManager, type WebSocketConnection } from "./connection";
 import type { WebSocketHandlerDeps } from "./handler";
 
@@ -26,9 +26,9 @@ describe("WebSocket Handler", () => {
           sessionDataDir: "/tmp/pi-test-sessions",
           secretsBaseDir: "/tmp/pi-test-secrets",
         },
-        getCfApiToken: async () => null,
       }),
       environmentService: new EnvironmentService(db),
+      secretsService: createTestSecretsService(db),
     };
     connectionManager = new ConnectionManager();
   });
@@ -89,6 +89,7 @@ describe("WebSocket Handler", () => {
       expect(deps.eventJournal).toBeDefined();
       expect(deps.sandboxManager).toBeDefined();
       expect(deps.environmentService).toBeDefined();
+      expect(deps.secretsService).toBeDefined();
     });
   });
 });

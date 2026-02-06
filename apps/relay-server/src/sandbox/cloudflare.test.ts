@@ -441,12 +441,11 @@ describe("SandboxManager cloudflare wiring", () => {
     const { SandboxManager } = await import("./manager");
     const manager = new SandboxManager({
       docker: { sessionDataDir: "/tmp/test", secretsBaseDir: "/tmp/test" },
-      getCfApiToken: async () => "test-token",
     });
-    // Provider is created on-demand, verify it can be resolved
     const available = await manager.isProviderAvailable({
       sandboxType: "cloudflare",
       workerUrl: "https://example.com",
+      apiToken: "test-token",
     });
     // Will be false since the worker URL doesn't exist, but no error thrown
     expect(typeof available).toBe("boolean");
@@ -456,9 +455,7 @@ describe("SandboxManager cloudflare wiring", () => {
     const { SandboxManager } = await import("./manager");
     const manager = new SandboxManager({
       docker: { sessionDataDir: "/tmp/test", secretsBaseDir: "/tmp/test" },
-      getCfApiToken: async () => null,
     });
-    // Without CF API token, cloudflare provider should not be available
     const available = await manager.isProviderAvailable({
       sandboxType: "cloudflare",
       workerUrl: "https://example.com",

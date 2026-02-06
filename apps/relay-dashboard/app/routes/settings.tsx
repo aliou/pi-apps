@@ -1,8 +1,5 @@
 import {
   CheckCircleIcon,
-  CircleIcon,
-  CloudIcon,
-  CubeIcon,
   EyeIcon,
   EyeSlashIcon,
   FloppyDiskIcon,
@@ -17,7 +14,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import { api, type SandboxProviderStatus } from "../lib/api";
+import { api } from "../lib/api";
 
 // --- Types matching Phase 1 backend ---
 
@@ -371,229 +368,6 @@ function SecretRow({
   );
 }
 
-// --- Sandbox Providers Section ---
-
-function SandboxProvidersSection() {
-  const [status, setStatus] = useState<SandboxProviderStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [cfToken, setCfToken] = useState("");
-  const [showCfToken, setShowCfToken] = useState(false);
-  const [cfConfigured, setCfConfigured] = useState(false);
-  const [savingCf, setSavingCf] = useState(false);
-  const [cfError, setCfError] = useState<string | null>(null);
-  const [cfSuccess, setCfSuccess] = useState(false);
-  const [secrets, setSecrets] = useState<SecretInfo[]>([]);
-
-  const loadStatus = useCallback(async () => {
-    const res = await api.get<SandboxProviderStatus>(
-      "/settings/sandbox-providers",
-    );
-    if (res.data) {
-      setStatus(res.data);
-    }
-    setLoading(false);
-  }, []);
-
-  const loadSecrets = useCallback(async () => {
-    const res = await api.get<SecretInfo[]>("/secrets");
-    if (res.data) {
-      setSecrets(res.data);
-      const cfSecret = res.data.find(
-        (s) => s.envVar === "SANDBOX_CF_API_TOKEN",
-      );
-      setCfConfigured(!!cfSecret);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadStatus();
-    loadSecrets();
-  }, [loadStatus, loadSecrets]);
-
-  const handleSaveCfToken = async () => {
-    if (!cfToken.trim()) return;
-
-    setSavingCf(true);
-    setCfError(null);
-    setCfSuccess(false);
-
-    // Verify token with Cloudflare before saving
-    const verifyRes = await api.post<{
-      valid: boolean;
-      error?: string;
-      expiresOn?: string;
-    }>("/settings/verify-cf-token", { token: cfToken.trim() });
-
-    if (verifyRes.error) {
-      setCfError(verifyRes.error);
-      setSavingCf(false);
-      return;
-    }
-
-    if (!verifyRes.data?.valid) {
-      setCfError(verifyRes.data?.error ?? "Invalid token");
-      setSavingCf(false);
-      return;
-    }
-
-    // Token is valid, save it
-    const cfSecret = secrets.find((s) => s.envVar === "SANDBOX_CF_API_TOKEN");
-
-    try {
-      if (cfSecret) {
-        const body: UpdateSecretBody = { value: cfToken.trim() };
-        const res = await api.put<{ ok: boolean }>(
-          `/secrets/${cfSecret.id}`,
-          body,
-        );
-        if (res.error) {
-          setCfError(res.error);
-        } else {
-          setCfSuccess(true);
-          setCfToken("");
-          await loadSecrets();
-          await loadStatus();
-          setTimeout(() => setCfSuccess(false), 2000);
-        }
-      } else {
-        const body: CreateSecretBody = {
-          name: "Cloudflare API Token",
-          envVar: "SANDBOX_CF_API_TOKEN",
-          kind: "sandbox_provider",
-          value: cfToken.trim(),
-          enabled: true,
-        };
-        const res = await api.post<SecretInfo>("/secrets", body);
-        if (res.error) {
-          setCfError(res.error);
-        } else {
-          setCfSuccess(true);
-          setCfToken("");
-          await loadSecrets();
-          await loadStatus();
-          setTimeout(() => setCfSuccess(false), 2000);
-        }
-      }
-    } finally {
-      setSavingCf(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-border bg-surface/50 p-5">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
-          <CubeIcon className="size-[18px]" weight="bold" />
-          Sandbox Providers
-        </h2>
-        <div className="mt-4 text-center text-sm text-muted">Loading...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-border bg-surface/50 p-5">
-      <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-fg">
-        <CubeIcon className="size-[18px]" weight="bold" />
-        Sandbox Providers
-      </h2>
-
-      <div className="space-y-4">
-        {/* Docker */}
-        <div className="flex items-center justify-between rounded-lg border border-border bg-surface/30 p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
-              <CubeIcon className="size-5" weight="bold" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-fg">Docker</div>
-              <div className="text-xs text-muted">
-                Local daemon availability
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <CircleIcon
-              className={`size-3 weight-fill ${
-                status?.docker.available ? "text-green-500" : "text-red-500"
-              }`}
-              weight="fill"
-            />
-            <span className="text-sm text-muted">
-              {status?.docker.available ? "Available" : "Not available"}
-            </span>
-          </div>
-        </div>
-
-        {/* Cloudflare */}
-        <div className="rounded-lg border border-border bg-surface/30 p-4">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-orange-500/10 text-orange-500">
-              <CloudIcon className="size-5" weight="bold" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-fg">Cloudflare</div>
-              <div className="text-xs text-muted">Workers API token</div>
-            </div>
-          </div>
-
-          <div className="mt-3 space-y-2">
-            {cfConfigured && !cfToken && (
-              <div className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs text-green-500 w-fit">
-                <CheckCircleIcon className="size-3" weight="fill" />
-                Configured
-              </div>
-            )}
-
-            <div className="relative flex gap-2">
-              <input
-                type={showCfToken ? "text" : "password"}
-                value={cfToken}
-                onChange={(e) => setCfToken(e.target.value)}
-                placeholder={
-                  cfConfigured
-                    ? "Enter new token to update..."
-                    : "Enter API token..."
-                }
-                className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 pr-10 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowCfToken(!showCfToken)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
-              >
-                {showCfToken ? (
-                  <EyeSlashIcon className="size-4" />
-                ) : (
-                  <EyeIcon className="size-4" />
-                )}
-              </button>
-            </div>
-
-            {cfError && <div className="text-xs text-red-500">{cfError}</div>}
-            {cfSuccess && (
-              <div className="flex items-center gap-1 text-xs text-green-500">
-                <CheckCircleIcon className="size-3" weight="fill" />
-                {cfConfigured ? "Token updated" : "Token configured"}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleSaveCfToken}
-              disabled={!cfToken.trim() || savingCf}
-              className="w-fit flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              <FloppyDiskIcon className="size-4" />
-              {savingCf ? "Saving..." : cfConfigured ? "Update" : "Configure"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // --- Main Page ---
 
 export default function SettingsPage() {
@@ -665,9 +439,6 @@ export default function SettingsPage() {
           API keys and server configuration.
         </p>
       </div>
-
-      {/* Sandbox Providers Section */}
-      <SandboxProvidersSection />
 
       {/* Secrets Section */}
       <div className="mt-6 rounded-xl border border-border bg-surface/50 p-5">

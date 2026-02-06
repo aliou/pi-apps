@@ -66,7 +66,6 @@ export function createTestSandboxManager(): SandboxManager {
       sessionDataDir: "/tmp/pi-test-sessions",
       secretsBaseDir: "/tmp/pi-test-secrets",
     },
-    getCfApiToken: async () => null,
   });
 }
 

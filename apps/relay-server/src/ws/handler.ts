@@ -1,8 +1,10 @@
 import type { UpgradeWebSocket } from "hono/ws";
 import type { SandboxManager } from "../sandbox/manager";
+import { resolveEnvConfig } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EnvironmentService } from "../services/environment.service";
 import type { EventJournal } from "../services/event-journal";
+import type { SecretsService } from "../services/secrets.service";
 import type { SessionService } from "../services/session.service";
 import { type ConnectionManager, WebSocketConnection } from "./connection";
 import { isClientCommand } from "./types";
@@ -28,6 +30,7 @@ export interface WebSocketHandlerDeps {
   sessionService: SessionService;
   eventJournal: EventJournal;
   environmentService: EnvironmentService;
+  secretsService: SecretsService;
 }
 
 /**
@@ -38,8 +41,13 @@ export function createWebSocketHandler(
   deps: WebSocketHandlerDeps,
   connectionManager: ConnectionManager,
 ) {
-  const { sandboxManager, sessionService, eventJournal, environmentService } =
-    deps;
+  const {
+    sandboxManager,
+    sessionService,
+    eventJournal,
+    environmentService,
+    secretsService,
+  } = deps;
 
   return upgradeWebSocket((c) => {
     const sessionId = c.req.param("id");
@@ -49,7 +57,7 @@ export function createWebSocketHandler(
     let connection: WebSocketConnection | null = null;
 
     return {
-      onOpen(_evt, ws) {
+      async onOpen(_evt, ws) {
         wsLog("open", sessionId, { lastSeq });
 
         // Validate session exists and is active
@@ -83,12 +91,7 @@ export function createWebSocketHandler(
         if (session.environmentId) {
           const env = environmentService.get(session.environmentId);
           if (env) {
-            const config = JSON.parse(env.config);
-            envConfig = {
-              sandboxType: env.sandboxType as "docker" | "cloudflare",
-              image: config.image,
-              workerUrl: config.workerUrl,
-            };
+            envConfig = await resolveEnvConfig(env, secretsService);
           }
         }
 

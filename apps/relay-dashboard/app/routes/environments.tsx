@@ -19,6 +19,17 @@ import {
   type UpdateEnvironmentRequest,
 } from "../lib/api";
 
+interface SecretInfo {
+  id: string;
+  name: string;
+  envVar: string;
+  kind: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  keyVersion: number;
+}
+
 // -- Dialog Component -------------------------------------------------
 
 function EnvironmentDialog({
@@ -45,12 +56,25 @@ function EnvironmentDialog({
   const [workerUrl, setWorkerUrl] = useState(
     environment?.config.workerUrl ?? "",
   );
+  const [secretId, setSecretId] = useState(environment?.config.secretId ?? "");
   const [isDefault, setIsDefault] = useState(environment?.isDefault ?? false);
   const [saving, setSaving] = useState(false);
   const [probeStatus, setProbeStatus] = useState<
     null | "probing" | "available" | "unavailable"
   >(null);
   const [probeError, setProbeError] = useState<string | null>(null);
+  const [secrets, setSecrets] = useState<SecretInfo[]>([]);
+
+  // Fetch secrets on mount
+  useEffect(() => {
+    const fetchSecrets = async () => {
+      const res = await api.get<SecretInfo[]>("/secrets");
+      if (res.data) {
+        setSecrets(res.data);
+      }
+    };
+    fetchSecrets();
+  }, []);
 
   // Auto-probe availability when config changes (debounced)
   useEffect(() => {
@@ -59,7 +83,7 @@ function EnvironmentDialog({
 
     const isConfigComplete =
       (sandboxType === "docker" && !!image) ||
-      (sandboxType === "cloudflare" && !!workerUrl.trim());
+      (sandboxType === "cloudflare" && !!workerUrl.trim() && !!secretId);
 
     if (!isConfigComplete) return;
 
@@ -68,7 +92,8 @@ function EnvironmentDialog({
     const timeout = setTimeout(async () => {
       setProbeStatus("probing");
 
-      const config = sandboxType === "docker" ? { image } : { workerUrl };
+      const config =
+        sandboxType === "docker" ? { image } : { workerUrl, secretId };
 
       const res = await api.post<ProbeResult>("/environments/probe", {
         sandboxType,
@@ -92,17 +117,19 @@ function EnvironmentDialog({
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [sandboxType, image, workerUrl]);
+  }, [sandboxType, image, workerUrl, secretId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     if (sandboxType === "docker" && !image) return;
-    if (sandboxType === "cloudflare" && !workerUrl.trim()) return;
+    if (sandboxType === "cloudflare" && (!workerUrl.trim() || !secretId))
+      return;
 
     setSaving(true);
     try {
-      const config = sandboxType === "docker" ? { image } : { workerUrl };
+      const config =
+        sandboxType === "docker" ? { image } : { workerUrl, secretId };
 
       if (isEdit) {
         const update: UpdateEnvironmentRequest = {
@@ -249,35 +276,65 @@ function EnvironmentDialog({
 
           {/* Worker URL (Cloudflare only) */}
           {sandboxType === "cloudflare" && (
-            <div>
-              <label
-                htmlFor="env-worker-url"
-                className="mb-1.5 block text-xs font-medium text-muted"
-              >
-                Worker URL
-              </label>
-              <input
-                id="env-worker-url"
-                type="text"
-                value={workerUrl}
-                onChange={(e) => setWorkerUrl(e.target.value)}
-                placeholder="https://your-worker.example.com"
-                className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
-                required
-              />
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="env-worker-url"
+                  className="mb-1.5 block text-xs font-medium text-muted"
+                >
+                  Worker URL
+                </label>
+                <input
+                  id="env-worker-url"
+                  type="text"
+                  value={workerUrl}
+                  onChange={(e) => setWorkerUrl(e.target.value)}
+                  placeholder="https://your-worker.example.com"
+                  className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="env-secret-id"
+                  className="mb-1.5 block text-xs font-medium text-muted"
+                >
+                  Shared Secret
+                </label>
+                {secrets.length === 0 ? (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-500">
+                    No secrets configured. Add one in Settings first.
+                  </div>
+                ) : (
+                  <select
+                    id="env-secret-id"
+                    value={secretId}
+                    onChange={(e) => setSecretId(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                    required
+                  >
+                    <option value="">Select a secret...</option>
+                    {secrets.map((secret) => (
+                      <option key={secret.id} value={secret.id}>
+                        {secret.name} ({secret.envVar})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               {probeStatus === "probing" && (
-                <p className="mt-1.5 text-xs text-muted">
-                  Checking availability...
-                </p>
+                <p className="text-xs text-muted">Checking availability...</p>
               )}
               {probeStatus === "available" && (
-                <p className="mt-1.5 flex items-center gap-1 text-xs text-green-500">
+                <p className="flex items-center gap-1 text-xs text-green-500">
                   <CheckCircleIcon className="size-3" weight="fill" />
                   Available
                 </p>
               )}
               {probeStatus === "unavailable" && (
-                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
+                <p className="flex items-center gap-1 text-xs text-red-500">
                   <WarningCircleIcon className="size-3" weight="fill" />
                   {probeError ?? "Not available"}
                 </p>
@@ -321,7 +378,8 @@ function EnvironmentDialog({
               disabled={
                 !name.trim() ||
                 (sandboxType === "docker" && !image) ||
-                (sandboxType === "cloudflare" && !workerUrl.trim()) ||
+                (sandboxType === "cloudflare" &&
+                  (!workerUrl.trim() || !secretId)) ||
                 probeStatus !== "available" ||
                 saving
               }
@@ -350,9 +408,23 @@ function EnvironmentRow({
   onDelete: (id: string) => void;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const [secrets, setSecrets] = useState<SecretInfo[]>([]);
+
+  useEffect(() => {
+    const fetchSecrets = async () => {
+      const res = await api.get<SecretInfo[]>("/secrets");
+      if (res.data) {
+        setSecrets(res.data);
+      }
+    };
+    fetchSecrets();
+  }, []);
+
   const imageMeta = images.find(
     (img) => img.image === environment.config.image,
   );
+
+  const secretMeta = secrets.find((s) => s.id === environment.config.secretId);
 
   const handleDelete = async () => {
     if (!confirm(`Delete environment "${environment.name}"?`)) return;
@@ -390,7 +462,9 @@ function EnvironmentRow({
         </div>
         <p className="mt-0.5 text-xs text-muted">
           {isCloudflare
-            ? environment.config.workerUrl
+            ? secretMeta
+              ? `${environment.config.workerUrl} (Secret: ${secretMeta.name})`
+              : environment.config.workerUrl
             : (imageMeta?.name ?? environment.config.image)}
         </p>
       </div>

@@ -6,76 +6,12 @@ import { settings } from "../db/schema";
 // Keys that should not be exposed via the general settings API
 const PROTECTED_KEYS = ["github_repos_access_token"];
 
-interface CfTokenVerifyResult {
-  valid: boolean;
-  status?: string;
-  expiresOn?: string;
-  error?: string;
-}
-
-/**
- * Verify a Cloudflare API token via /user/tokens/verify.
- * Only checks validity and status -- does not read permissions
- * (that would require API Tokens Read scope).
- */
-async function verifyCfToken(token: string): Promise<CfTokenVerifyResult> {
-  const res = await fetch(
-    "https://api.cloudflare.com/client/v4/user/tokens/verify",
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-
-  if (!res.ok) {
-    return { valid: false, error: `HTTP ${res.status}` };
-  }
-
-  const json = (await res.json()) as {
-    success: boolean;
-    result?: { status: string; expires_on?: string };
-    errors?: Array<{ message: string }>;
-  };
-
-  if (!json.success || !json.result) {
-    const msg = json.errors?.[0]?.message ?? "Token verification failed";
-    return { valid: false, error: msg };
-  }
-
-  const { status, expires_on } = json.result;
-
-  if (status !== "active") {
-    return { valid: false, status, error: `Token is ${status}` };
-  }
-
-  return {
-    valid: true,
-    status,
-    expiresOn: expires_on ?? undefined,
-  };
-}
-
 export function settingsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
-
-  // Verify a Cloudflare API token (validity only, no permission introspection)
-  app.post("/verify-cf-token", async (c) => {
-    let body: { token?: string };
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ data: null, error: "Invalid JSON body" }, 400);
-    }
-
-    if (!body.token || typeof body.token !== "string" || !body.token.trim()) {
-      return c.json({ data: null, error: "token is required" }, 400);
-    }
-
-    const result = await verifyCfToken(body.token.trim());
-    return c.json({ data: result, error: null });
-  });
 
   // Get sandbox provider status
   app.get("/sandbox-providers", async (c) => {
     const sandboxManager = c.get("sandboxManager");
-    const secretsService = c.get("secretsService");
 
     // Check Docker availability
     let dockerAvailable = false;
@@ -88,16 +24,9 @@ export function settingsRoutes(): Hono<AppEnv> {
       // Docker not available
     }
 
-    // Check if CF API token is configured
-    const cfToken = await secretsService.getValueByEnvVar(
-      "SANDBOX_CF_API_TOKEN",
-    );
-    const cloudflareConfigured = !!cfToken;
-
     return c.json({
       data: {
         docker: { available: dockerAvailable },
-        cloudflare: { configured: cloudflareConfigured },
       },
       error: null,
     });

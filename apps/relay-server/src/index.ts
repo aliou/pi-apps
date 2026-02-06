@@ -77,8 +77,6 @@ async function main() {
       sessionDataDir,
       secretsBaseDir: paths.stateDir,
     },
-    getCfApiToken: () =>
-      secretsService.getValueByEnvVar("SANDBOX_CF_API_TOKEN"),
   });
   console.log("Sandbox manager initialized (on-demand providers)");
 
@@ -132,6 +130,7 @@ async function main() {
       sessionService,
       eventJournal,
       environmentService,
+      secretsService,
     },
     connectionManager,
   );

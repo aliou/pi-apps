@@ -1,3 +1,5 @@
+import type { EnvironmentRecord } from "../services/environment.service";
+import type { SecretsService } from "../services/secrets.service";
 import { CloudflareSandboxProvider } from "./cloudflare";
 import { DockerSandboxProvider } from "./docker";
 import { MockSandboxProvider } from "./mock";
@@ -15,12 +17,18 @@ import type {
  * Per-environment sandbox config as stored in the environments table.
  * The manager uses this to build provider instances on-demand.
  */
+/**
+ * Per-environment sandbox config resolved at runtime.
+ * Callers resolve secrets before passing this to the manager.
+ */
 export interface EnvironmentSandboxConfig {
   sandboxType: "docker" | "cloudflare";
   /** Docker image name (for docker type) */
   image?: string;
-  /** Cloudflare worker URL (for cloudflare type) */
+  /** Cloudflare Worker URL (for cloudflare type) */
   workerUrl?: string;
+  /** Decrypted shared secret for Worker auth (for cloudflare type) */
+  apiToken?: string;
 }
 
 export interface SandboxManagerConfig {
@@ -32,11 +40,6 @@ export interface SandboxManagerConfig {
     sessionDataDir: string;
     secretsBaseDir: string;
   };
-  /**
-   * Callback to fetch the global Cloudflare API token from the secrets table.
-   * Called on-demand when a cloudflare provider instance is needed.
-   */
-  getCfApiToken: () => Promise<string | null>;
 }
 
 /**
@@ -66,9 +69,7 @@ export class SandboxManager {
    * Cloudflare providers are keyed by workerUrl.
    * Mock provider is a singleton.
    */
-  private async getProvider(
-    envConfig: EnvironmentSandboxConfig,
-  ): Promise<SandboxProvider> {
+  private getProvider(envConfig: EnvironmentSandboxConfig): SandboxProvider {
     if (envConfig.sandboxType === "docker") {
       const image = envConfig.image ?? "pi-sandbox:local";
       const cacheKey = `docker:${image}`;
@@ -86,15 +87,13 @@ export class SandboxManager {
     }
 
     if (envConfig.sandboxType === "cloudflare") {
-      const workerUrl = envConfig.workerUrl;
+      const { workerUrl, apiToken } = envConfig;
       if (!workerUrl) {
         throw new Error("Cloudflare environment missing workerUrl in config");
       }
-
-      const apiToken = await this.config.getCfApiToken();
       if (!apiToken) {
         throw new Error(
-          "Cloudflare API token not configured. Add it in Settings > Sandbox Providers.",
+          "Cloudflare environment missing apiToken in config. Set it in the environment settings.",
         );
       }
 
@@ -126,7 +125,7 @@ export class SandboxManager {
     envConfig: EnvironmentSandboxConfig,
   ): Promise<boolean> {
     try {
-      const provider = await this.getProvider(envConfig);
+      const provider = this.getProvider(envConfig);
       return provider.isAvailable();
     } catch {
       return false;
@@ -157,7 +156,7 @@ export class SandboxManager {
     envConfig: EnvironmentSandboxConfig,
     options?: Omit<CreateSandboxOptions, "sessionId">,
   ): Promise<SandboxHandle> {
-    const provider = await this.getProvider(envConfig);
+    const provider = this.getProvider(envConfig);
     return provider.createSandbox({ sessionId, ...options });
   }
 
@@ -180,7 +179,7 @@ export class SandboxManager {
     envConfig: EnvironmentSandboxConfig,
     providerId: string,
   ): Promise<SandboxHandle> {
-    const provider = await this.getProvider(envConfig);
+    const provider = this.getProvider(envConfig);
     return provider.getSandbox(providerId);
   }
 
@@ -306,4 +305,34 @@ export class SandboxManager {
 
     return { sandboxesRemoved, artifactsRemoved };
   }
+}
+
+/**
+ * Resolve an environment DB record into an EnvironmentSandboxConfig.
+ * For cloudflare environments, decrypts the referenced shared secret.
+ */
+export async function resolveEnvConfig(
+  env: EnvironmentRecord,
+  secretsService: SecretsService,
+): Promise<EnvironmentSandboxConfig> {
+  const config = JSON.parse(env.config) as {
+    image?: string;
+    workerUrl?: string;
+    secretId?: string;
+  };
+
+  const result: EnvironmentSandboxConfig = {
+    sandboxType: env.sandboxType as "docker" | "cloudflare",
+    image: config.image,
+    workerUrl: config.workerUrl,
+  };
+
+  if (env.sandboxType === "cloudflare" && config.secretId) {
+    const apiToken = await secretsService.getValue(config.secretId);
+    if (apiToken) {
+      result.apiToken = apiToken;
+    }
+  }
+
+  return result;
 }

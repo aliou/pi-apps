@@ -23,15 +23,18 @@ interface UpdateEnvironmentRequest {
 
 /**
  * Build an EnvironmentSandboxConfig from environment type + config.
+ * For cloudflare, apiToken must be resolved separately from the secrets table.
  */
 function toSandboxConfig(
   sandboxType: SandboxType,
   config: EnvironmentConfig,
+  apiToken?: string,
 ): EnvironmentSandboxConfig {
   return {
     sandboxType,
     image: config.image,
     workerUrl: config.workerUrl,
+    apiToken,
   };
 }
 
@@ -62,6 +65,9 @@ function validateConfig(
       new URL(config.workerUrl);
     } catch {
       return "config.workerUrl must be a valid URL";
+    }
+    if (!config.secretId) {
+      return "config.secretId is required for cloudflare environments (shared secret for Worker auth)";
     }
   }
   return null;
@@ -103,7 +109,25 @@ export function environmentsRoutes(): Hono<AppEnv> {
     }
 
     try {
-      const envConfig = toSandboxConfig(body.sandboxType, body.config);
+      // For cloudflare, resolve the shared secret from the secrets table
+      let apiToken: string | undefined;
+      if (body.sandboxType === "cloudflare" && body.config.secretId) {
+        const secretsService = c.get("secretsService");
+        const value = await secretsService.getValue(body.config.secretId);
+        if (!value) {
+          return c.json({
+            data: { available: false, error: "Referenced secret not found" },
+            error: null,
+          });
+        }
+        apiToken = value;
+      }
+
+      const envConfig = toSandboxConfig(
+        body.sandboxType,
+        body.config,
+        apiToken,
+      );
       const available = await sandboxManager.isProviderAvailable(envConfig);
       return c.json({
         data: { available, sandboxType: body.sandboxType },

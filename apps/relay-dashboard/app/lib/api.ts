@@ -137,6 +137,7 @@ export interface Environment {
 export interface EnvironmentConfig {
   image?: string;
   workerUrl?: string;
+  secretId?: string;
   resources?: {
     cpuShares?: number;
     memoryMB?: number;
@@ -165,7 +166,6 @@ export interface UpdateEnvironmentRequest {
 
 export interface SandboxProviderStatus {
   docker: { available: boolean };
-  cloudflare: { configured: boolean };
 }
 
 export interface ProbeResult {

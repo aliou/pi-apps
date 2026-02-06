@@ -16,7 +16,6 @@ describe("ModelsIntrospectionService", () => {
         sessionDataDir: "/tmp/pi-test-sessions",
         secretsBaseDir: "/tmp/pi-test-secrets",
       },
-      getCfApiToken: async () => null,
     });
 
     const service = new ModelsIntrospectionService(
