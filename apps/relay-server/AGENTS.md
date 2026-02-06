@@ -70,7 +70,7 @@ The REST API is our custom infrastructure for managing resources. Add new endpoi
 2. Create service in `src/services/` if needed
 3. Add types (request/response interfaces)
 4. Wire up in `src/app.ts`
-5. Update `packages/pi-core/Sources/PiCore/Relay/` with Swift types
+5. Update client types if native apps are rebuilt
 
 ### WebSocket (RPC Proxy, DO NOT MODIFY)
 
@@ -259,9 +259,7 @@ Example: Adding a new resource "widgets"
    - Inject in middleware
    - Mount route
 
-6. **Swift types** (`packages/pi-core/Sources/PiCore/Relay/`):
-   - Add `Widget` type to `RelayTypes.swift`
-   - Add API methods to `RelayAPIClient.swift`
+6. **Client types**: Update client-side types when native apps are rebuilt.
 
 ## Environment Variables
 
