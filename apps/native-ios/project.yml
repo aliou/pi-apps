@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: me.aliou.pi
   deploymentTarget:
     iOS: "26.0"
+    macOS: "26.0"
   xcodeVersion: "26.0"
   createIntermediateGroups: true
 
@@ -42,11 +43,38 @@ targets:
       - package: PiUI
         product: PiUI
 
+  PiNative macOS:
+    type: application
+    platform: macOS
+    supportedDestinations: [macOS]
+    sources:
+      - SourcesMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PI_BUNDLE_ID_MACOS)
+        PRODUCT_NAME: Pi
+        GENERATE_INFOPLIST_FILE: true
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+    dependencies:
+      - package: PiUI
+        product: PiUI
+
 schemes:
   PiNative iOS:
     build:
       targets:
         PiNative iOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+
+  PiNative macOS:
+    build:
+      targets:
+        PiNative macOS: all
     run:
       config: Debug
     profile:

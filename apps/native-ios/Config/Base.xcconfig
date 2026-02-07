@@ -6,6 +6,7 @@ DEVELOPMENT_TEAM =
 
 // Bundle ID (overridden by Local.xcconfig)
 PI_BUNDLE_ID_IOS = dev.placeholder.pi.ios
+PI_BUNDLE_ID_MACOS = dev.placeholder.pi.macos
 
 // Include local overrides (optional -- won't fail if missing)
 #include? "Local.xcconfig"
