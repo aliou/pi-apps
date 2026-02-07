@@ -1,41 +1,47 @@
 import Foundation
 
-public enum ClientCommand: Sendable {
-    case prompt(message: String, images: [AnyCodable]? = nil, streamingBehavior: StreamingBehavior? = nil)
-    case steer(message: String)
-    case followUp(message: String)
-    case abort
-    case newSession(parentSession: String? = nil)
-    case getState
-    case getMessages
-    case setModel(provider: String, modelId: String)
-    case cycleModel
-    case getAvailableModels
-    case setThinkingLevel(ThinkingLevel)
-    case cycleThinkingLevel
-    case setSteeringMode(QueueMode)
-    case setFollowUpMode(QueueMode)
-    case compact(customInstructions: String? = nil)
-    case setAutoCompaction(enabled: Bool)
-    case setAutoRetry(enabled: Bool)
-    case abortRetry
-    case bash(command: String)
-    case abortBash
-    case getSessionStats
-    case exportHtml(outputPath: String? = nil)
-    case switchSession(sessionPath: String)
-    case fork(entryId: String)
-    case getForkMessages
-    case getLastAssistantText
-    case setSessionName(name: String)
-    case getCommands
-    case extensionUIResponse(id: String, value: AnyCodable? = nil, confirmed: Bool? = nil, cancelled: Bool? = nil)
+extension Relay {
+    public enum ClientCommand: Sendable {
+        case prompt(message: String, images: [AnyCodable]? = nil, streamingBehavior: StreamingBehavior? = nil)
+        case steer(message: String)
+        case followUp(message: String)
+        case abort
+        case newSession(parentSession: String? = nil)
+        case getState
+        case getMessages
+        case setModel(provider: String, modelId: String)
+        case cycleModel
+        case getAvailableModels
+        case setThinkingLevel(ThinkingLevel)
+        case cycleThinkingLevel
+        case setSteeringMode(QueueMode)
+        case setFollowUpMode(QueueMode)
+        case compact(customInstructions: String? = nil)
+        case setAutoCompaction(enabled: Bool)
+        case setAutoRetry(enabled: Bool)
+        case abortRetry
+        case bash(command: String)
+        case abortBash
+        case getSessionStats
+        case exportHtml(outputPath: String? = nil)
+        case switchSession(sessionPath: String)
+        case fork(entryId: String)
+        case getForkMessages
+        case getLastAssistantText
+        case setSessionName(name: String)
+        case getCommands
+        case extensionUIResponse(id: String, value: AnyCodable? = nil, confirmed: Bool? = nil, cancelled: Bool? = nil)
+    }
+}
 
+extension Relay.ClientCommand {
     public enum StreamingBehavior: String, Codable, Sendable, Hashable {
         case steer
         case followUp
     }
+}
 
+extension Relay.ClientCommand {
     public enum ThinkingLevel: String, Codable, Sendable, Hashable {
         case off
         case minimal
@@ -44,7 +50,9 @@ public enum ClientCommand: Sendable {
         case high
         case xhigh
     }
+}
 
+extension Relay.ClientCommand {
     public enum QueueMode: String, Codable, Sendable, Hashable {
         case all
         case oneAtATime = "one-at-a-time"
@@ -53,7 +61,7 @@ public enum ClientCommand: Sendable {
 
 // MARK: - Encodable
 
-extension ClientCommand: Encodable {
+extension Relay.ClientCommand: Encodable {
     // swiftlint:disable:next cyclomatic_complexity function_body_length
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: DynamicCodingKeys.self)

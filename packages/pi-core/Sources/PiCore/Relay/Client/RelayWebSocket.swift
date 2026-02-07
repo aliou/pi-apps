@@ -1,43 +1,45 @@
 import Foundation
 import os
 
-public final class RelayWebSocket: Sendable {
-    private let sessionId: String
-    private let baseURL: URL
-    private let state: RelayWebSocketState
+extension Relay {
+    public final class RelayWebSocket: Sendable {
+        private let sessionId: String
+        private let baseURL: URL
+        private let state: RelayWebSocketState
 
-    public init(sessionId: String, baseURL: URL, lastSeq: Int = 0) {
-        self.sessionId = sessionId
-        self.baseURL = baseURL
-        self.state = RelayWebSocketState(lastSeq: lastSeq)
-    }
+        public init(sessionId: String, baseURL: URL, lastSeq: Int = 0) {
+            self.sessionId = sessionId
+            self.baseURL = baseURL
+            self.state = RelayWebSocketState(lastSeq: lastSeq)
+        }
 
-    /// Connect and return an AsyncStream of server events.
-    public func connect() -> AsyncStream<ServerEvent> {
-        AsyncStream { continuation in
-            let task = Task { [sessionId, baseURL, state] in
-                await state.setContinuation(continuation)
-                await state.startConnection(sessionId: sessionId, baseURL: baseURL)
+        /// Connect and return an AsyncStream of server events.
+        public func connect() -> AsyncStream<ServerEvent> {
+            AsyncStream { continuation in
+                let task = Task { [sessionId, baseURL, state] in
+                    await state.setContinuation(continuation)
+                    await state.startConnection(sessionId: sessionId, baseURL: baseURL)
 
+                    continuation.onTermination = { @Sendable _ in
+                        Task { await state.disconnect() }
+                    }
+                }
                 continuation.onTermination = { @Sendable _ in
-                    Task { await state.disconnect() }
+                    task.cancel()
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
-            }
         }
-    }
 
-    /// Send a command to the server.
-    public func send(_ command: ClientCommand) async throws {
-        let data = try JSONEncoder().encode(command)
-        try await state.send(data)
-    }
+        /// Send a command to the server.
+        public func send(_ command: ClientCommand) async throws {
+            let data = try JSONEncoder().encode(command)
+            try await state.send(data)
+        }
 
-    /// Disconnect the WebSocket.
-    public func disconnect() async {
-        await state.disconnect()
+        /// Disconnect the WebSocket.
+        public func disconnect() async {
+            await state.disconnect()
+        }
     }
 }
 
@@ -45,7 +47,7 @@ public final class RelayWebSocket: Sendable {
 private actor RelayWebSocketState {
     private var lastSeq: Int
     private var task: URLSessionWebSocketTask?
-    private var continuation: AsyncStream<ServerEvent>.Continuation?
+    private var continuation: AsyncStream<Relay.ServerEvent>.Continuation?
     private var reconnectAttempts = 0
     private static let maxReconnectDelay: TimeInterval = 30
     private let logger = Logger(subsystem: "dev.378labs.pi", category: "RelayWebSocket")
@@ -54,7 +56,7 @@ private actor RelayWebSocketState {
         self.lastSeq = lastSeq
     }
 
-    func setContinuation(_ continuation: AsyncStream<ServerEvent>.Continuation) {
+    func setContinuation(_ continuation: AsyncStream<Relay.ServerEvent>.Continuation) {
         self.continuation = continuation
     }
 
@@ -112,7 +114,7 @@ private actor RelayWebSocketState {
         }
 
         do {
-            let event = try JSONDecoder().decode(ServerEvent.self, from: data)
+            let event = try JSONDecoder().decode(Relay.ServerEvent.self, from: data)
             if case .connected(_, let seq) = event {
                 lastSeq = seq
             }
