@@ -4,9 +4,9 @@
 XCODEGEN := xcodegen
 
 # Project
-NATIVE_DIR := apps/native
+NATIVE_DIR := clients/native/apps/ios
 NATIVE_PROJECT := $(NATIVE_DIR)/PiNative.xcodeproj
-WORKSPACE := PiApps.xcworkspace
+WORKSPACE := clients/native/PiApps.xcworkspace
 MACOS_SCHEME := PiNative macOS
 IOS_SCHEME := PiNative iOS
 

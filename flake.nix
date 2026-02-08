@@ -50,21 +50,39 @@
               files = "\\.swift$";
               language = "system";
             };
-            biome-check = {
+            biome-check-relay = {
               enable = true;
-              name = "biome-check";
-              description = "Lint and format TypeScript/JavaScript files";
-              entry = "${pkgs.pnpm}/bin/pnpm exec biome check --no-errors-on-unmatched";
-              files = "\\.(ts|tsx|js|jsx|json|mjs)$";
+              name = "biome-check-relay";
+              description = "Lint and format relay server TypeScript files";
+              entry = "cd server/relay && ${pkgs.pnpm}/bin/pnpm exec biome check --no-errors-on-unmatched";
+              files = "^server/relay/.*\\.(ts|tsx|js|jsx|json|mjs)$";
               language = "system";
               pass_filenames = false;
             };
-            ts-typecheck = {
+            biome-check-dashboard = {
               enable = true;
-              name = "ts-typecheck";
-              description = "Type check TypeScript apps";
-              entry = "${pkgs.pnpm}/bin/pnpm exec turbo typecheck";
-              files = "\\.(ts|tsx)$";
+              name = "biome-check-dashboard";
+              description = "Lint and format dashboard TypeScript files";
+              entry = "cd clients/dashboard && ${pkgs.pnpm}/bin/pnpm exec biome check --no-errors-on-unmatched";
+              files = "^clients/dashboard/.*\\.(ts|tsx|js|jsx|json|mjs)$";
+              language = "system";
+              pass_filenames = false;
+            };
+            ts-typecheck-relay = {
+              enable = true;
+              name = "ts-typecheck-relay";
+              description = "Type check relay server";
+              entry = "cd server/relay && ${pkgs.pnpm}/bin/pnpm exec tsc --noEmit";
+              files = "^server/relay/.*\\.(ts|tsx)$";
+              language = "system";
+              pass_filenames = false;
+            };
+            ts-typecheck-dashboard = {
+              enable = true;
+              name = "ts-typecheck-dashboard";
+              description = "Type check dashboard";
+              entry = "cd clients/dashboard && ${pkgs.pnpm}/bin/pnpm exec react-router typegen && ${pkgs.pnpm}/bin/pnpm exec tsc --noEmit";
+              files = "^clients/dashboard/.*\\.(ts|tsx)$";
               language = "system";
               pass_filenames = false;
             };
@@ -108,18 +126,25 @@
               echo "================================"
               echo ""
               echo "Setup:"
-              echo "  pnpm install  - Install all dependencies"
-              echo "  make setup    - First-time Swift/Xcode setup"
+              echo "  make setup              - First-time Swift/Xcode setup"
+              echo "  cd server/relay && pnpm install"
+              echo "  cd clients/dashboard && pnpm install"
               echo ""
               echo "Native (Swift):"
-              echo "  make xcode    - Open in Xcode"
-              echo "  make build    - Build from command line"
+              echo "  make xcode              - Open in Xcode"
+              echo "  make build              - Build from command line"
               echo ""
-              echo "TypeScript (monorepo):"
-              echo "  pnpm dev      - Run all apps (hot reload)"
-              echo "  pnpm build    - Build all apps"
-              echo "  pnpm lint     - Lint all (biome)"
-              echo "  pnpm test     - Test all (vitest)"
+              echo "Relay Server:"
+              echo "  cd server/relay"
+              echo "  pnpm dev                - Run dev server (hot reload)"
+              echo "  pnpm build              - Build"
+              echo "  pnpm lint               - Lint (biome)"
+              echo "  pnpm test               - Test (vitest)"
+              echo ""
+              echo "Dashboard:"
+              echo "  cd clients/dashboard"
+              echo "  pnpm dev                - Run dev server (hot reload)"
+              echo "  pnpm build              - Build"
               echo ""
             '';
           };

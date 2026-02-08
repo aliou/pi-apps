@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build & Test
+  relay-server:
+    name: Relay Server - Build & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,18 +26,53 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: server/relay/pnpm-lock.yaml
 
       - name: Install dependencies
+        working-directory: server/relay
         run: pnpm install --frozen-lockfile
 
       - name: Lint
+        working-directory: server/relay
         run: pnpm lint
 
       - name: Typecheck
+        working-directory: server/relay
         run: pnpm typecheck
 
       - name: Build
+        working-directory: server/relay
         run: pnpm build
 
       - name: Test
+        working-directory: server/relay
         run: pnpm test
+
+  dashboard:
+    name: Dashboard - Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: clients/dashboard/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: clients/dashboard
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: clients/dashboard
+        run: pnpm typecheck
+
+      - name: Build
+        working-directory: clients/dashboard
+        run: pnpm build
