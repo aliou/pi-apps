@@ -27,16 +27,20 @@ public struct DiffStatsBadge: View {
 
 #Preview("Both added and removed") {
     DiffStatsBadge(added: 5, removed: 3)
+        .padding(40)
 }
 
 #Preview("Only added") {
     DiffStatsBadge(added: 12, removed: 0)
+        .padding(40)
 }
 
 #Preview("Only removed") {
     DiffStatsBadge(added: 0, removed: 8)
+        .padding(40)
 }
 
 #Preview("Large numbers") {
     DiffStatsBadge(added: 456, removed: 123)
+        .padding(40)
 }

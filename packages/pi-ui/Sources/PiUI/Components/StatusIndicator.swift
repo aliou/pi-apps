@@ -58,14 +58,17 @@ public struct StatusIndicator: View {
 
 #Preview("Active (pulsing)") {
     StatusIndicator(.active)
+        .padding(40)
 }
 
 #Preview("Idle") {
     StatusIndicator(.idle)
+        .padding(40)
 }
 
 #Preview("Archived") {
     StatusIndicator(.archived)
+        .padding(40)
 }
 
 #Preview("All states side by side") {

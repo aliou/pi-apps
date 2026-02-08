@@ -30,10 +30,12 @@ public struct ModeIcon: View {
 
 #Preview("Chat mode") {
     ModeIcon(.chat)
+        .padding(40)
 }
 
 #Preview("Code mode") {
     ModeIcon(.code)
+        .padding(40)
 }
 
 #Preview("Both modes side by side") {
@@ -41,4 +43,5 @@ public struct ModeIcon: View {
         ModeIcon(.chat)
         ModeIcon(.code)
     }
+    .padding(40)
 }
