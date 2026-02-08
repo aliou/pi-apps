@@ -1,0 +1,389 @@
+//
+//  ToolCallContentViews.swift
+//  PiUI
+//
+//  Specialized content views for each tool type
+//
+
+import SwiftUI
+import PiCore
+
+// MARK: - Tool Call Expanded Content
+
+/// Shared expanded content for tool calls - used in mobile detail view and desktop inline expansion
+public struct ToolCallExpandedContent: View {
+    public let toolName: String
+    public let args: String?
+    public let output: String?
+    public let status: Client.ToolCallStatus
+
+    public init(
+        toolName: String,
+        args: String?,
+        output: String?,
+        status: Client.ToolCallStatus
+    ) {
+        self.toolName = toolName
+        self.args = args
+        self.output = output
+        self.status = status
+    }
+
+    public var body: some View {
+        let parsed = ParsedToolArgs(toolName: toolName, argsJSON: args)
+
+        VStack(alignment: .leading, spacing: 16) {
+            // Tool-specific content
+            switch parsed {
+            case .read(let path, let offset, let limit):
+                ReadToolContent(path: path, offset: offset, limit: limit, output: output)
+
+            case .write(let path, let contentPreview):
+                WriteToolContent(path: path, contentPreview: contentPreview, output: output)
+
+            case .edit(let path, let oldText, let newText):
+                EditToolContent(path: path, oldText: oldText, newText: newText, output: output)
+
+            case .bash(let command, let timeout):
+                BashToolContent(command: command, timeout: timeout, output: output, status: status)
+
+            case .list(let path, let limit):
+                ListToolContent(path: path, limit: limit, output: output)
+
+            case .find(let pattern, let path):
+                FindToolContent(pattern: pattern, path: path, output: output)
+
+            case .grep(let pattern, let path, let glob, let literal):
+                GrepToolContent(pattern: pattern, path: path, glob: glob, literal: literal, output: output)
+
+            case .unknown(let name, _):
+                UnknownToolContent(name: name, args: args, output: output)
+            }
+        }
+    }
+}
+
+// MARK: - Read Tool Content
+
+struct ReadToolContent: View {
+    let path: String
+    let offset: Int?
+    let limit: Int?
+    let output: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // File info
+            DetailRow(label: "File", icon: "doc.text") {
+                Text(path)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.teal)
+                    .lineLimit(2)
+            }
+
+            if let offset {
+                DetailRow(label: "Range", icon: "number") {
+                    if let limit {
+                        Text("Lines \(offset) - \(offset + limit - 1)")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(.yellow)
+                    } else {
+                        Text("From line \(offset)")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(.yellow)
+                    }
+                }
+            }
+
+            // File content
+            if let output, !output.isEmpty {
+                OutputSection(title: "Content", output: output)
+            }
+        }
+    }
+}
+
+// MARK: - Write Tool Content
+
+struct WriteToolContent: View {
+    let path: String
+    let contentPreview: String?
+    let output: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DetailRow(label: "File", icon: "square.and.pencil") {
+                Text(path)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.teal)
+                    .lineLimit(2)
+            }
+
+            if let output, !output.isEmpty {
+                OutputSection(title: "Result", output: output)
+            }
+        }
+    }
+}
+
+// MARK: - Edit Tool Content
+
+struct EditToolContent: View {
+    let path: String
+    let oldText: String?
+    let newText: String?
+    let output: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DetailRow(label: "File", icon: "pencil.line") {
+                Text(path)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.teal)
+                    .lineLimit(2)
+            }
+
+            // Diff preview
+            if let oldText, let newText {
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(title: "Changes")
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("-")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundColor(.red)
+                                .frame(width: 14)
+                            Text(oldText)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(.red)
+                                .lineLimit(3)
+                        }
+
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("+")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundColor(.green)
+                                .frame(width: 14)
+                            Text(newText)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(.green)
+                                .lineLimit(3)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
+
+            if let output, !output.isEmpty {
+                OutputSection(title: "Result", output: output)
+            }
+        }
+    }
+}
+
+// MARK: - Bash Tool Content
+
+struct BashToolContent: View {
+    let command: String
+    let timeout: Int?
+    let output: String?
+    let status: Client.ToolCallStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Command display
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(title: "Command")
+
+                HStack(alignment: .top, spacing: 8) {
+                    Text("$")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(.teal)
+
+                    Text(command)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(8)
+            }
+
+            if let timeout {
+                DetailRow(label: "Timeout", icon: "clock") {
+                    Text("\(timeout) seconds")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if let output, !output.isEmpty {
+                OutputSection(
+                    title: status == .error ? "Error Output" : "Output",
+                    output: output,
+                    isError: status == .error
+                )
+            }
+        }
+    }
+}
+
+// MARK: - List Tool Content
+
+struct ListToolContent: View {
+    let path: String
+    let limit: Int?
+    let output: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DetailRow(label: "Directory", icon: "folder") {
+                Text(path)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.teal)
+                    .lineLimit(2)
+            }
+
+            if let limit {
+                DetailRow(label: "Limit", icon: "number") {
+                    Text("\(limit) items")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if let output, !output.isEmpty {
+                OutputSection(title: "Files", output: output)
+            }
+        }
+    }
+}
+
+// MARK: - Find Tool Content
+
+struct FindToolContent: View {
+    let pattern: String
+    let path: String
+    let output: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DetailRow(label: "Pattern", icon: "magnifyingglass") {
+                Text(pattern)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.teal)
+            }
+
+            DetailRow(label: "Search Path", icon: "folder") {
+                Text(path)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+
+            if let output, !output.isEmpty {
+                OutputSection(title: "Results", output: output)
+            }
+        }
+    }
+}
+
+// MARK: - Grep Tool Content
+
+struct GrepToolContent: View {
+    let pattern: String
+    let path: String
+    let glob: String?
+    let literal: Bool
+    let output: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DetailRow(label: literal ? "Text" : "Pattern", icon: "text.magnifyingglass") {
+                HStack(spacing: 4) {
+                    if !literal {
+                        Text("/")
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
+                    Text(pattern)
+                        .foregroundColor(.teal)
+                    if !literal {
+                        Text("/")
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
+                }
+                .font(.system(size: 13, design: .monospaced))
+            }
+
+            DetailRow(label: "Search Path", icon: "folder") {
+                Text(path)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+
+            if let glob {
+                DetailRow(label: "File Filter", icon: "doc") {
+                    Text(glob)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(.yellow)
+                }
+            }
+
+            if literal {
+                DetailRow(label: "Mode", icon: "textformat") {
+                    Text("Literal match")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
+            }
+
+            if let output, !output.isEmpty {
+                OutputSection(title: "Matches", output: output)
+            }
+        }
+    }
+}
+
+// MARK: - Unknown Tool Content
+
+struct UnknownToolContent: View {
+    let name: String
+    let args: String?
+    let output: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DetailRow(label: "Tool", icon: "gearshape") {
+                Text(name)
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .foregroundColor(.primary)
+            }
+
+            // Arguments as syntax-highlighted JSON
+            if let args, !args.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(title: "Arguments")
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        SyntaxHighlightedJSON(ToolOutputFormatter.prettyJSON(args) ?? args)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
+
+            if let output, !output.isEmpty {
+                OutputSection(title: "Output", output: output)
+            }
+        }
+    }
+}

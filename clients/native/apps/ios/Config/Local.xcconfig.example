@@ -1,0 +1,7 @@
+// Copy to Local.xcconfig and fill in your values.
+// Local.xcconfig is gitignored -- never commit it.
+
+PI_BUNDLE_ID_IOS = dev.yourname.pi.ios
+
+// Apple Developer Team ID (10-char alphanumeric). Leave empty for no signing.
+// DEVELOPMENT_TEAM =

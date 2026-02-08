@@ -1,0 +1,85 @@
+name: PiNative
+options:
+  bundleIdPrefix: me.aliou.pi
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  PiUI:
+    path: ../../packages/pi-ui
+
+targets:
+  PiNative iOS:
+    type: application
+    platform: iOS
+    supportedDestinations: [iOS]
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PI_BUNDLE_ID_IOS)
+        PRODUCT_NAME: Pi
+        GENERATE_INFOPLIST_FILE: true
+        IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Sources/Info.plist
+      properties:
+        UILaunchScreen: {}
+    dependencies:
+      - package: PiUI
+        product: PiUI
+
+  PiNative macOS:
+    type: application
+    platform: macOS
+    supportedDestinations: [macOS]
+    sources:
+      - SourcesMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PI_BUNDLE_ID_MACOS)
+        PRODUCT_NAME: Pi
+        GENERATE_INFOPLIST_FILE: true
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - package: PiUI
+        product: PiUI
+
+schemes:
+  PiNative iOS:
+    build:
+      targets:
+        PiNative iOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+
+  PiNative macOS:
+    build:
+      targets:
+        PiNative macOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release

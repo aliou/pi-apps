@@ -4,15 +4,15 @@ on:
   push:
     branches: [main]
     paths:
-      - "sandboxes/cloudflare/Dockerfile"
-      - "sandboxes/cloudflare/bridge/**"
+      - "server/sandboxes/cloudflare/Dockerfile"
+      - "server/sandboxes/cloudflare/bridge/**"
       - ".github/workflows/docker-sandbox-cloudflare.yml"
       - ".github/actions/docker-build-push/**"
   pull_request:
     branches: [main]
     paths:
-      - "sandboxes/cloudflare/Dockerfile"
-      - "sandboxes/cloudflare/bridge/**"
+      - "server/sandboxes/cloudflare/Dockerfile"
+      - "server/sandboxes/cloudflare/bridge/**"
       - ".github/workflows/docker-sandbox-cloudflare.yml"
       - ".github/actions/docker-build-push/**"
 
@@ -27,10 +27,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Copy extensions into build context
+        run: cp server/relay/extensions/native-bridge.ts server/sandboxes/cloudflare/extensions/native-bridge.ts
+
       - name: Build and push
         uses: ./.github/actions/docker-build-push
         with:
-          context: sandboxes/cloudflare
+          context: server/sandboxes/cloudflare
           image-name: aliou/pi-sandbox-cloudflare
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
