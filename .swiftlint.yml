@@ -1,0 +1,2 @@
+excluded:
+  - packages/pi-ui/Sources/PiUI/Diff

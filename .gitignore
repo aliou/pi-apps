@@ -47,7 +47,16 @@ dist/
 # Pi coding agent
 .pi/git/
 
+# =============================================================================
+# Swift / Xcode
+# =============================================================================
+.swiftlint/
+.build/
+.swiftpm/
+*.xcodeproj
+
 # Environment files
 *.env
 !*.env.example
 !*.env.sample
+TODO.md
