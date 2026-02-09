@@ -106,10 +106,12 @@ struct SessionsListView: View {
                             lastActivityAt: session.lastActivityAt,
                             mode: session.mode == .chat ? .chat : .code,
                             displayInfo: SessionDisplayInfo(
-                                repoFullName: nil
+                                isAgentRunning: session.status == .active,
+                                repoFullName: session.repoFullName ?? repoName(from: session.repoPath)
                             )
                         )
                     }
+                    .buttonStyle(.plain)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             Task { await store.deleteSession(id: session.id) }
@@ -135,6 +137,11 @@ struct SessionsListView: View {
             // Error creating session - could show an alert here
         }
         isCreatingChat = false
+    }
+
+    private func repoName(from repoPath: String?) -> String? {
+        guard let repoPath, !repoPath.isEmpty else { return nil }
+        return URL(fileURLWithPath: repoPath).lastPathComponent
     }
 }
 

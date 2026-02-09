@@ -197,10 +197,19 @@ private enum EventReducerHelpers {
     static func extractTextContent(from message: Relay.AnyCodable) -> String? {
         guard let content = message["content"] else { return nil }
         if let str = content.stringValue { return str }
-        if let blocks = content.arrayValue,
-           let textBlock = blocks.first(where: { $0["type"]?.stringValue == "text" }),
-           let textValue = textBlock["text"]?.stringValue {
-            return textValue
+        if let blocks = content.arrayValue {
+            let text = blocks
+                .filter { $0["type"]?.stringValue == "text" }
+                .compactMap { $0["text"]?.stringValue }
+                .joined(separator: "\n")
+            if !text.isEmpty {
+                return text
+            }
+
+            let hasThinking = blocks.contains { $0["type"]?.stringValue == "thinking" }
+            if hasThinking {
+                return "Thinking…"
+            }
         }
         return nil
     }

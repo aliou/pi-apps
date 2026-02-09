@@ -68,7 +68,7 @@ extension Client {
         case "assistant":
             parseAssistantMessage(msg, id: id, timestamp: timestamp, items: &items, toolUseMap: &toolUseMap)
 
-        case "tool":
+        case "tool", "toolResult":
             parseToolMessage(msg, items: &items)
 
         default:
@@ -105,10 +105,10 @@ extension Client {
                 if block["type"]?.stringValue == "text",
                    let text = block["text"]?.stringValue {
                     textParts.append(text)
-                } else if block["type"]?.stringValue == "tool_use",
+                } else if block["type"]?.stringValue == "tool_use" || block["type"]?.stringValue == "toolCall",
                           let toolId = block["id"]?.stringValue {
                     let name = block["name"]?.stringValue ?? "unknown"
-                    let input = block["input"]
+                    let input = block["input"] ?? block["arguments"]
                     let argsJSON = input.map { anyCodableToJSON($0) } ?? ""
                     toolUseMap[toolId] = ToolUseInfo(name: name, args: argsJSON, timestamp: timestamp)
                 }
@@ -125,17 +125,17 @@ extension Client {
         // Emit tool items for tool_use blocks
         if let blocks = content?.arrayValue {
             for block in blocks {
-                if block["type"]?.stringValue == "tool_use",
+                if block["type"]?.stringValue == "tool_use" || block["type"]?.stringValue == "toolCall",
                    let toolId = block["id"]?.stringValue {
                     let name = block["name"]?.stringValue ?? "unknown"
-                    let input = block["input"]
+                    let input = block["input"] ?? block["arguments"]
                     let argsJSON = input.map { anyCodableToJSON($0) } ?? ""
                     items.append(.tool(ToolCallItem(
                         id: "tool-\(toolId)",
                         name: name,
                         argsJSON: argsJSON,
                         outputText: "",
-                        status: .success,
+                        status: .running,
                         timestamp: timestamp
                     )))
                 }
@@ -147,6 +147,29 @@ extension Client {
         _ msg: Relay.AnyCodable,
         items: inout [ConversationItem]
     ) {
+        if let toolCallId = msg["toolCallId"]?.stringValue ?? msg["tool_use_id"]?.stringValue {
+            let outputText = extractText(from: msg["content"])
+            let isError = msg["isError"]?.boolValue ?? msg["is_error"]?.boolValue ?? false
+
+            if let idx = items.lastIndex(where: { $0.id == "tool-\(toolCallId)" }) {
+                if case .tool(var toolItem) = items[idx] {
+                    toolItem.outputText = outputText
+                    toolItem.status = isError ? .error : .success
+                    items[idx] = .tool(toolItem)
+                }
+            } else {
+                items.append(.tool(ToolCallItem(
+                    id: "tool-\(toolCallId)",
+                    name: msg["toolName"]?.stringValue ?? "unknown",
+                    argsJSON: "",
+                    outputText: outputText,
+                    status: isError ? .error : .success,
+                    timestamp: msg["timestamp"]?.stringValue ?? ""
+                )))
+            }
+            return
+        }
+
         guard let blocks = msg["content"]?.arrayValue else { return }
 
         for block in blocks {
@@ -230,10 +253,18 @@ extension Client {
         guard let content else { return "" }
         if let str = content.stringValue { return str }
         if let blocks = content.arrayValue {
-            return blocks
+            let text = blocks
                 .filter { $0["type"]?.stringValue == "text" }
                 .compactMap { $0["text"]?.stringValue }
                 .joined(separator: "\n")
+            if !text.isEmpty {
+                return text
+            }
+
+            let hasThinking = blocks.contains { $0["type"]?.stringValue == "thinking" }
+            if hasThinking {
+                return "Thinking…"
+            }
         }
         return ""
     }

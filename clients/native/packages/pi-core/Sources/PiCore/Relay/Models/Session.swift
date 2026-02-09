@@ -11,6 +11,7 @@ extension Relay {
         public let sandboxImageDigest: String?
         public let repoId: String?
         public let repoPath: String?
+        public let repoFullName: String?
         public let branchName: String?
         public let name: String?
         public let firstUserMessage: String?
@@ -30,6 +31,7 @@ extension Relay {
             sandboxImageDigest: String? = nil,
             repoId: String? = nil,
             repoPath: String? = nil,
+            repoFullName: String? = nil,
             branchName: String? = nil,
             name: String? = nil,
             firstUserMessage: String? = nil,
@@ -48,6 +50,7 @@ extension Relay {
             self.sandboxImageDigest = sandboxImageDigest
             self.repoId = repoId
             self.repoPath = repoPath
+            self.repoFullName = repoFullName
             self.branchName = branchName
             self.name = name
             self.firstUserMessage = firstUserMessage

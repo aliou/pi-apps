@@ -1,6 +1,6 @@
 import { desc, eq, ne } from "drizzle-orm";
 import type { AppDatabase } from "../db/connection";
-import { type Session, sessions } from "../db/schema";
+import { repos, type Session, sessions } from "../db/schema";
 import type { SandboxProviderType } from "../sandbox/provider-types";
 
 export type SessionStatus =
@@ -36,7 +36,9 @@ export interface UpdateSessionParams {
   sandboxProviderId?: string;
 }
 
-export type SessionRecord = Session;
+export type SessionRecord = Session & {
+  repoFullName?: string | null;
+};
 
 export class SessionService {
   constructor(private db: AppDatabase) {}
@@ -84,23 +86,45 @@ export class SessionService {
    * Returns undefined if not found or deleted.
    */
   get(sessionId: string): SessionRecord | undefined {
-    return this.db
-      .select()
+    const row = this.db
+      .select({
+        session: sessions,
+        repoFullName: repos.fullName,
+      })
       .from(sessions)
+      .leftJoin(repos, eq(repos.id, sessions.repoId))
       .where(eq(sessions.id, sessionId))
       .get();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      ...row.session,
+      repoFullName: row.repoFullName ?? null,
+    };
   }
 
   /**
    * List all non-deleted sessions, ordered by lastActivityAt desc.
    */
   list(): SessionRecord[] {
-    return this.db
-      .select()
+    const rows = this.db
+      .select({
+        session: sessions,
+        repoFullName: repos.fullName,
+      })
       .from(sessions)
+      .leftJoin(repos, eq(repos.id, sessions.repoId))
       .where(ne(sessions.status, "deleted"))
       .orderBy(desc(sessions.lastActivityAt))
       .all();
+
+    return rows.map((row) => ({
+      ...row.session,
+      repoFullName: row.repoFullName ?? null,
+    }));
   }
 
   /**

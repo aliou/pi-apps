@@ -56,12 +56,13 @@ public struct SessionRowView: View {
                         .font(.body)
                         .lineLimit(1)
                     Spacer()
-                    if displayInfo.isAgentRunning {
-                        StatusIndicator(.active)
-                    } else {
+                    HStack(spacing: 6) {
                         Text(Self.relativeDate(lastActivityAt))
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if displayInfo.isAgentRunning {
+                            StatusIndicator(.active)
+                        }
                     }
                 }
 
