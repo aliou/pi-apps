@@ -8,22 +8,25 @@ Clients for the [pi](https://github.com/mariozechner/pi-coding-agent) coding age
 
 ```
 pi-apps/
-├── apps/
-│   ├── relay-server/      # Relay API server (Node.js/Hono/SQLite)
-│   └── relay-dashboard/   # Relay admin UI (React Router v7/Vite)
-└── sandboxes/
-    ├── cloudflare/        # CF Containers sandbox (Worker + bridge + Dockerfile)
-    └── docker/            # Docker sandbox images for local/self-hosted relay
+├── server/
+│   ├── relay/             # Relay API server (Node.js/Hono/SQLite)
+│   ├── sandboxes/
+│   │   ├── cloudflare/    # CF Containers sandbox (Worker + bridge + Dockerfile)
+│   │   └── docker/        # Docker sandbox images for local/self-hosted relay
+│   └── scripts/           # Utility scripts (nuke-sessions, list-containers)
+├── clients/
+│   ├── dashboard/         # Relay admin UI (React Router v7 SPA/Vite/Tailwind)
+│   └── native/            # Native Swift apps and packages (iOS, macOS)
+│       ├── apps/ios/      # PiNative Xcode project (XcodeGen)
+│       └── packages/      # Swift packages (pi-core, pi-ui)
+└── packages/              # Shared packages (currently empty)
 ```
-
-Native macOS/iOS apps were archived. The relay server and dashboard are the active components.
 
 ## Quick Start
 
 ```bash
 nix develop       # enter nix shell
-pnpm install      # install all dependencies
-pnpm dev          # run all apps (hot reload)
+make dev          # start relay server + dashboard (parallel, hot reload)
 ```
 
 ## Apps
@@ -33,33 +36,45 @@ pnpm dev          # run all apps (hot reload)
 API server that wraps Pi sessions, manages repos, and bridges WebSocket clients.
 
 ```bash
-pnpm --filter pi-relay-server dev    # run dev server
-pnpm --filter pi-relay-server test   # run tests
+cd server/relay
+pnpm install
+pnpm dev          # run dev server (hot reload)
+pnpm test         # run tests
 ```
 
-### Relay Dashboard
+### Dashboard
 
 Admin UI for managing secrets, GitHub token, and viewing sessions.
 
 ```bash
-pnpm --filter pi-relay-dashboard dev
+cd clients/dashboard
+pnpm install
+pnpm dev          # run dev server (hot reload)
 ```
 
-## TypeScript (monorepo)
+### Native (iOS / macOS)
 
-All TS apps are managed from the repo root via pnpm workspace + turbo:
+Swift apps built with XcodeGen. Requires Xcode.
 
 ```bash
-pnpm install      # install all dependencies
-pnpm dev          # run all apps (hot reload)
-pnpm build        # build all apps
-pnpm lint         # lint (biome)
-pnpm typecheck    # typecheck (tsc)
-pnpm test         # test (vitest)
+make setup        # generate Xcode project
+make xcode        # open in Xcode
+make build        # build macOS (debug)
+make build-ios    # build iOS simulator (debug)
 ```
+
+## Makefile
+
+Run `make help` for all targets. Key ones:
+
+- `make dev` - start relay server and dashboard in parallel
+- `make build` / `make build-ios` - build native apps
+- `make test` - run native tests
+- `make clean` - remove generated projects and build artifacts
 
 ## Requirements
 
 - Nix (for development shell)
 - Node.js 22+
 - pnpm
+- Xcode (for native apps)

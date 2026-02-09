@@ -1,7 +1,11 @@
-.PHONY: all setup generate build build-release test clean xcode help
+.PHONY: all setup generate build build-release test clean xcode dev help
 
 # Tools
 XCODEGEN := xcodegen
+
+# Directories
+RELAY_DIR := server/relay
+DASHBOARD_DIR := clients/dashboard
 
 # Project
 NATIVE_DIR := clients/native/apps/ios
@@ -88,6 +92,13 @@ clean:
 # Development
 # =============================================================================
 
+dev:
+	@echo "==> Starting relay server and dashboard in dev mode..."
+	@trap 'kill 0' INT TERM; \
+		pnpm --prefix $(RELAY_DIR) dev & \
+		pnpm --prefix $(DASHBOARD_DIR) dev & \
+		wait
+
 xcode: generate
 	@open $(NATIVE_PROJECT)
 
@@ -109,6 +120,9 @@ help:
 	@echo "  build-ios     - Build iOS (debug, simulator)"
 	@echo "  build-release - Build macOS (release)"
 	@echo "  test          - Run tests"
+	@echo ""
+	@echo "Development:"
+	@echo "  dev           - Start relay server and dashboard (parallel, hot reload)"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean         - Remove generated projects and build artifacts"

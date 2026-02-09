@@ -39,7 +39,8 @@ See `server/relay/AGENTS.md` for package-specific guidance.
 ## Architecture
 
 - **Relay** wraps Pi sessions, manages repos (cloned from GitHub), and exposes REST API + WebSocket protocol for remote clients.
-- Native macOS/iOS apps were archived (`z_archives/`). New native clients will be rebuilt when ready.
+- **Dashboard** is the web admin UI for managing secrets, GitHub token, and viewing sessions.
+- **Native** apps (iOS/macOS) are built with Swift/SwiftUI, using XcodeGen for project generation.
 
 ## Xcode Workspace
 
@@ -47,7 +48,7 @@ See `server/relay/AGENTS.md` for package-specific guidance.
 
 ## Build
 
-TypeScript apps are independent with their own dependencies and build commands.
+TypeScript apps are independent with their own dependencies and build commands. Use `make dev` from the repo root to start both the relay server and dashboard in parallel with hot reload.
 
 **Relay Server:**
 ```bash
@@ -67,6 +68,14 @@ pnpm install       # install dependencies
 pnpm dev           # run dev server (hot reload)
 pnpm build         # build
 pnpm typecheck     # typecheck (react-router + tsc)
+```
+
+**Native (iOS/macOS):**
+```bash
+make setup         # generate Xcode project
+make build         # build macOS (debug)
+make build-ios     # build iOS simulator (debug)
+make test          # run native tests
 ```
 
 ## Structure
