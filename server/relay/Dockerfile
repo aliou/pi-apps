@@ -34,10 +34,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install only the native addon needed at runtime.
-# Uses npm (ships with node image) to avoid pnpm onlyBuiltDependencies config.
+# Install production dependencies (includes native addons like better-sqlite3
+# and externalized packages like @aws-sdk/* from pi-ai).
 WORKDIR /app
-RUN npm init -y && npm install better-sqlite3@11 && npm cache clean --force
+COPY --from=builder /build/package.json /build/pnpm-lock.yaml ./
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate \
+    && pnpm install --prod --frozen-lockfile \
+    && pnpm store prune
 
 # Copy built output
 COPY --from=builder /build/dist ./dist
