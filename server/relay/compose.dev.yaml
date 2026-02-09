@@ -8,8 +8,8 @@
 services:
   relay:
     volumes:
-      # Docker socket path (without unix:// prefix)
-      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+      # Docker socket inside the VM (Lima/colima expose it at the standard path)
+      - /var/run/docker.sock:/var/run/docker.sock
       # .dev/ dirs -- Lima mounts these at the same absolute path in the VM,
       # so sandbox bind mounts resolve correctly on the Docker host.
       - ${PI_RELAY_DATA_DIR}:${PI_RELAY_DATA_DIR}
