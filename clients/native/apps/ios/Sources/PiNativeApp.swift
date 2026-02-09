@@ -5,7 +5,7 @@ import SwiftUI
 struct PiNativeApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Pi")
+            RootView()
         }
     }
 }
