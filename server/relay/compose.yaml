@@ -7,18 +7,17 @@ services:
     volumes:
       # Docker socket for managing sandbox containers
       - /var/run/docker.sock:/var/run/docker.sock
-      # Persistent data (use identical host/container paths so sandbox
-      # bind mounts resolve correctly on the Docker host)
-      - relay-data:/data
-      - relay-config:/config
-      - relay-state:/state
-      - relay-cache:/cache
+      # Bind mounts with identical host/container paths. The relay passes
+      # these paths to Docker when creating sandbox containers, and Docker
+      # resolves them on the host. They must match on both sides.
+      - /opt/pi-relay/data:/opt/pi-relay/data
+      - /opt/pi-relay/config:/opt/pi-relay/config
+      - /opt/pi-relay/state:/opt/pi-relay/state
+      - /opt/pi-relay/cache:/opt/pi-relay/cache
     environment:
       - RELAY_ENCRYPTION_KEY=${RELAY_ENCRYPTION_KEY}
+      - PI_RELAY_DATA_DIR=/opt/pi-relay/data
+      - PI_RELAY_CONFIG_DIR=/opt/pi-relay/config
+      - PI_RELAY_STATE_DIR=/opt/pi-relay/state
+      - PI_RELAY_CACHE_DIR=/opt/pi-relay/cache
     restart: unless-stopped
-
-volumes:
-  relay-data:
-  relay-config:
-  relay-state:
-  relay-cache:
