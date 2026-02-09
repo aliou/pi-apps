@@ -49,6 +49,22 @@ Both targets share sources from `Sources/`. macOS has additional sources in `Sou
 
 Packages are referenced by the app via local path in `project.yml`.
 
+## Previews
+
+Every SwiftUI view should have at least one `#Preview` block. Use the macro syntax (`#Preview("Label") { ... }`), not the older `PreviewProvider` protocol.
+
+For views that depend on `@Environment(AppState.self)`, provide a dummy instance:
+```swift
+#Preview {
+    MyView()
+        .environment(AppState(relayURL: URL(string: "http://localhost:3000")!))
+}
+```
+
+For views that require a live server connection (WebSocket, network calls), preview the static sub-views or visual states instead of the full connected view. Show all meaningful states: empty, loading, populated, error.
+
+When creating or modifying a view, add or update its previews in the same commit.
+
 ## Adding a Package
 
 1. Create the package in `packages/`

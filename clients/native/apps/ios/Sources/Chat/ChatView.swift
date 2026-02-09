@@ -112,3 +112,10 @@ struct ChatView: View {
         }
     }
 }
+
+#Preview {
+    NavigationStack {
+        ChatView(sessionId: "preview-session")
+    }
+    .environment(AppState(relayURL: URL(string: "http://localhost:3000")!))
+}

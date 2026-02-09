@@ -78,3 +78,8 @@ struct NewSessionSheet: View {
         }
     }
 }
+
+#Preview {
+    NewSessionSheet(mode: .code) { _ in }
+        .environment(AppState(relayURL: URL(string: "http://localhost:3000")!))
+}

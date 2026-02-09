@@ -24,3 +24,8 @@ struct RootView: View {
         }
     }
 }
+
+#Preview {
+    RootView()
+        .environment(AppState(relayURL: URL(string: "http://localhost:3000")!))
+}

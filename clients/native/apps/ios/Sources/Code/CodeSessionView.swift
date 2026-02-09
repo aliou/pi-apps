@@ -139,3 +139,85 @@ struct CodeSessionView: View {
         }
     }
 }
+
+#Preview("Code Rows") {
+    ScrollView {
+        VStack(alignment: .leading, spacing: 8) {
+            // User message
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "person.circle.fill")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 14))
+                    .padding(.top, 2)
+                Text("Fix the login bug in auth.swift")
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            }
+            .padding(.vertical, 4)
+
+            // Assistant message
+            AssistantMessageView(
+                message: Client.AssistantMessageItem(
+                    id: "a1",
+                    text: "I'll look into the login bug. Let me read the file first.",
+                    timestamp: "2026-02-09T12:00:00Z",
+                    isStreaming: false
+                )
+            )
+
+            // Tool calls
+            ToolCallRow(
+                tool: Client.ToolCallItem(
+                    id: "t1",
+                    name: "read",
+                    argsJSON: "{\"path\": \"src/auth.swift\"}",
+                    outputText: "import Foundation\n\nfunc login() {\n    // bug here\n}",
+                    status: .success,
+                    timestamp: "2026-02-09T12:00:01Z"
+                )
+            )
+
+            ToolCallRow(
+                tool: Client.ToolCallItem(
+                    id: "t2",
+                    name: "edit",
+                    argsJSON: "{\"path\": \"src/auth.swift\", \"oldText\": \"// bug here\", \"newText\": \"// fixed\"}",
+                    outputText: "",
+                    status: .success,
+                    timestamp: "2026-02-09T12:00:02Z"
+                )
+            )
+
+            ToolCallRow(
+                tool: Client.ToolCallItem(
+                    id: "t3",
+                    name: "bash",
+                    argsJSON: "{\"command\": \"swift test\"}",
+                    outputText: "",
+                    status: .running,
+                    timestamp: "2026-02-09T12:00:03Z"
+                )
+            )
+
+            // System event
+            SystemEventRow(
+                item: Client.SystemItem(
+                    id: "s1",
+                    text: "Session activated",
+                    timestamp: "2026-02-09T12:00:00Z"
+                )
+            )
+
+            // Streaming assistant
+            AssistantMessageView(
+                message: Client.AssistantMessageItem(
+                    id: "a2",
+                    text: "The tests are passing now. I fixed the",
+                    timestamp: "2026-02-09T12:00:04Z",
+                    isStreaming: true
+                )
+            )
+        }
+        .padding(.horizontal)
+    }
+}

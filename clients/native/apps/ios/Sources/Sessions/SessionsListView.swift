@@ -137,3 +137,17 @@ struct SessionsListView: View {
         isCreatingChat = false
     }
 }
+
+#Preview("Chat Mode") {
+    NavigationStack {
+        SessionsListView(mode: .chat)
+    }
+    .environment(AppState(relayURL: URL(string: "http://localhost:3000")!))
+}
+
+#Preview("Code Mode") {
+    NavigationStack {
+        SessionsListView(mode: .code)
+    }
+    .environment(AppState(relayURL: URL(string: "http://localhost:3000")!))
+}
