@@ -18,3 +18,14 @@ struct SystemEventRow: View {
         .padding(.vertical, 2)
     }
 }
+
+#Preview {
+    SystemEventRow(
+        item: Client.SystemItem(
+            id: "s1",
+            text: "Retrying (1/3): rate limited",
+            timestamp: "2025-01-01T00:00:00Z"
+        )
+    )
+    .padding()
+}

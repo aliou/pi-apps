@@ -18,3 +18,53 @@ struct MessageRowView: View {
         }
     }
 }
+
+#Preview("All Item Types") {
+    VStack(spacing: 12) {
+        MessageRowView(
+            item: .user(
+                Client.UserMessageItem(
+                    id: "u1",
+                    text: "Hello, can you help me?",
+                    timestamp: "2025-01-01T00:00:00Z",
+                    sendStatus: .sent
+                )
+            )
+        )
+
+        MessageRowView(
+            item: .assistant(
+                Client.AssistantMessageItem(
+                    id: "a1",
+                    text: "Of course! What do you need help with?",
+                    timestamp: "2025-01-01T00:00:01Z",
+                    isStreaming: false
+                )
+            )
+        )
+
+        MessageRowView(
+            item: .tool(
+                Client.ToolCallItem(
+                    id: "t1",
+                    name: "Bash",
+                    argsJSON: "{\"command\": \"ls\"}",
+                    outputText: "file1.txt\nfile2.txt",
+                    status: .success,
+                    timestamp: "2025-01-01T00:00:02Z"
+                )
+            )
+        )
+
+        MessageRowView(
+            item: .system(
+                Client.SystemItem(
+                    id: "s1",
+                    text: "Connection established",
+                    timestamp: "2025-01-01T00:00:03Z"
+                )
+            )
+        )
+    }
+    .padding()
+}

@@ -40,3 +40,25 @@ struct ChatInputBar: View {
         .background(.bar)
     }
 }
+
+#Preview("Idle") {
+    @Previewable @State var text = "Hello, how can I help?"
+
+    ChatInputBar(
+        text: $text,
+        isAgentRunning: false,
+        onSend: {},
+        onStop: {}
+    )
+}
+
+#Preview("Agent Running") {
+    @Previewable @State var text = "What is the weather?"
+
+    ChatInputBar(
+        text: $text,
+        isAgentRunning: true,
+        onSend: {},
+        onStop: {}
+    )
+}

@@ -31,3 +31,27 @@ struct AssistantMessageView: View {
         }
     }
 }
+
+#Preview("Streaming") {
+    AssistantMessageView(
+        message: Client.AssistantMessageItem(
+            id: "a1",
+            text: "This is a partial response that is currently being gene",
+            timestamp: "2025-01-01T00:00:00Z",
+            isStreaming: true
+        )
+    )
+    .padding()
+}
+
+#Preview("Completed") {
+    AssistantMessageView(
+        message: Client.AssistantMessageItem(
+            id: "a2",
+            text: "This is a complete response. It can contain **markdown** formatting and `code blocks`.",
+            timestamp: "2025-01-01T00:00:00Z",
+            isStreaming: false
+        )
+    )
+    .padding()
+}

@@ -16,3 +16,27 @@ struct UserBubbleView: View {
         .opacity(message.sendStatus == .sending ? 0.6 : 1.0)
     }
 }
+
+#Preview("Sent") {
+    UserBubbleView(
+        message: Client.UserMessageItem(
+            id: "u1",
+            text: "Hello, how are you?",
+            timestamp: "2025-01-01T00:00:00Z",
+            sendStatus: .sent
+        )
+    )
+    .padding()
+}
+
+#Preview("Sending") {
+    UserBubbleView(
+        message: Client.UserMessageItem(
+            id: "u2",
+            text: "This message is still sending...",
+            timestamp: "2025-01-01T00:00:00Z",
+            sendStatus: .sending
+        )
+    )
+    .padding()
+}

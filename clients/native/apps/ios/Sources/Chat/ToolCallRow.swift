@@ -39,3 +39,31 @@ struct ToolCallRow: View {
         .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 8))
     }
 }
+
+#Preview("Running") {
+    ToolCallRow(
+        tool: Client.ToolCallItem(
+            id: "t1",
+            name: "Bash",
+            argsJSON: "{\"command\": \"ls -la\"}",
+            outputText: "",
+            status: .running,
+            timestamp: "2025-01-01T00:00:00Z"
+        )
+    )
+    .padding()
+}
+
+#Preview("Success with Output") {
+    ToolCallRow(
+        tool: Client.ToolCallItem(
+            id: "t2",
+            name: "Bash",
+            argsJSON: "{\"command\": \"ls\"}",
+            outputText: "file1.txt\nfile2.txt\nREADME.md",
+            status: .success,
+            timestamp: "2025-01-01T00:00:00Z"
+        )
+    )
+    .padding()
+}
