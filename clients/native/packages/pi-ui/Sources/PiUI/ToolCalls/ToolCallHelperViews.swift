@@ -100,7 +100,7 @@ struct ToolCallContentViews_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Read tool
+                // Read tool (current)
                 ToolCallExpandedContent(
                     toolName: "read",
                     args: "{\"path\": \"src/main.swift\", \"offset\": 10, \"limit\": 50}",
@@ -115,6 +115,31 @@ struct ToolCallContentViews_Previews: PreviewProvider {
                         """,
                     status: .success
                 )
+
+                Divider()
+
+                // Read tool code rendering prototype (new CodeView)
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(title: "Read CodeView Prototype")
+                    CodeView(
+                        code: """
+                        import Foundation
+
+                        struct User {
+                            let id: UUID
+                            let name: String
+                        }
+
+                        func greet(_ user: User) -> String {
+                            return "Hello, \\(user.name)!"
+                        }
+                        """,
+                        language: "swift"
+                    )
+                    .frame(height: 220)
+                    .padding(10)
+                    .background(Color(.tertiarySystemBackground), in: .rect(cornerRadius: 8))
+                }
 
                 Divider()
 
@@ -138,7 +163,8 @@ struct ToolCallContentViews_Previews: PreviewProvider {
             }
             .padding()
         }
-        .background(Color.gray.opacity(0.05))
+        .background(Color.black)
+        .preferredColorScheme(.dark)
         .previewLayout(.sizeThatFits)
     }
 }
