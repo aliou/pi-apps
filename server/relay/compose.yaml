@@ -15,9 +15,8 @@ services:
       - /opt/pi-relay/state:/opt/pi-relay/state
       - /opt/pi-relay/cache:/opt/pi-relay/cache
     environment:
-      - RELAY_ENCRYPTION_KEY=${RELAY_ENCRYPTION_KEY}
-      - PI_RELAY_DATA_DIR=/opt/pi-relay/data
-      - PI_RELAY_CONFIG_DIR=/opt/pi-relay/config
-      - PI_RELAY_STATE_DIR=/opt/pi-relay/state
-      - PI_RELAY_CACHE_DIR=/opt/pi-relay/cache
+      PI_RELAY_DATA_DIR: /opt/pi-relay/data
+      PI_RELAY_CONFIG_DIR: /opt/pi-relay/config
+      PI_RELAY_STATE_DIR: /opt/pi-relay/state
+      PI_RELAY_CACHE_DIR: /opt/pi-relay/cache
     restart: unless-stopped

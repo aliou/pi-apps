@@ -3,7 +3,8 @@
 # Usage (from server/relay/):
 #   docker compose -f compose.yaml -f compose.dev.yaml up
 #
-# Requires the nix dev shell (which sets PI_RELAY_*_DIR and DOCKER_SOCK).
+# Requires the nix dev shell (which sets PI_RELAY_*_DIR).
+# RELAY_ENCRYPTION_KEY is loaded by the app from .env in the config dir.
 
 services:
   relay:
@@ -16,10 +17,8 @@ services:
       - ${PI_RELAY_CONFIG_DIR}:${PI_RELAY_CONFIG_DIR}
       - ${PI_RELAY_STATE_DIR}:${PI_RELAY_STATE_DIR}
       - ${PI_RELAY_CACHE_DIR}:${PI_RELAY_CACHE_DIR}
-    env_file:
-      - ${PI_RELAY_CONFIG_DIR}/.env
     environment:
-      - PI_RELAY_DATA_DIR=${PI_RELAY_DATA_DIR}
-      - PI_RELAY_CONFIG_DIR=${PI_RELAY_CONFIG_DIR}
-      - PI_RELAY_STATE_DIR=${PI_RELAY_STATE_DIR}
-      - PI_RELAY_CACHE_DIR=${PI_RELAY_CACHE_DIR}
+      PI_RELAY_DATA_DIR: ${PI_RELAY_DATA_DIR}
+      PI_RELAY_CONFIG_DIR: ${PI_RELAY_CONFIG_DIR}
+      PI_RELAY_STATE_DIR: ${PI_RELAY_STATE_DIR}
+      PI_RELAY_CACHE_DIR: ${PI_RELAY_CACHE_DIR}
