@@ -3,10 +3,33 @@ import PiCore
 import PiUI
 
 struct SessionsListView: View {
+    let mode: Relay.SessionMode
+
     @Environment(AppState.self) private var appState
     @State private var store: SessionsStore?
     @State private var showNewSession = false
     @State private var selectedSessionId: String?
+    @State private var isCreatingChat = false
+
+    private var navigationTitle: String {
+        mode == .chat ? "Chats" : "Code"
+    }
+
+    private var emptyStateIcon: String {
+        mode == .chat ? "bubble.left" : "chevron.left.forwardslash.chevron.right"
+    }
+
+    private var emptyStateTitle: String {
+        mode == .chat ? "No Chats" : "No Code Sessions"
+    }
+
+    private var emptyStateSubtitle: String {
+        mode == .chat ? "Start a new chat to get going" : "Create a code session to get started"
+    }
+
+    private var emptyStateActionTitle: String {
+        mode == .chat ? "New Chat" : "New Code Session"
+    }
 
     var body: some View {
         Group {
@@ -16,21 +39,32 @@ struct SessionsListView: View {
                 ProgressView()
             }
         }
-        .navigationTitle("Chats")
+        .navigationTitle(navigationTitle)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("New Chat", systemImage: "plus") {
-                    showNewSession = true
+                Button(emptyStateActionTitle, systemImage: "plus") {
+                    if mode == .chat {
+                        Task {
+                            await createChatSession()
+                        }
+                    } else {
+                        showNewSession = true
+                    }
                 }
+                .disabled(isCreatingChat)
             }
         }
         .sheet(isPresented: $showNewSession) {
-            NewSessionSheet { sessionId in
+            NewSessionSheet(mode: mode) { sessionId in
                 selectedSessionId = sessionId
             }
         }
         .navigationDestination(item: $selectedSessionId) { sessionId in
-            ChatView(sessionId: sessionId)
+            if mode == .chat {
+                ChatView(sessionId: sessionId)
+            } else {
+                CodeSessionView(sessionId: sessionId)
+            }
         }
         .task {
             let sessionsStore = SessionsStore(client: appState.client)
@@ -41,17 +75,27 @@ struct SessionsListView: View {
 
     @ViewBuilder
     private func sessionsList(_ store: SessionsStore) -> some View {
-        if store.sessions.isEmpty && !store.isLoading {
+        let filtered = store.sessions.filter { $0.mode == mode }
+
+        if filtered.isEmpty && !store.isLoading {
             EmptyStateView(
-                icon: "bubble.left",
-                title: "No Sessions",
-                subtitle: "Start a new chat to get going",
-                actionTitle: "New Chat",
-                action: { showNewSession = true }
+                icon: emptyStateIcon,
+                title: emptyStateTitle,
+                subtitle: emptyStateSubtitle,
+                actionTitle: emptyStateActionTitle,
+                action: {
+                    if mode == .chat {
+                        Task {
+                            await createChatSession()
+                        }
+                    } else {
+                        showNewSession = true
+                    }
+                }
             )
         } else {
             List {
-                ForEach(store.sessions) { session in
+                ForEach(filtered) { session in
                     Button {
                         selectedSessionId = session.id
                     } label: {
@@ -79,5 +123,17 @@ struct SessionsListView: View {
                 await store.loadSessions()
             }
         }
+    }
+
+    private func createChatSession() async {
+        guard let store else { return }
+        isCreatingChat = true
+        do {
+            let sessionId = try await store.createSession(mode: .chat, repoId: nil, environmentId: nil)
+            selectedSessionId = sessionId
+        } catch {
+            // Error creating session - could show an alert here
+        }
+        isCreatingChat = false
     }
 }

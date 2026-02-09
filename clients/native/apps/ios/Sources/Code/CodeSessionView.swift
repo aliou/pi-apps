@@ -2,23 +2,22 @@ import SwiftUI
 import PiCore
 import PiUI
 
-struct ChatView: View {
+struct CodeSessionView: View {
     let sessionId: String
 
     @Environment(AppState.self) private var appState
     @State private var store: ConversationStore?
     @State private var inputText: String = ""
-    @State private var isAtBottom: Bool = true
 
     var body: some View {
         Group {
             if let store {
-                chatContent(store)
+                codeContent(store)
             } else {
                 ProgressView("Connecting...")
             }
         }
-        .navigationTitle("Chat")
+        .navigationTitle("Code")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarVisibility(.hidden, for: .tabBar)
@@ -37,12 +36,12 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private func chatContent(_ store: ConversationStore) -> some View {
+    private func codeContent(_ store: ConversationStore) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(store.items) { item in
-                        MessageRowView(item: item)
+                        codeRow(item)
                             .id(item.id)
                     }
                 }
@@ -51,7 +50,7 @@ struct ChatView: View {
                 .padding(.bottom, 8)
             }
             .onChange(of: store.items.last?.id) {
-                if isAtBottom, let lastId = store.items.last?.id {
+                if let lastId = store.items.last?.id {
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(lastId, anchor: .bottom)
                     }
@@ -76,6 +75,34 @@ struct ChatView: View {
             ToolbarItem(placement: .principal) {
                 connectionStatus(store)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func codeRow(_ item: Client.ConversationItem) -> some View {
+        switch item {
+        case .user(let msg):
+            // Compact user prompt in code view
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "person.circle.fill")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 14))
+                    .padding(.top, 2)
+                Text(msg.text)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            }
+            .padding(.vertical, 4)
+            .opacity(msg.sendStatus == .sending ? 0.6 : 1.0)
+
+        case .assistant(let msg):
+            AssistantMessageView(message: msg)
+
+        case .tool(let tool):
+            ToolCallRow(tool: tool)
+
+        case .system(let event):
+            SystemEventRow(item: event)
         }
     }
 
