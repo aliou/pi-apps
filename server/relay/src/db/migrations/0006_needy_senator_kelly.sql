@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `first_user_message` text;

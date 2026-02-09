@@ -92,4 +92,83 @@ describe("WebSocket Handler", () => {
       expect(deps.secretsService).toBeDefined();
     });
   });
+
+  describe("buildEventHooks", () => {
+    let sessionService: SessionService;
+    let hooks: ReturnType<typeof import("./handler").buildEventHooks>;
+
+    beforeEach(async () => {
+      sessionService = deps.sessionService;
+      const { buildEventHooks } = await import("./handler");
+      hooks = buildEventHooks(sessionService);
+    });
+
+    it("response event with get_state and sessionName updates session name in DB", () => {
+      const session = sessionService.create({ mode: "chat" });
+      expect(session.name).toBeNull();
+
+      hooks.handle(session.id, "response", {
+        type: "response",
+        command: "get_state",
+        success: true,
+        data: { sessionName: "My Session" },
+      });
+
+      const updated = sessionService.get(session.id);
+      expect(updated?.name).toBe("My Session");
+    });
+
+    it("response event with get_state but no sessionName does NOT update", () => {
+      const session = sessionService.create({ mode: "chat" });
+      expect(session.name).toBeNull();
+
+      hooks.handle(session.id, "response", {
+        type: "response",
+        command: "get_state",
+        success: true,
+        data: { someOtherField: "value" },
+      });
+
+      const updated = sessionService.get(session.id);
+      expect(updated?.name).toBeNull();
+    });
+
+    it("extension_ui_request with method=setTitle updates session name", () => {
+      const session = sessionService.create({ mode: "chat" });
+      expect(session.name).toBeNull();
+
+      hooks.handle(session.id, "extension_ui_request", {
+        type: "extension_ui_request",
+        id: "some-id",
+        method: "setTitle",
+        title: "New Title",
+      });
+
+      const updated = sessionService.get(session.id);
+      expect(updated?.name).toBe("New Title");
+    });
+
+    it("prompt stores firstUserMessage on first call only (second prompt doesn't overwrite)", () => {
+      const session = sessionService.create({ mode: "chat" });
+      expect(session.firstUserMessage).toBeNull();
+
+      // First prompt
+      hooks.handle(session.id, "prompt", {
+        type: "prompt",
+        message: "Hello, can you help?",
+      });
+
+      let updated = sessionService.get(session.id);
+      expect(updated?.firstUserMessage).toBe("Hello, can you help?");
+
+      // Second prompt - should NOT overwrite
+      hooks.handle(session.id, "prompt", {
+        type: "prompt",
+        message: "Another message",
+      });
+
+      updated = sessionService.get(session.id);
+      expect(updated?.firstUserMessage).toBe("Hello, can you help?");
+    });
+  });
 });

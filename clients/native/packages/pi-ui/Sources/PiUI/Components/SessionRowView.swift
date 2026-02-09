@@ -5,6 +5,7 @@ import SwiftUI
 public struct SessionRowView: View {
     public let id: String
     public let name: String?
+    public let firstUserMessage: String?
     public let lastActivityAt: String
     public let mode: SessionModeDisplay
     public let displayInfo: SessionDisplayInfo
@@ -13,6 +14,7 @@ public struct SessionRowView: View {
     public init(
         id: String,
         name: String?,
+        firstUserMessage: String? = nil,
         lastActivityAt: String,
         mode: SessionModeDisplay,
         displayInfo: SessionDisplayInfo,
@@ -20,10 +22,25 @@ public struct SessionRowView: View {
     ) {
         self.id = id
         self.name = name
+        self.firstUserMessage = firstUserMessage
         self.lastActivityAt = lastActivityAt
         self.mode = mode
         self.displayInfo = displayInfo
         self.showModeIcon = showModeIcon
+    }
+
+    /// Display title: name > truncated first user message > session ID.
+    private var displayTitle: String {
+        if let name, !name.isEmpty {
+            return name
+        }
+        if let firstUserMessage, !firstUserMessage.isEmpty {
+            let truncated = firstUserMessage.prefix(80)
+            return truncated.count < firstUserMessage.count
+                ? truncated + "..."
+                : String(truncated)
+        }
+        return id
     }
 
     public var body: some View {
@@ -35,7 +52,7 @@ public struct SessionRowView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(name ?? id)
+                    Text(displayTitle)
                         .font(.body)
                         .lineLimit(1)
                     Spacer()

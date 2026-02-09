@@ -58,6 +58,7 @@ struct SessionsListView: View {
                         SessionRowView(
                             id: session.id,
                             name: session.name,
+                            firstUserMessage: session.firstUserMessage,
                             lastActivityAt: session.lastActivityAt,
                             mode: session.mode == .chat ? .chat : .code,
                             displayInfo: SessionDisplayInfo(

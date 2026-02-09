@@ -7,6 +7,9 @@ import type { EventJournal } from "../services/event-journal";
 import type { SecretsService } from "../services/secrets.service";
 import type { SessionService } from "../services/session.service";
 import { type ConnectionManager, WebSocketConnection } from "./connection";
+import { registerFirstMessageHook } from "./hooks/first-message";
+import { EventHookRegistry } from "./hooks/registry";
+import { registerSessionNameHooks } from "./hooks/session-name";
 import { isClientCommand } from "./types";
 
 function wsLog(
@@ -34,8 +37,17 @@ export interface WebSocketHandlerDeps {
 }
 
 /**
- * Create WebSocket handler for session connections.
+ * Build the event hook registry with all server-side hooks.
  */
+export function buildEventHooks(
+  sessionService: SessionService,
+): EventHookRegistry {
+  const hooks = new EventHookRegistry();
+  registerSessionNameHooks(hooks, sessionService);
+  registerFirstMessageHook(hooks, sessionService);
+  return hooks;
+}
+
 export function createWebSocketHandler(
   upgradeWebSocket: UpgradeWebSocket,
   deps: WebSocketHandlerDeps,
@@ -48,6 +60,8 @@ export function createWebSocketHandler(
     environmentService,
     secretsService,
   } = deps;
+
+  const eventHooks = buildEventHooks(sessionService);
 
   return upgradeWebSocket((c) => {
     const sessionId = c.req.param("id");
@@ -104,6 +118,7 @@ export function createWebSocketHandler(
               sessionId,
               channel,
               eventJournal,
+              eventHooks,
               lastSeq,
             );
 

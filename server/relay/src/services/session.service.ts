@@ -27,6 +27,7 @@ export interface CreateSessionParams {
 export interface UpdateSessionParams {
   status?: SessionStatus;
   name?: string;
+  firstUserMessage?: string;
   repoPath?: string;
   branchName?: string;
   currentModelProvider?: string;
@@ -67,6 +68,7 @@ export class SessionService {
       currentModelProvider: params.modelProvider ?? null,
       currentModelId: params.modelId ?? null,
       name: null,
+      firstUserMessage: null,
       createdAt: now,
       lastActivityAt: now,
     };
@@ -120,6 +122,9 @@ export class SessionService {
     }
     if (fields.name !== undefined) {
       updates.name = fields.name;
+    }
+    if (fields.firstUserMessage !== undefined) {
+      updates.firstUserMessage = fields.firstUserMessage;
     }
     if (fields.repoPath !== undefined) {
       updates.repoPath = fields.repoPath;

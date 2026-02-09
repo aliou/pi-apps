@@ -40,6 +40,7 @@ export const sessions = sqliteTable("sessions", {
   repoPath: text("repo_path"),
   branchName: text("branch_name"),
   name: text("name"),
+  firstUserMessage: text("first_user_message"),
   currentModelProvider: text("current_model_provider"),
   currentModelId: text("current_model_id"),
   systemPrompt: text("system_prompt"),

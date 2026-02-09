@@ -13,6 +13,7 @@ extension Relay {
         public let repoPath: String?
         public let branchName: String?
         public let name: String?
+        public let firstUserMessage: String?
         public let currentModelProvider: String?
         public let currentModelId: String?
         public let systemPrompt: String?
@@ -31,6 +32,7 @@ extension Relay {
             repoPath: String? = nil,
             branchName: String? = nil,
             name: String? = nil,
+            firstUserMessage: String? = nil,
             currentModelProvider: String? = nil,
             currentModelId: String? = nil,
             systemPrompt: String? = nil,
@@ -48,6 +50,7 @@ extension Relay {
             self.repoPath = repoPath
             self.branchName = branchName
             self.name = name
+            self.firstUserMessage = firstUserMessage
             self.currentModelProvider = currentModelProvider
             self.currentModelId = currentModelId
             self.systemPrompt = systemPrompt

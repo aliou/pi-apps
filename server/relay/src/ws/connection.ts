@@ -1,6 +1,7 @@
 import type { WSContext } from "hono/ws";
 import type { SandboxChannel } from "../sandbox/types";
 import type { EventJournal } from "../services/event-journal";
+import type { EventHookRegistry } from "./hooks/registry";
 import type { ClientCommand, PiEvent, ServerEvent } from "./types";
 
 /**
@@ -22,6 +23,7 @@ export class WebSocketConnection {
     private sessionId: string,
     private channel: SandboxChannel,
     private journal: EventJournal,
+    private eventHooks: EventHookRegistry,
     initialSeq = 0,
   ) {
     this.lastSeq = initialSeq;
@@ -64,6 +66,9 @@ export class WebSocketConnection {
     if (command.type === "prompt") {
       this.journal.append(this.sessionId, command.type, command);
     }
+
+    // Run event hooks
+    this.eventHooks.handle(this.sessionId, command.type, command);
 
     // Forward to sandbox as JSON string (channel handles framing)
     this.channel.send(JSON.stringify(command));
@@ -133,6 +138,9 @@ export class WebSocketConnection {
     // Journal first (outbox pattern)
     const seq = this.journal.append(this.sessionId, event.type, event);
     this.lastSeq = seq;
+
+    // Run event hooks
+    this.eventHooks.handle(this.sessionId, event.type, event);
 
     // Then forward to client
     this.send(event);
