@@ -1,0 +1,25 @@
+# Local dev overlay. Reuses the same .dev/ paths as `pnpm dev`.
+#
+# Usage (from server/relay/):
+#   docker compose -f compose.yaml -f compose.dev.yaml up
+#
+# Requires the nix dev shell (which sets PI_RELAY_*_DIR and DOCKER_HOST).
+
+services:
+  relay:
+    volumes:
+      # Docker socket (Lima on macOS, or default)
+      - ${DOCKER_HOST#unix://}:/var/run/docker.sock
+      # .dev/ dirs -- Lima mounts these at the same absolute path in the VM,
+      # so sandbox bind mounts resolve correctly on the Docker host.
+      - ${PI_RELAY_DATA_DIR}:${PI_RELAY_DATA_DIR}
+      - ${PI_RELAY_CONFIG_DIR}:${PI_RELAY_CONFIG_DIR}
+      - ${PI_RELAY_STATE_DIR}:${PI_RELAY_STATE_DIR}
+      - ${PI_RELAY_CACHE_DIR}:${PI_RELAY_CACHE_DIR}
+    env_file:
+      - ${PI_RELAY_CONFIG_DIR}/.env
+    environment:
+      - PI_RELAY_DATA_DIR=${PI_RELAY_DATA_DIR}
+      - PI_RELAY_CONFIG_DIR=${PI_RELAY_CONFIG_DIR}
+      - PI_RELAY_STATE_DIR=${PI_RELAY_STATE_DIR}
+      - PI_RELAY_CACHE_DIR=${PI_RELAY_CACHE_DIR}
