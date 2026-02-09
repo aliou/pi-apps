@@ -30,24 +30,20 @@ RUN pnpm run build
 # -- runtime stage --
 FROM node:22-slim
 
-# better-sqlite3 needs shared libs that node:22-slim already provides.
-# Install only the Docker CLI so healthchecks / debugging are possible.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install only the native addon needed at runtime.
+# Uses npm (ships with node image) to avoid pnpm onlyBuiltDependencies config.
 WORKDIR /app
+RUN npm init -y && npm install better-sqlite3@11 && npm cache clean --force
 
 # Copy built output
 COPY --from=builder /build/dist ./dist
 
 # Copy DB migrations (referenced via import.meta.dirname at runtime)
 COPY --from=builder /build/src/db/migrations ./dist/db/migrations
-
-# Copy native addon (better-sqlite3)
-COPY --from=builder /build/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-COPY --from=builder /build/node_modules/bindings ./node_modules/bindings
-COPY --from=builder /build/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
 
 # Default data directories. Mount volumes here and use identical host paths
 # for sandbox bind mounts (see README).
