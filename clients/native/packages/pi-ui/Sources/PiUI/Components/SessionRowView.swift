@@ -89,6 +89,8 @@ public struct SessionRowView: View {
             }
         }
         .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Date formatting
@@ -170,6 +172,30 @@ public struct SessionRowView: View {
             isAgentRunning: false,
             repoFullName: "aliou/auth-system"
         )
+    )
+    .padding()
+}
+
+#Preview("No name uses first user message") {
+    SessionRowView(
+        id: "session-005",
+        name: nil,
+        firstUserMessage: "Please investigate why onboarding hangs after server validation.",
+        lastActivityAt: "2026-02-07T20:10:00Z",
+        mode: .chat,
+        displayInfo: SessionDisplayInfo(isAgentRunning: false)
+    )
+    .padding()
+}
+
+#Preview("No name and no first message uses id") {
+    SessionRowView(
+        id: "session-006",
+        name: nil,
+        firstUserMessage: nil,
+        lastActivityAt: "2026-02-07T20:20:00Z",
+        mode: .chat,
+        displayInfo: SessionDisplayInfo(isAgentRunning: false)
     )
     .padding()
 }

@@ -88,6 +88,7 @@ extension Client {
         }
     }
 
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     private static func parseAssistantMessage(
         _ msg: Relay.AnyCodable,
         id: String,
@@ -96,50 +97,96 @@ extension Client {
         toolUseMap: inout [String: ToolUseInfo]
     ) {
         let content = msg["content"]
-        var textParts: [String] = []
 
         if let stringContent = content?.stringValue {
-            textParts.append(stringContent)
-        } else if let blocks = content?.arrayValue {
-            for block in blocks {
-                if block["type"]?.stringValue == "text",
-                   let text = block["text"]?.stringValue {
-                    textParts.append(text)
-                } else if block["type"]?.stringValue == "tool_use" || block["type"]?.stringValue == "toolCall",
-                          let toolId = block["id"]?.stringValue {
-                    let name = block["name"]?.stringValue ?? "unknown"
-                    let input = block["input"] ?? block["arguments"]
-                    let argsJSON = input.map { anyCodableToJSON($0) } ?? ""
-                    toolUseMap[toolId] = ToolUseInfo(name: name, args: argsJSON, timestamp: timestamp)
-                }
+            let text = stringContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                items.append(.assistant(AssistantMessageItem(id: id, text: text, timestamp: timestamp)))
             }
+            return
         }
 
-        let text = textParts.joined(separator: "\n")
-        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            items.append(.assistant(AssistantMessageItem(
-                id: id, text: text, timestamp: timestamp
+        guard let blocks = content?.arrayValue else { return }
+
+        var assistantParts: [String] = []
+        var reasoningParts: [String] = []
+
+        func flushAssistantParts(index: Int) {
+            let text = assistantParts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else {
+                assistantParts.removeAll(keepingCapacity: true)
+                return
+            }
+            let itemId = assistantParts.count == 1 && index == 0 ? id : "\(id)-text-\(index)"
+            items.append(.assistant(AssistantMessageItem(id: itemId, text: text, timestamp: timestamp)))
+            assistantParts.removeAll(keepingCapacity: true)
+        }
+
+        func flushReasoningParts(index: Int) {
+            let text = reasoningParts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else {
+                reasoningParts.removeAll(keepingCapacity: true)
+                return
+            }
+            items.append(.reasoning(ReasoningItem(
+                id: "reasoning-\(id)-\(index)",
+                text: text,
+                timestamp: timestamp
             )))
+            reasoningParts.removeAll(keepingCapacity: true)
         }
 
-        // Emit tool items for tool_use blocks
-        if let blocks = content?.arrayValue {
-            for block in blocks {
-                if block["type"]?.stringValue == "tool_use" || block["type"]?.stringValue == "toolCall",
-                   let toolId = block["id"]?.stringValue {
-                    let name = block["name"]?.stringValue ?? "unknown"
-                    let input = block["input"] ?? block["arguments"]
-                    let argsJSON = input.map { anyCodableToJSON($0) } ?? ""
-                    items.append(.tool(ToolCallItem(
-                        id: "tool-\(toolId)",
-                        name: name,
-                        argsJSON: argsJSON,
-                        outputText: "",
-                        status: .running,
-                        timestamp: timestamp
-                    )))
+        for (index, block) in blocks.enumerated() {
+            let type = block["type"]?.stringValue
+
+            switch type {
+            case "text":
+                if !reasoningParts.isEmpty {
+                    flushReasoningParts(index: index)
                 }
+                if let text = block["text"]?.stringValue {
+                    assistantParts.append(text)
+                }
+
+            case "thinking":
+                if !assistantParts.isEmpty {
+                    flushAssistantParts(index: index)
+                }
+                if let reasoning = block["thinking"]?.stringValue ?? block["text"]?.stringValue {
+                    reasoningParts.append(reasoning)
+                }
+
+            case "tool_use", "toolCall":
+                if !assistantParts.isEmpty {
+                    flushAssistantParts(index: index)
+                }
+                if !reasoningParts.isEmpty {
+                    flushReasoningParts(index: index)
+                }
+                guard let toolId = block["id"]?.stringValue else { continue }
+                let name = block["name"]?.stringValue ?? "unknown"
+                let input = block["input"] ?? block["arguments"]
+                let argsJSON = input.map { anyCodableToJSON($0) } ?? ""
+                toolUseMap[toolId] = ToolUseInfo(name: name, args: argsJSON, timestamp: timestamp)
+                items.append(.tool(ToolCallItem(
+                    id: "tool-\(toolId)",
+                    name: name,
+                    argsJSON: argsJSON,
+                    outputText: "",
+                    status: .running,
+                    timestamp: timestamp
+                )))
+
+            default:
+                continue
             }
+        }
+
+        if !assistantParts.isEmpty {
+            flushAssistantParts(index: blocks.count)
+        }
+        if !reasoningParts.isEmpty {
+            flushReasoningParts(index: blocks.count)
         }
     }
 

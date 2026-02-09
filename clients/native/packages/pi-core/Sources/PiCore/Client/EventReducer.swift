@@ -8,6 +8,10 @@ extension Client {
         public private(set) var activeAssistantId: String?
         /// Accumulated text for the current assistant message.
         private var activeAssistantText: String = ""
+        /// Id of the currently streaming reasoning item, if any.
+        public private(set) var activeReasoningId: String?
+        /// Accumulated reasoning text for the current turn.
+        private var activeReasoningText: String = ""
 
         public init() {}
 
@@ -31,10 +35,14 @@ extension Client {
             switch event {
             case .agentEnd:
                 flushAssistant(items: &items, streaming: false)
+                flushReasoning(items: &items, streaming: false)
             case .messageStart:
                 flushAssistant(items: &items, streaming: false)
+                flushReasoning(items: &items, streaming: false)
                 activeAssistantId = "assistant-\(seq)"
                 activeAssistantText = ""
+                activeReasoningId = "reasoning-\(seq)"
+                activeReasoningText = ""
             case .messageUpdate(let message, let assistantMessageEvent):
                 handleMessageUpdate(
                     message: message,
@@ -44,6 +52,7 @@ extension Client {
                 )
             case .messageEnd:
                 flushAssistant(items: &items, streaming: false)
+                flushReasoning(items: &items, streaming: false)
             default:
                 return false
             }
@@ -87,8 +96,13 @@ extension Client {
                 activeAssistantId = "assistant-\(seq)"
                 activeAssistantText = ""
             }
+            if activeReasoningId == nil {
+                activeReasoningId = "reasoning-\(seq)"
+                activeReasoningText = ""
+            }
 
             let previousText = activeAssistantText
+            let previousReasoningText = activeReasoningText
 
             // Delta accumulation
             if let evtType = assistantMessageEvent["type"]?.stringValue,
@@ -98,13 +112,20 @@ extension Client {
             }
 
             // Full text from message.content (more reliable)
-            if let text = EventReducerHelpers.extractTextContent(from: message) {
+            let extracted = EventReducerHelpers.extractMessageContent(from: message)
+            if let text = extracted.text {
                 activeAssistantText = text
             }
+            if let reasoning = extracted.reasoning {
+                activeReasoningText = reasoning
+            }
 
-            // Avoid no-op writes that cause extra SwiftUI render churn
-            guard activeAssistantText != previousText else { return }
-            upsertActiveAssistant(items: &items, streaming: true)
+            if activeAssistantText != previousText {
+                upsertActiveAssistant(items: &items, streaming: true)
+            }
+            if activeReasoningText != previousReasoningText {
+                upsertActiveReasoning(items: &items, streaming: true)
+            }
         }
 
         // MARK: - Tool handling
@@ -116,6 +137,7 @@ extension Client {
             items: inout [ConversationItem]
         ) {
             flushAssistant(items: &items, streaming: true)
+            flushReasoning(items: &items, streaming: true)
             let argsJSON = EventReducerHelpers.anyCodableToJSON(args)
             items.append(.tool(ToolCallItem(
                 id: "tool-\(toolCallId)",
@@ -127,7 +149,7 @@ extension Client {
             )))
         }
 
-        // MARK: - Assistant state
+        // MARK: - Assistant and reasoning state
 
         private mutating func flushAssistant(items: inout [ConversationItem], streaming: Bool) {
             guard activeAssistantId != nil else { return }
@@ -138,6 +160,18 @@ extension Client {
             if !streaming {
                 activeAssistantId = nil
                 activeAssistantText = ""
+            }
+        }
+
+        private mutating func flushReasoning(items: inout [ConversationItem], streaming: Bool) {
+            guard activeReasoningId != nil else { return }
+            let text = activeReasoningText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                upsertActiveReasoning(items: &items, streaming: streaming)
+            }
+            if !streaming {
+                activeReasoningId = nil
+                activeReasoningText = ""
             }
         }
 
@@ -154,6 +188,26 @@ extension Client {
             } else {
                 items.append(.assistant(AssistantMessageItem(
                     id: assistantId,
+                    text: text,
+                    timestamp: ISO8601DateFormatter().string(from: Date()),
+                    isStreaming: streaming
+                )))
+            }
+        }
+
+        private func upsertActiveReasoning(items: inout [ConversationItem], streaming: Bool) {
+            guard let reasoningId = activeReasoningId else { return }
+            let text = activeReasoningText
+
+            if let idx = items.lastIndex(where: { $0.id == reasoningId }) {
+                if case .reasoning(var msg) = items[idx] {
+                    msg.text = text
+                    msg.isStreaming = streaming
+                    items[idx] = .reasoning(msg)
+                }
+            } else {
+                items.append(.reasoning(ReasoningItem(
+                    id: reasoningId,
                     text: text,
                     timestamp: ISO8601DateFormatter().string(from: Date()),
                     isStreaming: streaming
@@ -194,24 +248,26 @@ private enum EventReducerHelpers {
         }
     }
 
-    static func extractTextContent(from message: Relay.AnyCodable) -> String? {
-        guard let content = message["content"] else { return nil }
-        if let str = content.stringValue { return str }
+    static func extractMessageContent(from message: Relay.AnyCodable) -> (text: String?, reasoning: String?) {
+        guard let content = message["content"] else { return (nil, nil) }
+        if let str = content.stringValue { return (str, nil) }
         if let blocks = content.arrayValue {
             let text = blocks
                 .filter { $0["type"]?.stringValue == "text" }
                 .compactMap { $0["text"]?.stringValue }
                 .joined(separator: "\n")
-            if !text.isEmpty {
-                return text
-            }
 
-            let hasThinking = blocks.contains { $0["type"]?.stringValue == "thinking" }
-            if hasThinking {
-                return "Thinking…"
-            }
+            let reasoning = blocks
+                .filter { $0["type"]?.stringValue == "thinking" }
+                .compactMap { $0["thinking"]?.stringValue ?? $0["text"]?.stringValue }
+                .joined(separator: "\n")
+
+            return (
+                text.isEmpty ? nil : text,
+                reasoning.isEmpty ? nil : reasoning
+            )
         }
-        return nil
+        return (nil, nil)
     }
 
     static func applyToolUpdate(

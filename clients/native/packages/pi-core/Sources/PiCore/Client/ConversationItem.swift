@@ -5,6 +5,7 @@ extension Client {
     public enum ConversationItem: Identifiable, Equatable, Sendable {
         case user(UserMessageItem)
         case assistant(AssistantMessageItem)
+        case reasoning(ReasoningItem)
         case tool(ToolCallItem)
         case system(SystemItem)
 
@@ -12,6 +13,7 @@ extension Client {
             switch self {
             case .user(let item): item.id
             case .assistant(let item): item.id
+            case .reasoning(let item): item.id
             case .tool(let item): item.id
             case .system(let item): item.id
             }
@@ -39,6 +41,20 @@ extension Client {
     }
 
     public struct AssistantMessageItem: Identifiable, Equatable, Sendable {
+        public let id: String
+        public var text: String
+        public var timestamp: String
+        public var isStreaming: Bool
+
+        public init(id: String, text: String, timestamp: String, isStreaming: Bool = false) {
+            self.id = id
+            self.text = text
+            self.timestamp = timestamp
+            self.isStreaming = isStreaming
+        }
+    }
+
+    public struct ReasoningItem: Identifiable, Equatable, Sendable {
         public let id: String
         public var text: String
         public var timestamp: String

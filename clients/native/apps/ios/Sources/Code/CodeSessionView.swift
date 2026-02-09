@@ -82,21 +82,13 @@ struct CodeSessionView: View {
     private func codeRow(_ item: Client.ConversationItem) -> some View {
         switch item {
         case .user(let msg):
-            // Compact user prompt in code view
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "person.circle.fill")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 14))
-                    .padding(.top, 2)
-                Text(msg.text)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-            }
-            .padding(.vertical, 4)
-            .opacity(msg.sendStatus == .sending ? 0.6 : 1.0)
+            UserBubbleView(message: msg)
 
         case .assistant(let msg):
             AssistantMessageView(message: msg)
+
+        case .reasoning(let reasoning):
+            ReasoningRowView(item: reasoning)
 
         case .tool(let tool):
             ToolCallRow(tool: tool)
@@ -144,16 +136,24 @@ struct CodeSessionView: View {
     ScrollView {
         VStack(alignment: .leading, spacing: 8) {
             // User message
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "person.circle.fill")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 14))
-                    .padding(.top, 2)
-                Text("Fix the login bug in auth.swift")
-                    .font(.body)
-                    .foregroundStyle(.primary)
-            }
-            .padding(.vertical, 4)
+            UserBubbleView(
+                message: Client.UserMessageItem(
+                    id: "u1",
+                    text: "Fix the login bug in auth.swift",
+                    timestamp: "2026-02-09T12:00:00Z",
+                    sendStatus: .sent
+                )
+            )
+
+            // Reasoning
+            ReasoningRowView(
+                item: Client.ReasoningItem(
+                    id: "r1",
+                    text: "First I'll inspect auth.swift, then run tests to confirm a minimal fix.",
+                    timestamp: "2026-02-09T12:00:00Z",
+                    isStreaming: false
+                )
+            )
 
             // Assistant message
             AssistantMessageView(

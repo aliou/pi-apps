@@ -11,6 +11,8 @@ struct MessageRowView: View {
             UserBubbleView(message: msg)
         case .assistant(let msg):
             AssistantMessageView(message: msg)
+        case .reasoning(let reasoning):
+            ReasoningRowView(item: reasoning)
         case .tool(let tool):
             ToolCallRow(tool: tool)
         case .system(let sys):
@@ -38,6 +40,17 @@ struct MessageRowView: View {
                     id: "a1",
                     text: "Of course! What do you need help with?",
                     timestamp: "2025-01-01T00:00:01Z",
+                    isStreaming: false
+                )
+            )
+        )
+
+        MessageRowView(
+            item: .reasoning(
+                Client.ReasoningItem(
+                    id: "r1",
+                    text: "I need to inspect the auth flow before editing.",
+                    timestamp: "2025-01-01T00:00:02Z",
                     isStreaming: false
                 )
             )
