@@ -20,12 +20,12 @@ await esbuild.build({
   format: "esm",
   outfile: "dist/index.js",
   sourcemap: true,
-  // Externalize native dependencies and heavy optional deps
+  // Externalize native deps and packages with CJS __dirname usage
   external: [
     "better-sqlite3",
     "cpu-features",
-    "@smithy/node-http-handler",
-    "@aws-sdk/*",
+    "dockerode",
+    "ssh2",
   ],
   // Banner to provide require() for CJS dependencies
   banner: {
