@@ -1,0 +1,24 @@
+services:
+  relay:
+    build: .
+    image: ghcr.io/aliou/pi-relay
+    ports:
+      - "31415:31415"
+    volumes:
+      # Docker socket for managing sandbox containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent data (use identical host/container paths so sandbox
+      # bind mounts resolve correctly on the Docker host)
+      - relay-data:/data
+      - relay-config:/config
+      - relay-state:/state
+      - relay-cache:/cache
+    environment:
+      - RELAY_ENCRYPTION_KEY=${RELAY_ENCRYPTION_KEY}
+    restart: unless-stopped
+
+volumes:
+  relay-data:
+  relay-config:
+  relay-state:
+  relay-cache:
