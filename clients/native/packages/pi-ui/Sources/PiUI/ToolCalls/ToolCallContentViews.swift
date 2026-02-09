@@ -4,6 +4,7 @@
 //
 //  Specialized content views for each tool type
 //
+// swiftlint:disable file_length
 
 import SwiftUI
 import PiCore
@@ -38,11 +39,20 @@ public struct ToolCallExpandedContent: View {
             case .read(let path, let offset, let limit):
                 ReadToolContent(path: path, offset: offset, limit: limit, output: output)
 
-            case .write(let path, let contentPreview):
-                WriteToolContent(path: path, contentPreview: contentPreview, output: output)
+            case .write(let path, _):
+                WriteToolContent(
+                    path: path,
+                    content: argString("content"),
+                    output: output
+                )
 
-            case .edit(let path, let oldText, let newText):
-                EditToolContent(path: path, oldText: oldText, newText: newText, output: output)
+            case .edit(let path, _, _):
+                EditToolContent(
+                    path: path,
+                    oldText: argString("oldText"),
+                    newText: argString("newText"),
+                    output: output
+                )
 
             case .bash(let command, let timeout):
                 BashToolContent(command: command, timeout: timeout, output: output, status: status)
@@ -60,6 +70,15 @@ public struct ToolCallExpandedContent: View {
                 UnknownToolContent(name: name, args: args, output: output)
             }
         }
+    }
+
+    private func argString(_ key: String) -> String? {
+        guard let args,
+              let data = args.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return dict[key] as? String
     }
 }
 
@@ -97,9 +116,21 @@ struct ReadToolContent: View {
 
             // File content
             if let output, !output.isEmpty {
-                OutputSection(title: "Content", output: output)
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(title: "Content")
+
+                    CodeView(code: output, language: inferredLanguage)
+                        .frame(minHeight: 140, maxHeight: 320)
+                        .padding(10)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(8)
+                }
             }
         }
+    }
+
+    private var inferredLanguage: String? {
+        DiffParser.languageFromFileName(path)
     }
 }
 
@@ -107,7 +138,7 @@ struct ReadToolContent: View {
 
 struct WriteToolContent: View {
     let path: String
-    let contentPreview: String?
+    let content: String?
     let output: String?
 
     var body: some View {
@@ -117,6 +148,17 @@ struct WriteToolContent: View {
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(.teal)
                     .lineLimit(2)
+            }
+
+            if let content, !content.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(title: "Content")
+                    CodeView(code: content, language: DiffParser.languageFromFileName(path))
+                        .frame(minHeight: 120, maxHeight: 260)
+                        .padding(10)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(8)
+                }
             }
 
             if let output, !output.isEmpty {
@@ -143,38 +185,21 @@ struct EditToolContent: View {
                     .lineLimit(2)
             }
 
-            // Diff preview
             if let oldText, let newText {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(title: "Changes")
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("-")
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                .foregroundColor(.red)
-                                .frame(width: 14)
-                            Text(oldText)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(.red)
-                                .lineLimit(3)
-                        }
-
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("+")
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                .foregroundColor(.green)
-                                .frame(width: 14)
-                            Text(newText)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(.green)
-                                .lineLimit(3)
-                        }
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
+                    DiffView(
+                        patches: [
+                            DiffPatchInput(
+                                patch: unifiedPatch(oldText: oldText, newText: newText),
+                                filename: path,
+                                language: DiffParser.languageFromFileName(path)
+                            )
+                        ]
+                    )
+                    .frame(minHeight: 180, maxHeight: 320)
+                    .background(Color.gray.opacity(0.1), in: .rect(cornerRadius: 8))
                 }
             }
 
@@ -182,6 +207,25 @@ struct EditToolContent: View {
                 OutputSection(title: "Result", output: output)
             }
         }
+    }
+
+    private func unifiedPatch(oldText: String, newText: String) -> String {
+        let oldLines = oldText.components(separatedBy: "\n")
+        let newLines = newText.components(separatedBy: "\n")
+
+        var patch: [String] = []
+        patch.append("--- a/\(path)")
+        patch.append("+++ b/\(path)")
+        patch.append("@@ -1,\(max(1, oldLines.count)) +1,\(max(1, newLines.count)) @@")
+
+        for line in oldLines {
+            patch.append("-\(line)")
+        }
+        for line in newLines {
+            patch.append("+\(line)")
+        }
+
+        return patch.joined(separator: "\n")
     }
 }
 

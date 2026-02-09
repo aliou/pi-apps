@@ -143,6 +143,18 @@ struct ToolCallContentViews_Previews: PreviewProvider {
 
                 Divider()
 
+                // Edit tool with diff rendering
+                ToolCallExpandedContent(
+                    toolName: "edit",
+                    args: """
+                    {"path":"src/main.swift","oldText":"let count = 0","newText":"let count = 1"}
+                    """,
+                    output: "Successfully replaced text in src/main.swift",
+                    status: .success
+                )
+
+                Divider()
+
                 // Bash tool
                 ToolCallExpandedContent(
                     toolName: "bash",
