@@ -3,13 +3,13 @@
 # Usage (from server/relay/):
 #   docker compose -f compose.yaml -f compose.dev.yaml up
 #
-# Requires the nix dev shell (which sets PI_RELAY_*_DIR and DOCKER_HOST).
+# Requires the nix dev shell (which sets PI_RELAY_*_DIR and DOCKER_SOCK).
 
 services:
   relay:
     volumes:
-      # Docker socket (Lima on macOS, or default)
-      - ${DOCKER_HOST#unix://}:/var/run/docker.sock
+      # Docker socket path (without unix:// prefix)
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
       # .dev/ dirs -- Lima mounts these at the same absolute path in the VM,
       # so sandbox bind mounts resolve correctly on the Docker host.
       - ${PI_RELAY_DATA_DIR}:${PI_RELAY_DATA_DIR}

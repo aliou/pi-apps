@@ -121,6 +121,9 @@
                 fi
               fi
 
+              # DOCKER_SOCK: socket path without unix:// prefix (for compose volumes)
+              export DOCKER_SOCK="''${DOCKER_HOST#unix://}"
+
               echo ""
               echo "Pi Apps Development Environment"
               echo "================================"
