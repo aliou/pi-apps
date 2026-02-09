@@ -152,9 +152,11 @@ export function createWebSocketHandler(
           const data =
             typeof evt.data === "string"
               ? evt.data
-              : evt.data instanceof Buffer
-                ? evt.data.toString()
-                : "";
+              : evt.data instanceof ArrayBuffer
+                ? new TextDecoder().decode(evt.data)
+                : evt.data instanceof Buffer
+                  ? evt.data.toString()
+                  : "";
 
           const parsed = JSON.parse(data);
 
@@ -170,7 +172,19 @@ export function createWebSocketHandler(
               message: "Unknown command type",
             });
           }
-        } catch {
+        } catch (err) {
+          const raw =
+            typeof evt.data === "string"
+              ? evt.data
+              : evt.data instanceof Buffer
+                ? evt.data.toString()
+                : String(evt.data);
+          console.error(
+            `[ws] session=${sessionId} failed to parse client message: ${err instanceof Error ? err.message : err}`,
+          );
+          console.error(
+            `[ws] session=${sessionId} raw client message: ${raw.slice(0, 500)}`,
+          );
           connection.send({
             type: "error",
             code: "PARSE_ERROR",

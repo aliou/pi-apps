@@ -50,13 +50,13 @@ export const AVAILABLE_DOCKER_IMAGES = [
   {
     id: "codex-universal",
     name: "Codex Universal",
-    image: "ghcr.io/aliou/pi-sandbox-codex-universal",
+    image: "ghcr.io/aliou/pi-sandbox-codex-universal:latest",
     description: "Multi-language environment (Node, Python, Go, Rust, etc.)",
   },
   {
     id: "alpine-arm64",
     name: "Alpine ARM64",
-    image: "ghcr.io/aliou/pi-sandbox-alpine-arm64",
+    image: "ghcr.io/aliou/pi-sandbox-alpine-arm64:latest",
     description: "Lightweight Alpine-based image for ARM64 hosts.",
   },
 ] as const;

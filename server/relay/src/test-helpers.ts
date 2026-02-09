@@ -58,15 +58,42 @@ export function testTimestamp(): string {
 }
 
 /**
- * Create a test sandbox manager with mock provider.
+ * Create a test sandbox manager that routes all provider types through mock.
+ * Tests don't have Docker or Cloudflare available.
  */
 export function createTestSandboxManager(): SandboxManager {
-  return new SandboxManager({
+  const manager = new SandboxManager({
     docker: {
       sessionDataDir: "/tmp/pi-test-sessions",
       secretsBaseDir: "/tmp/pi-test-secrets",
     },
   });
+
+  // Override createForSession to use mock provider in tests
+  const mockCreate = manager.createMockForSession.bind(manager);
+  manager.createForSession = async (sessionId, _envConfig, options) => {
+    return mockCreate(sessionId, options);
+  };
+
+  // Override resumeSession to use mock provider
+  const origResume = manager.resumeSession.bind(manager);
+  manager.resumeSession = async (
+    _providerType,
+    providerId,
+    _envConfig,
+    secrets,
+    githubToken,
+  ) => {
+    return origResume("mock", providerId, undefined, secrets, githubToken);
+  };
+
+  // Override attachSession to use mock provider
+  const origAttach = manager.attachSession.bind(manager);
+  manager.attachSession = async (_providerType, providerId, _envConfig) => {
+    return origAttach("mock", providerId, undefined);
+  };
+
+  return manager;
 }
 
 /**

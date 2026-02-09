@@ -88,6 +88,8 @@ extension Client {
                 activeAssistantText = ""
             }
 
+            let previousText = activeAssistantText
+
             // Delta accumulation
             if let evtType = assistantMessageEvent["type"]?.stringValue,
                evtType == "text_delta",
@@ -100,6 +102,8 @@ extension Client {
                 activeAssistantText = text
             }
 
+            // Avoid no-op writes that cause extra SwiftUI render churn
+            guard activeAssistantText != previousText else { return }
             upsertActiveAssistant(items: &items, streaming: true)
         }
 

@@ -693,12 +693,21 @@ class DockerSandboxHandle implements SandboxHandle {
       this.currentChannel = null;
     }
 
-    // Verify container is running (assume resume() was called)
+    // Ensure container is running before attaching
     const info = await this.container.inspect();
     if (!info.State.Running) {
-      throw new Error(
-        `Cannot attach: container ${this.container.id} is not running (state: ${info.State.Status})`,
-      );
+      const state = info.State.Status;
+      if (state === "exited" || state === "created") {
+        console.log(
+          `[docker] container ${this.container.id} is ${state}, starting before attach`,
+        );
+        await this.container.start();
+        this.setStatus("running");
+      } else {
+        throw new Error(
+          `Cannot attach: container ${this.container.id} is not running (state: ${state})`,
+        );
+      }
     }
 
     const stream = await this.container.attach({

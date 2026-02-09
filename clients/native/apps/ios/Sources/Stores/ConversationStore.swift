@@ -24,6 +24,11 @@ final class ConversationStore {
     private var eventTask: Task<Void, Never>?
     private var eventSeq: Int = 0
 
+    // Throttle high-frequency streaming updates to reduce render churn.
+    private var pendingMessageUpdates: [Relay.ServerEvent] = []
+    private var messageUpdateFlushTask: Task<Void, Never>?
+    private let messageUpdateFlushIntervalNs: UInt64 = 100_000_000
+
     private let client: Relay.RelayClient
     private let sessionId: String
 
@@ -74,6 +79,9 @@ final class ConversationStore {
     func disconnect() {
         eventTask?.cancel()
         eventTask = nil
+        messageUpdateFlushTask?.cancel()
+        messageUpdateFlushTask = nil
+        pendingMessageUpdates.removeAll(keepingCapacity: false)
         Task { await webSocket?.disconnect() }
         webSocket = nil
         connectionState = .disconnected
@@ -123,9 +131,21 @@ final class ConversationStore {
     // MARK: - Event handling
 
     private func handleEvent(_ event: Relay.ServerEvent) {
+        // Throttle only message streaming updates.
+        if case .messageUpdate = event {
+            pendingMessageUpdates.append(event)
+            scheduleMessageUpdateFlushIfNeeded()
+            return
+        }
+
+        // Keep ordering correct: flush pending streaming deltas first.
+        flushPendingMessageUpdates()
+        applyEvent(event)
+    }
+
+    private func applyEvent(_ event: Relay.ServerEvent) {
         eventSeq += 1
 
-        // Track agent running state
         switch event {
         case .agentStart, .turnStart:
             isAgentRunning = true
@@ -136,5 +156,32 @@ final class ConversationStore {
         }
 
         reducer.handle(event, items: &items, seq: eventSeq)
+    }
+
+    private func scheduleMessageUpdateFlushIfNeeded() {
+        guard messageUpdateFlushTask == nil else { return }
+
+        messageUpdateFlushTask = Task { [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: messageUpdateFlushIntervalNs)
+                self.flushPendingMessageUpdates()
+
+                if self.pendingMessageUpdates.isEmpty {
+                    self.messageUpdateFlushTask = nil
+                    return
+                }
+            }
+        }
+    }
+
+    private func flushPendingMessageUpdates() {
+        guard !pendingMessageUpdates.isEmpty else { return }
+        let batch = pendingMessageUpdates
+        pendingMessageUpdates.removeAll(keepingCapacity: true)
+        for event in batch {
+            applyEvent(event)
+        }
     }
 }

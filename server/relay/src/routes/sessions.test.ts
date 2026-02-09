@@ -21,6 +21,7 @@ describe("Sessions Routes", () => {
     const result = createTestDatabase();
     db = result.db;
     sqlite = result.sqlite;
+    const environmentService = new EnvironmentService(db);
     services = {
       db,
       sessionService: new SessionService(db),
@@ -29,9 +30,17 @@ describe("Sessions Routes", () => {
       githubService: new GitHubService(),
       sandboxManager: createTestSandboxManager(),
       secretsService: createTestSecretsService(db),
-      environmentService: new EnvironmentService(db),
+      environmentService,
       sessionDataDir: "/tmp/test-session-data",
     };
+
+    // All session creation requires a default environment
+    environmentService.create({
+      name: "Test Default",
+      sandboxType: "docker",
+      config: { image: "pi-sandbox:test" },
+      isDefault: true,
+    });
   });
 
   afterEach(() => {
@@ -140,19 +149,21 @@ describe("Sessions Routes", () => {
       expect(json.data.environmentId).toBeDefined();
     });
 
-    it("rejects code session without environment", async () => {
+    it("rejects session with nonexistent environmentId", async () => {
       const app = createApp({ services });
       const res = await app.request("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "code", repoId: "owner/repo" }),
+        body: JSON.stringify({
+          mode: "code",
+          repoId: "owner/repo",
+          environmentId: "nonexistent",
+        }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
       const json = await res.json();
-      expect(json.error).toBe(
-        "No environment specified and no default configured",
-      );
+      expect(json.error).toBe("Environment not found");
     });
 
     it("rejects code session without repoId", async () => {

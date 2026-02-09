@@ -66,14 +66,14 @@ export function sessionsRoutes(): Hono<AppEnv> {
 
     // Resolve environment, repo, and sandbox provider
     let environmentId: string | undefined;
-    let sandboxProvider: SandboxProviderType = "mock"; // chat mode uses mock
+    let sandboxProvider: SandboxProviderType;
     let repoUrl: string | undefined;
     let repoBranch: string | undefined;
     let githubToken: string | undefined;
     let environmentConfig: EnvironmentConfig | undefined;
 
-    if (body.mode === "code") {
-      // Resolve environment
+    // Resolve environment for all modes
+    {
       let environment: ReturnType<typeof environmentService.get>;
       if (body.environmentId) {
         environment = environmentService.get(body.environmentId);
@@ -96,6 +96,9 @@ export function sessionsRoutes(): Hono<AppEnv> {
       environmentId = environment.id;
       sandboxProvider = environment.sandboxType as SandboxProviderType;
       environmentConfig = JSON.parse(environment.config);
+    }
+
+    if (body.mode === "code") {
 
       // Read GitHub token for repo resolution and sandbox git auth
       const db = c.get("db");
@@ -261,6 +264,9 @@ export function sessionsRoutes(): Hono<AppEnv> {
     }
 
     if (session.status === "error") {
+      console.error(
+        `[activate] session=${id} rejected: status=error provider=${session.sandboxProvider} providerId=${session.sandboxProviderId}`,
+      );
       return c.json({ data: null, error: "Session is in error state" }, 409);
     }
 

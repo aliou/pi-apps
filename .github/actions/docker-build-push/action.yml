@@ -80,6 +80,7 @@ runs:
           type=sha,prefix=,format=short
           type=ref,event=branch
           type=ref,event=pr
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
           type=raw,value=${{ steps.pi-version.outputs.version }},enable=${{ steps.pi-version.outputs.version != '' }}
 
     - name: Build and push

@@ -112,8 +112,13 @@ export class WebSocketConnection {
       try {
         const event = JSON.parse(message) as PiEvent;
         this.handleSandboxEvent(event);
-      } catch {
-        // Ignore invalid JSON
+      } catch (err) {
+        console.error(
+          `[ws] session=${this.sessionId} failed to parse sandbox message: ${err instanceof Error ? err.message : err}`,
+        );
+        console.error(
+          `[ws] session=${this.sessionId} raw message: ${message.slice(0, 500)}`,
+        );
       }
     });
 

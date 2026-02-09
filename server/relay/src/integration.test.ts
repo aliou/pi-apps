@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "./app";
 import type { AppDatabase } from "./db/connection";
-import { SandboxManager } from "./sandbox/manager";
 import { EnvironmentService } from "./services/environment.service";
 import { EventJournal } from "./services/event-journal";
 import { GitHubService } from "./services/github.service";
 import { RepoService } from "./services/repo.service";
 import { SessionService } from "./services/session.service";
-import { createTestDatabase, createTestSecretsService } from "./test-helpers";
+import {
+  createTestDatabase,
+  createTestSandboxManager,
+  createTestSecretsService,
+} from "./test-helpers";
 
 /**
  * Integration tests for the session protocol flow.
@@ -21,22 +24,26 @@ describe("Session Protocol Integration", () => {
     const result = createTestDatabase();
     db = result.db;
     sqlite = result.sqlite;
+    const environmentService = new EnvironmentService(db);
     services = {
       db,
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
       githubService: new GitHubService(),
-      sandboxManager: new SandboxManager({
-        docker: {
-          sessionDataDir: "/tmp/pi-test-sessions",
-          secretsBaseDir: "/tmp/pi-test-secrets",
-        },
-      }),
+      sandboxManager: createTestSandboxManager(),
       secretsService: createTestSecretsService(db),
-      environmentService: new EnvironmentService(db),
+      environmentService,
       sessionDataDir: "/tmp/test-session-data",
     };
+
+    // All session creation requires a default environment
+    environmentService.create({
+      name: "Test Default",
+      sandboxType: "docker",
+      config: { image: "pi-sandbox:test" },
+      isDefault: true,
+    });
   });
 
   afterEach(() => {

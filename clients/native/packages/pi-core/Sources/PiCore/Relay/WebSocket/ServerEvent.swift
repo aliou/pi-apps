@@ -65,45 +65,45 @@ extension Relay.ServerEvent: Decodable {
             let message = try container.decode(String.self, forKey: DynamicCodingKeys.string("message"))
             self = .error(code: code, message: message)
 
-        case "agentStart":
+        case "agent_start":
             self = .agentStart
 
-        case "agentEnd":
+        case "agent_end":
             let messages = try container.decode([Relay.AnyCodable].self, forKey: DynamicCodingKeys.string("messages"))
             self = .agentEnd(messages: messages)
 
-        case "turnStart":
+        case "turn_start":
             self = .turnStart
 
-        case "turnEnd":
+        case "turn_end":
             let message = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("message"))
             let toolResults = try container.decode(
                 [Relay.AnyCodable].self, forKey: DynamicCodingKeys.string("toolResults")
             )
             self = .turnEnd(message: message, toolResults: toolResults)
 
-        case "messageStart":
+        case "message_start":
             let message = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("message"))
             self = .messageStart(message: message)
 
-        case "messageUpdate":
+        case "message_update":
             let message = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("message"))
             let assistantMessageEvent = try container.decode(
                 Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("assistantMessageEvent")
             )
             self = .messageUpdate(message: message, assistantMessageEvent: assistantMessageEvent)
 
-        case "messageEnd":
+        case "message_end":
             let message = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("message"))
             self = .messageEnd(message: message)
 
-        case "toolExecutionStart":
+        case "tool_execution_start":
             let toolCallId = try container.decode(String.self, forKey: DynamicCodingKeys.string("toolCallId"))
             let toolName = try container.decode(String.self, forKey: DynamicCodingKeys.string("toolName"))
             let args = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("args"))
             self = .toolExecutionStart(toolCallId: toolCallId, toolName: toolName, args: args)
 
-        case "toolExecutionUpdate":
+        case "tool_execution_update":
             let toolCallId = try container.decode(String.self, forKey: DynamicCodingKeys.string("toolCallId"))
             let toolName = try container.decode(String.self, forKey: DynamicCodingKeys.string("toolName"))
             let args = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("args"))
@@ -114,18 +114,18 @@ extension Relay.ServerEvent: Decodable {
                 toolCallId: toolCallId, toolName: toolName, args: args, partialResult: partialResult
             )
 
-        case "toolExecutionEnd":
+        case "tool_execution_end":
             let toolCallId = try container.decode(String.self, forKey: DynamicCodingKeys.string("toolCallId"))
             let toolName = try container.decode(String.self, forKey: DynamicCodingKeys.string("toolName"))
             let result = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("result"))
             let isError = try container.decode(Bool.self, forKey: DynamicCodingKeys.string("isError"))
             self = .toolExecutionEnd(toolCallId: toolCallId, toolName: toolName, result: result, isError: isError)
 
-        case "autoCompactionStart":
+        case "auto_compaction_start":
             let reason = try container.decode(String.self, forKey: DynamicCodingKeys.string("reason"))
             self = .autoCompactionStart(reason: reason)
 
-        case "autoCompactionEnd":
+        case "auto_compaction_end":
             let result = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("result"))
             let aborted = try container.decode(Bool.self, forKey: DynamicCodingKeys.string("aborted"))
             let willRetry = try container.decode(Bool.self, forKey: DynamicCodingKeys.string("willRetry"))
@@ -136,7 +136,7 @@ extension Relay.ServerEvent: Decodable {
                 result: result, aborted: aborted, willRetry: willRetry, errorMessage: errorMessage
             )
 
-        case "autoRetryStart":
+        case "auto_retry_start":
             let attempt = try container.decode(Int.self, forKey: DynamicCodingKeys.string("attempt"))
             let maxAttempts = try container.decode(Int.self, forKey: DynamicCodingKeys.string("maxAttempts"))
             let delayMs = try container.decode(Int.self, forKey: DynamicCodingKeys.string("delayMs"))
@@ -145,19 +145,19 @@ extension Relay.ServerEvent: Decodable {
                 attempt: attempt, maxAttempts: maxAttempts, delayMs: delayMs, errorMessage: errorMessage
             )
 
-        case "autoRetryEnd":
+        case "auto_retry_end":
             let success = try container.decode(Bool.self, forKey: DynamicCodingKeys.string("success"))
             let attempt = try container.decode(Int.self, forKey: DynamicCodingKeys.string("attempt"))
             let finalError = try container.decodeIfPresent(String.self, forKey: DynamicCodingKeys.string("finalError"))
             self = .autoRetryEnd(success: success, attempt: attempt, finalError: finalError)
 
-        case "extensionError":
+        case "extension_error":
             let extensionPath = try container.decode(String.self, forKey: DynamicCodingKeys.string("extensionPath"))
             let event = try container.decode(String.self, forKey: DynamicCodingKeys.string("event"))
             let error = try container.decode(String.self, forKey: DynamicCodingKeys.string("error"))
             self = .extensionError(extensionPath: extensionPath, event: event, error: error)
 
-        case "extensionUIRequest":
+        case "extension_ui_request":
             let id = try container.decode(String.self, forKey: DynamicCodingKeys.string("id"))
             let method = try container.decode(String.self, forKey: DynamicCodingKeys.string("method"))
             let payload = try container.decode(Relay.AnyCodable.self, forKey: DynamicCodingKeys.string("payload"))
