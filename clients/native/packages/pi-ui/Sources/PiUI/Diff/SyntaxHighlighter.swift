@@ -22,7 +22,7 @@ final class SyntaxHighlighter {
     #endif
 
     // Syntax theme colors using DiffColors
-    private static let syntaxColors: [String: SIMD4<Float>] = [
+    static let syntaxColors: [String: SIMD4<Float>] = [
         "keyword": SIMD4<Float>(0.839, 0.420, 0.663, 1.0),   // pink
         "string": SIMD4<Float>(0.584, 0.820, 0.455, 1.0),    // green
         "comment": SIMD4<Float>(0.443, 0.478, 0.537, 1.0),   // gray

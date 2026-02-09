@@ -44,11 +44,11 @@ public class PiDiffRenderer: NSObject, MTKViewDelegate {
 
     // MARK: - Buffer Sizing Constants
     /// Page size for buffer alignment (4KB is typical VM page size)
-    private static let pageSize = 4096
+    static let pageSize = 4096
     /// Headroom multiplier to avoid frequent reallocation (1.5x)
-    private static let bufferHeadroomMultiplier: Double = 1.5
+    static let bufferHeadroomMultiplier: Double = 1.5
     /// Shrink threshold - only recreate if buffer is more than 2x needed size (50% utilization)
-    private static let shrinkThreshold = 2
+    static let shrinkThreshold = 2
 
     // Data Buffers
     var quadBuffer: MTLBuffer!
@@ -154,7 +154,7 @@ public class PiDiffRenderer: NSObject, MTKViewDelegate {
     /// This reduces buffer recreation frequency by:
     /// 1. Adding 1.5x headroom so small size increases don't trigger reallocation
     /// 2. Aligning to page boundaries for efficient memory allocation
-    private static func optimalBufferSize(for dataSize: Int) -> Int {
+    static func optimalBufferSize(for dataSize: Int) -> Int {
         guard dataSize > 0 else { return 0 }
         // Add headroom to avoid frequent reallocation
         let withHeadroom = Int(Double(dataSize) * bufferHeadroomMultiplier)

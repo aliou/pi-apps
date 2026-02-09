@@ -28,7 +28,7 @@ class PiDiffMetalView: MTKView {
 
     func updateContent(patches: [DiffPatchInput]) {
         let diffResult = DiffParser.fromPatches(patches.map {
-            (patch: $0.patch, language: $0.language, filename: $0.filename)
+            DiffParser.PatchInput(patch: $0.patch, language: $0.language, filename: $0.filename)
         })
         if viewModel == nil {
             viewModel = PiDiffViewModel()
@@ -51,7 +51,7 @@ class PiDiffMetalView: MTKView {
 
         viewModel.setViewport(height: viewportH, scrollY: scrollOffsetY)
         viewModel.update(renderer: renderer)
-        renderer.setScroll(x: 0, y: scrollOffsetY)
+        renderer.setScroll(xPosition: 0, yPosition: scrollOffsetY)
         renderer.uniforms.viewportSize = SIMD2<Float>(viewportW, viewportH)
         renderer.uniforms.scale = Float(scale)
 

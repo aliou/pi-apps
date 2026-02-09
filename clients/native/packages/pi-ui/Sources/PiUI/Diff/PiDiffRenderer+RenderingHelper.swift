@@ -4,7 +4,7 @@ import MetalKit
 
 // MARK: - Rendering Context
 
-private struct RenderContext {
+@MainActor struct RenderContext {
     let renderer: PiDiffRenderer
     let view: MTKView
     let encoder: MTLRenderCommandEncoder
@@ -17,7 +17,7 @@ private struct RenderContext {
 
 // MARK: - Rendering Helper Extension
 
-private enum RenderingHelper {
+@MainActor enum RenderingHelper {
     static func drawFrame(_ context: RenderContext) {
         updateScaleAndViewport(context.renderer, context.view)
         drawBackgrounds(context.renderer, context.encoder, context.rectPipeline, context.quad)

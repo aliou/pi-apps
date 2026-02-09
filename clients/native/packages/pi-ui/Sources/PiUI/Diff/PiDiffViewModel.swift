@@ -26,13 +26,13 @@ public class PiDiffViewModel: ObservableObject {
     // Layout
     private let baseFontSize: Float = 13.0
     var lineHeight: Float { baseFontSize * 1.5 }
-    private let gutterWidth: Float = 80.0
-    private let contentOffsetX: Float = 10.0
+    let gutterWidth: Float = 80.0
+    let contentOffsetX: Float = 10.0
 
     // Text alignment tuning
-    private let baselineRatio: Float = 0.78
-    private let textVerticalOffset: Float = 5
-    private let textHorizontalOffset: Float = -4
+    let baselineRatio: Float = 0.78
+    let textVerticalOffset: Float = 5
+    let textHorizontalOffset: Float = -4
 
     // Virtualization
     private var visibleRange: Range<Float> = 0..<1000
@@ -321,7 +321,7 @@ public class PiDiffViewModel: ObservableObject {
     }
 }
 
-private extension Array {
+extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

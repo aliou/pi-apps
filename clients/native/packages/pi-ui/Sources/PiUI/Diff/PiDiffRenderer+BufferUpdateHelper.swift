@@ -3,7 +3,7 @@ import Metal
 
 // MARK: - Buffer Update Helper Extension
 
-private enum BufferUpdateHelper {
+@MainActor enum BufferUpdateHelper {
     static func updateInstanceBuffer(
         for renderer: PiDiffRenderer,
         instances: [InstanceData]
