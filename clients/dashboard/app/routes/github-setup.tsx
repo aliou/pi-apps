@@ -6,9 +6,10 @@ import {
   TrashIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { TokenForm } from "../components/token-form";
 import { api, type GitHubRepo, type GitHubTokenInfo } from "../lib/api";
+import { fuzzyFilterRepos } from "../lib/repo-search";
 import { cn } from "../lib/utils";
 
 export default function GitHubSetupPage() {
@@ -17,6 +18,7 @@ export default function GitHubSetupPage() {
   const [loading, setLoading] = useState(true);
   const [reposLoading, setReposLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [repoQuery, setRepoQuery] = useState("");
 
   const fetchTokenInfo = useCallback(async () => {
     setLoading(true);
@@ -68,7 +70,13 @@ export default function GitHubSetupPage() {
     await api.delete("/github/token");
     setTokenInfo({ configured: false });
     setRepos([]);
+    setRepoQuery("");
   };
+
+  const filteredRepos = useMemo(
+    () => fuzzyFilterRepos(repos, repoQuery),
+    [repos, repoQuery],
+  );
 
   if (loading) {
     return (
@@ -151,9 +159,19 @@ export default function GitHubSetupPage() {
           {/* Repos list */}
           {tokenInfo.valid && (
             <div>
-              <h2 className="mb-4 text-sm font-semibold text-fg">
-                Repositories
-              </h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-fg">Repositories</h2>
+                <div className="w-full sm:w-80">
+                  <input
+                    type="text"
+                    value={repoQuery}
+                    onChange={(event) => setRepoQuery(event.target.value)}
+                    placeholder="Search repos (fuzzy)…"
+                    className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-muted/70 focus:border-accent"
+                  />
+                </div>
+              </div>
+
               {reposLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted">
                   <CircleNotchIcon className="size-4 animate-spin" />
@@ -161,9 +179,13 @@ export default function GitHubSetupPage() {
                 </div>
               ) : repos.length === 0 ? (
                 <p className="text-sm text-muted">No repositories found.</p>
+              ) : filteredRepos.length === 0 ? (
+                <p className="text-sm text-muted">
+                  No repositories match "{repoQuery}".
+                </p>
               ) : (
                 <div className="flex flex-col gap-px overflow-hidden rounded-xl border border-border">
-                  {repos.slice(0, 10).map((repo) => (
+                  {filteredRepos.slice(0, 10).map((repo) => (
                     <div
                       key={repo.id}
                       className="flex items-center justify-between bg-surface/50 px-4 py-3 transition-colors hover:bg-surface"
@@ -193,9 +215,9 @@ export default function GitHubSetupPage() {
                       </a>
                     </div>
                   ))}
-                  {repos.length > 10 && (
+                  {filteredRepos.length > 10 && (
                     <div className="bg-surface/30 px-4 py-2.5 text-xs text-muted">
-                      And {repos.length - 10} more
+                      And {filteredRepos.length - 10} more
                     </div>
                   )}
                 </div>
