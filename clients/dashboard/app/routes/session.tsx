@@ -133,6 +133,7 @@ export default function SessionPage() {
   const initialPromptSentRef = useRef(false);
   const wsReadyRef = useRef(false);
   const pendingInitialPromptRef = useRef<string | null>(null);
+  const readinessProbeIdRef = useRef<string | null>(null);
 
   const conversationItems = historyItems;
 
@@ -187,8 +188,8 @@ export default function SessionPage() {
   }, [id]);
 
   const sendPrompt = useCallback(
-    (message: string, optimistic = true) => {
-      if (!wsRef.current || !wsReadyRef.current) return;
+    (message: string, optimistic = true): boolean => {
+      if (!wsRef.current || !wsReadyRef.current) return false;
 
       wsRef.current.send(
         JSON.stringify({
@@ -222,9 +223,27 @@ export default function SessionPage() {
         },
       ]);
       lastSeqRef.current = seq;
+      return true;
     },
     [],
   );
+
+  const flushPendingInitialPrompt = useCallback(() => {
+    const pending = pendingInitialPromptRef.current;
+    if (!pending || initialPromptSentRef.current) return;
+
+    const sent = sendPrompt(pending, true);
+    if (!sent) return;
+
+    initialPromptSentRef.current = true;
+    pendingInitialPromptRef.current = null;
+
+    if (pendingPromptKey) {
+      sessionStorage.removeItem(pendingPromptKey);
+    }
+
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [sendPrompt, pendingPromptKey, navigate, location.pathname]);
 
   const connectWebSocket = useCallback(async () => {
     if (!id || !RELAY_URL) return;
@@ -235,6 +254,7 @@ export default function SessionPage() {
     }
 
     wsReadyRef.current = false;
+    readinessProbeIdRef.current = null;
     setConnectionStatus("connecting");
     setError(null);
 
@@ -263,6 +283,7 @@ export default function SessionPage() {
 
     ws.onclose = (evt) => {
       wsReadyRef.current = false;
+      readinessProbeIdRef.current = null;
       setConnectionStatus("disconnected");
       wsRef.current = null;
 
@@ -288,18 +309,31 @@ export default function SessionPage() {
           lastSeqRef.current = event.lastSeq as number;
 
           const pending = pendingInitialPromptRef.current;
-          if (pending && !initialPromptSentRef.current) {
-            initialPromptSentRef.current = true;
-            pendingInitialPromptRef.current = null;
-            sendPrompt(pending, true);
-            if (pendingPromptKey) {
-              sessionStorage.removeItem(pendingPromptKey);
-            }
-            navigate(location.pathname, { replace: true, state: {} });
+          if (pending && !initialPromptSentRef.current && wsRef.current) {
+            const probeId = crypto.randomUUID();
+            readinessProbeIdRef.current = probeId;
+            wsRef.current.send(
+              JSON.stringify({
+                type: "get_state",
+                id: probeId,
+              }),
+            );
           }
 
           return;
         }
+        if (
+          event.type === "response" &&
+          event.command === "get_state" &&
+          event.success === true &&
+          typeof event.id === "string" &&
+          event.id === readinessProbeIdRef.current
+        ) {
+          readinessProbeIdRef.current = null;
+          flushPendingInitialPrompt();
+          return;
+        }
+
         if (event.type === "replay_start" || event.type === "replay_end") {
           return;
         }
@@ -325,7 +359,7 @@ export default function SessionPage() {
         // Ignore parse errors
       }
     };
-  }, [id, refreshHistory, sendPrompt, navigate, location.pathname, pendingPromptKey]);
+  }, [id, refreshHistory, flushPendingInitialPrompt]);
 
   useEffect(() => {
     void connectWebSocket();
@@ -349,7 +383,11 @@ export default function SessionPage() {
     setInputText("");
     setIsSubmitting(true);
 
-    sendPrompt(message, true);
+    const sent = sendPrompt(message, true);
+    if (!sent) {
+      setIsSubmitting(false);
+      return;
+    }
     setTimeout(() => setIsSubmitting(false), 500);
   };
 
