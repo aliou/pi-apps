@@ -1,0 +1,7 @@
+:8080 {
+	root * /srv
+	file_server
+	try_files {path} /index.html
+
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+}
