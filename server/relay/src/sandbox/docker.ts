@@ -5,6 +5,7 @@ import process from "node:process";
 import readline from "node:readline";
 import { type Duplex, PassThrough } from "node:stream";
 import Docker from "dockerode";
+import type { SandboxLogStore } from "./log-store";
 import type { SandboxResourceTier } from "./provider-types";
 import type {
   CleanupResult,
@@ -110,14 +111,16 @@ export class DockerSandboxProvider implements SandboxProvider {
   private handleCache = new Map<string, DockerSandboxHandle>();
   /** Track secrets directories for cleanup */
   private secretsDirs = new Map<string, string>();
+  private logStore: SandboxLogStore | null;
 
-  constructor(config: DockerProviderConfig) {
+  constructor(config: DockerProviderConfig, logStore?: SandboxLogStore) {
     const socketPath = config.socketPath ?? this.resolveDockerSocket();
     this.docker = new Docker({ socketPath });
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
     };
+    this.logStore = logStore ?? null;
   }
 
   /** Resolve Docker socket from DOCKER_HOST env or default path. */
@@ -273,6 +276,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       imageDigest,
       (sid, s) => this.writeSecretsDir(sid, s),
       (sid, t) => this.writeGitConfigForSession(sid, t),
+      this.logStore,
     );
 
     this.handleCache.set(sessionId, handle);
@@ -321,6 +325,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       imageDigest,
       (sid, s) => this.writeSecretsDir(sid, s),
       (sid, t) => this.writeGitConfigForSession(sid, t),
+      this.logStore,
     );
     handle.setInitialStatus(status);
 
@@ -628,6 +633,7 @@ class DockerSandboxHandle implements SandboxHandle {
       secrets?: Record<string, string>,
     ) => string | null,
     private writeGitConfig?: (sessionId: string, githubToken?: string) => void,
+    private logStore?: SandboxLogStore | null,
   ) {}
 
   get providerId(): string {
@@ -729,7 +735,13 @@ class DockerSandboxHandle implements SandboxHandle {
     const stderr = new PassThrough();
     this.container.modem.demuxStream(raw, stdout, stderr);
 
-    const channel = new DockerSandboxChannel(raw, stdout, stderr);
+    const channel = new DockerSandboxChannel(
+      raw,
+      stdout,
+      stderr,
+      this.sessionId,
+      this.logStore ?? undefined,
+    );
     this.currentChannel = channel;
 
     // Monitor container for unexpected exits
@@ -817,6 +829,8 @@ class DockerSandboxChannel implements SandboxChannel {
     private raw: Duplex,
     stdout: PassThrough,
     stderr: PassThrough,
+    sessionId?: string,
+    logStore?: SandboxLogStore,
   ) {
     // Split stdout into lines (each line is a complete JSON message from pi)
     this.rl = readline.createInterface({ input: stdout });
@@ -838,11 +852,14 @@ class DockerSandboxChannel implements SandboxChannel {
     stdout.on("error", () => {});
     stderr.on("error", () => {});
 
-    // Log stderr for debugging (don't expose as messages)
+    // Log stderr for debugging and buffer for REST access
     const stderrRl = readline.createInterface({ input: stderr });
     stderrRl.on("line", (line) => {
       if (line.trim()) {
         console.error(`[sandbox:stderr] ${line}`);
+        if (sessionId && logStore) {
+          logStore.append(sessionId, line);
+        }
       }
     });
   }

@@ -9,6 +9,7 @@ import { modelsRoutes } from "./routes/models";
 import { secretsRoutes } from "./routes/secrets";
 import { sessionsRoutes } from "./routes/sessions";
 import { settingsRoutes } from "./routes/settings";
+import type { SandboxLogStore } from "./sandbox/log-store";
 import type { SandboxManager } from "./sandbox/manager";
 import type { EnvironmentService } from "./services/environment.service";
 import type { EventJournal } from "./services/event-journal";
@@ -27,6 +28,7 @@ export type AppEnv = {
     sandboxManager: SandboxManager;
     secretsService: SecretsService;
     environmentService: EnvironmentService;
+    sandboxLogStore: SandboxLogStore;
     sessionDataDir: string;
   };
 };
@@ -40,6 +42,7 @@ export interface AppServices {
   sandboxManager: SandboxManager;
   secretsService: SecretsService;
   environmentService: EnvironmentService;
+  sandboxLogStore: SandboxLogStore;
   sessionDataDir: string;
 }
 
@@ -61,6 +64,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     c.set("sandboxManager", services.sandboxManager);
     c.set("secretsService", services.secretsService);
     c.set("environmentService", services.environmentService);
+    c.set("sandboxLogStore", services.sandboxLogStore);
     c.set("sessionDataDir", services.sessionDataDir);
     await next();
   });

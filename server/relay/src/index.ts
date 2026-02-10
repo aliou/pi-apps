@@ -10,6 +10,7 @@ import {
   getRelayEncryptionKeyVersion,
   loadEnv,
 } from "./env";
+import { SandboxLogStore } from "./sandbox/log-store";
 import { SandboxManager } from "./sandbox/manager";
 import { CryptoService } from "./services/crypto.service";
 import { EnvironmentService } from "./services/environment.service";
@@ -72,11 +73,13 @@ async function main() {
   // per-environment config. CF API token is fetched from secrets table.
   const sessionDataDir = join(paths.stateDir, "sessions");
 
+  const sandboxLogStore = new SandboxLogStore();
   const sandboxManager = new SandboxManager({
     docker: {
       sessionDataDir,
       secretsBaseDir: paths.stateDir,
     },
+    logStore: sandboxLogStore,
   });
   console.log("Sandbox manager initialized (on-demand providers)");
 
@@ -111,6 +114,7 @@ async function main() {
       sandboxManager,
       secretsService,
       environmentService,
+      sandboxLogStore,
       sessionDataDir,
     },
   });

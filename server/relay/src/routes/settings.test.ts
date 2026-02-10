@@ -2,6 +2,7 @@ import { afterEach, assert, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
 import { settings } from "../db/schema";
+import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
@@ -31,6 +32,7 @@ describe("Settings Routes", () => {
       sandboxManager: createTestSandboxManager(),
       secretsService: createTestSecretsService(db),
       environmentService: new EnvironmentService(db),
+      sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
     };
   });

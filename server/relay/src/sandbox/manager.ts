@@ -2,6 +2,7 @@ import type { EnvironmentRecord } from "../services/environment.service";
 import type { SecretsService } from "../services/secrets.service";
 import { CloudflareSandboxProvider } from "./cloudflare";
 import { DockerSandboxProvider } from "./docker";
+import type { SandboxLogStore } from "./log-store";
 import { MockSandboxProvider } from "./mock";
 import type { SandboxProviderType } from "./provider-types";
 import type {
@@ -40,6 +41,8 @@ export interface SandboxManagerConfig {
     sessionDataDir: string;
     secretsBaseDir: string;
   };
+  /** Optional log store for buffering sandbox stderr lines. */
+  logStore?: SandboxLogStore;
 }
 
 /**
@@ -76,11 +79,14 @@ export class SandboxManager {
 
       let provider = this.providerCache.get(cacheKey);
       if (!provider) {
-        provider = new DockerSandboxProvider({
-          image,
-          sessionDataDir: this.config.docker.sessionDataDir,
-          secretsBaseDir: this.config.docker.secretsBaseDir,
-        });
+        provider = new DockerSandboxProvider(
+          {
+            image,
+            sessionDataDir: this.config.docker.sessionDataDir,
+            secretsBaseDir: this.config.docker.secretsBaseDir,
+          },
+          this.config.logStore,
+        );
         this.providerCache.set(cacheKey, provider);
       }
       return provider;

@@ -369,6 +369,21 @@ export function sessionsRoutes(): Hono<AppEnv> {
     );
   });
 
+  // Get sandbox stderr logs for a session (diagnostics)
+  app.get("/:id/logs", (c) => {
+    const sessionService = c.get("sessionService");
+    const sandboxLogStore = c.get("sandboxLogStore");
+    const id = c.req.param("id");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    const lines = sandboxLogStore.get(id);
+    return c.json({ data: { lines }, error: null });
+  });
+
   // Get recent events for a session (for dashboard)
   app.get("/:id/events", (c) => {
     const sessionService = c.get("sessionService");
@@ -453,8 +468,9 @@ export function sessionsRoutes(): Hono<AppEnv> {
       );
     }
 
-    // Delete session (cascade deletes events)
+    // Delete session (cascade deletes events) and clear logs
     sessionService.delete(id);
+    c.get("sandboxLogStore").clear(id);
 
     return c.json({ data: { ok: true }, error: null });
   });

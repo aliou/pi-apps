@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
+import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { GitHubService } from "../services/github.service";
@@ -31,6 +32,7 @@ describe("Sessions Routes", () => {
       sandboxManager: createTestSandboxManager(),
       secretsService: createTestSecretsService(db),
       environmentService,
+      sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
     };
 
