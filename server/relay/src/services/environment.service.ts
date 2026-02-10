@@ -23,6 +23,8 @@ export interface EnvironmentConfig {
   /** Secret ID referencing the shared secret in the secrets table (required for cloudflare type) */
   secretId?: string;
   resourceTier?: SandboxResourceTier;
+  /** Idle timeout in seconds before the reaper suspends the session. Default: 3600 (1 hour). */
+  idleTimeoutSeconds?: number;
 }
 
 export type SandboxType = "docker" | "cloudflare";

@@ -28,3 +28,13 @@ export function getRelayEncryptionKey(): string | undefined {
 export function getRelayEncryptionKeyVersion(): number {
   return Number.parseInt(process.env.RELAY_ENCRYPTION_KEY_VERSION ?? "1", 10);
 }
+
+/**
+ * Idle reaper check interval in milliseconds.
+ * How often the reaper scans for idle sessions to suspend.
+ * Default: 60000 (60 seconds).
+ */
+export function getIdleCheckIntervalMs(): number {
+  const val = process.env.PI_RELAY_IDLE_CHECK_INTERVAL_MS;
+  return val ? Number.parseInt(val, 10) : 60_000;
+}

@@ -6,6 +6,7 @@ import { ensureDataDirs, parseConfig } from "./config";
 import { createDatabase } from "./db/connection";
 import { runMigrations } from "./db/migrate";
 import {
+  getIdleCheckIntervalMs,
   getRelayEncryptionKey,
   getRelayEncryptionKeyVersion,
   loadEnv,
@@ -16,6 +17,7 @@ import { CryptoService } from "./services/crypto.service";
 import { EnvironmentService } from "./services/environment.service";
 import { EventJournal } from "./services/event-journal";
 import { GitHubService } from "./services/github.service";
+import { IdleReaper } from "./services/idle-reaper";
 import { RepoService } from "./services/repo.service";
 import { SecretsService } from "./services/secrets.service";
 import { SessionService } from "./services/session.service";
@@ -140,6 +142,22 @@ async function main() {
   );
   app.get("/ws/sessions/:id", wsHandler);
 
+  // Start idle reaper
+  const { resolveEnvConfig } = await import("./sandbox/manager");
+  const reaper = new IdleReaper({
+    sessionService,
+    environmentService,
+    secretsService,
+    sandboxManager,
+    connectionManager,
+    resolveEnvConfig,
+    checkIntervalMs: getIdleCheckIntervalMs(),
+  });
+  reaper.start();
+  console.log(
+    `Idle reaper started (check interval: ${getIdleCheckIntervalMs()}ms)`,
+  );
+
   // Start server with WebSocket support
   const server = serve({
     fetch: app.fetch,
@@ -162,6 +180,7 @@ async function main() {
     }
 
     try {
+      reaper.stop();
       server.close();
       sqlite.close();
     } catch {

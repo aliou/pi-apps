@@ -184,6 +184,26 @@ export class SessionService {
   }
 
   /**
+   * List all sessions with status 'active'.
+   */
+  listActiveSessions(): SessionRecord[] {
+    const rows = this.db
+      .select({
+        session: sessions,
+        repoFullName: repos.fullName,
+      })
+      .from(sessions)
+      .leftJoin(repos, eq(repos.id, sessions.repoId))
+      .where(eq(sessions.status, "active"))
+      .all();
+
+    return rows.map((row) => ({
+      ...row.session,
+      repoFullName: row.repoFullName ?? null,
+    }));
+  }
+
+  /**
    * Bump lastActivityAt to current time.
    */
   touch(sessionId: string): void {
