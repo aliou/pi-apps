@@ -1,17 +1,20 @@
 import {
+  ArchiveBoxIcon,
   ArrowLeftIcon,
   BugIcon,
   ChatCircleIcon,
   PaperPlaneTiltIcon,
+  TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { ConversationView } from "../components/conversation-view";
 import { DebugView } from "../components/debug-view";
 import { StatusBadge } from "../components/status-badge";
 import {
   api,
+  type ActivateResponse,
   type EventsResponse,
   type JournalEvent,
   RELAY_URL,
@@ -25,6 +28,10 @@ import { cn } from "../lib/utils";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 type ViewMode = "chat" | "debug";
+
+type LocationState = {
+  initialPrompt?: string;
+};
 
 function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   const colors: Record<ConnectionStatus, string> = {
@@ -92,13 +99,8 @@ function ViewToggle({
   );
 }
 
-/**
- * Fetch session history from the JSONL file on the server.
- */
 async function fetchHistory(sessionId: string): Promise<HistoryItem[]> {
-  const res = await api.get<SessionHistoryResponse>(
-    `/sessions/${sessionId}/history`,
-  );
+  const res = await api.get<SessionHistoryResponse>(`/sessions/${sessionId}/history`);
   if (res.data) {
     return parseHistoryToConversation(res.data.entries);
   }
@@ -107,7 +109,10 @@ async function fetchHistory(sessionId: string): Promise<HistoryItem[]> {
 
 export default function SessionPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { collapsed } = useSidebar();
+
   const [session, setSession] = useState<Session | null>(null);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [events, setEvents] = useState<JournalEvent[]>([]);
@@ -117,16 +122,37 @@ export default function SessionPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [inputText, setInputText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sandboxStatus, setSandboxStatus] = useState<string | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastSeqRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const initialPromptSentRef = useRef(false);
+  const wsReadyRef = useRef(false);
+  const pendingInitialPromptRef = useRef<string | null>(null);
 
-  // The conversation view shows history items from the JSONL file
   const conversationItems = historyItems;
 
-  // Fetch session metadata
+  const locationState = (location.state as LocationState | null) ?? null;
+  const initialPrompt = locationState?.initialPrompt?.trim();
+  const pendingPromptKey = id ? `pendingPrompt:${id}` : null;
+
+  useEffect(() => {
+    if (initialPrompt && !initialPromptSentRef.current) {
+      pendingInitialPromptRef.current = initialPrompt;
+      return;
+    }
+
+    if (!pendingPromptKey || initialPromptSentRef.current) return;
+    const fromStorage = sessionStorage.getItem(pendingPromptKey)?.trim();
+    if (fromStorage) {
+      pendingInitialPromptRef.current = fromStorage;
+    }
+  }, [initialPrompt, pendingPromptKey]);
+
   useEffect(() => {
     if (!id) return;
 
@@ -139,13 +165,11 @@ export default function SessionPage() {
     });
   }, [id]);
 
-  // Fetch initial session history from JSONL file
   useEffect(() => {
     if (!id) return;
     fetchHistory(id).then(setHistoryItems);
   }, [id]);
 
-  // Also fetch initial events for the debug view
   useEffect(() => {
     if (!id) return;
 
@@ -157,41 +181,94 @@ export default function SessionPage() {
     });
   }, [id]);
 
-  // Re-fetch history when a turn ends (full messages available in JSONL)
   const refreshHistory = useCallback(() => {
     if (!id) return;
     fetchHistory(id).then(setHistoryItems);
   }, [id]);
 
-  // Connect WebSocket for live updates
-  const connectWebSocket = useCallback(() => {
+  const sendPrompt = useCallback(
+    (message: string, optimistic = true) => {
+      if (!wsRef.current || !wsReadyRef.current) return;
+
+      wsRef.current.send(
+        JSON.stringify({
+          type: "prompt",
+          message,
+          id: crypto.randomUUID(),
+        }),
+      );
+
+      if (optimistic) {
+        const optimisticId = `optimistic-${Date.now()}`;
+        setHistoryItems((prev) => [
+          ...prev,
+          {
+            type: "user" as const,
+            id: optimisticId,
+            text: message,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+
+      const seq = lastSeqRef.current + 1;
+      setEvents((prev) => [
+        ...prev,
+        {
+          seq,
+          type: "prompt",
+          payload: { type: "prompt", message },
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      lastSeqRef.current = seq;
+    },
+    [],
+  );
+
+  const connectWebSocket = useCallback(async () => {
     if (!id || !RELAY_URL) return;
 
-    // Clear any pending reconnect
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
+    wsReadyRef.current = false;
     setConnectionStatus("connecting");
+    setError(null);
+
+    const activateRes = await api.post<ActivateResponse>(
+      `/sessions/${id}/activate`,
+      {},
+    );
+
+    if (activateRes.error || !activateRes.data) {
+      setConnectionStatus("error");
+      setError(activateRes.error ?? "Failed to activate session");
+      return;
+    }
+
+    setSandboxStatus(activateRes.data.sandboxStatus);
+    lastSeqRef.current = Math.max(lastSeqRef.current, activateRes.data.lastSeq);
 
     const wsUrl = `${RELAY_URL.replace("http", "ws")}/ws/sessions/${id}?lastSeq=${lastSeqRef.current}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setConnectionStatus("connected");
+      setConnectionStatus("connecting");
       setError(null);
     };
 
     ws.onclose = (evt) => {
+      wsReadyRef.current = false;
       setConnectionStatus("disconnected");
       wsRef.current = null;
 
-      // Reconnect after 3 seconds unless it was a clean close
       if (evt.code !== 1000) {
         reconnectTimeoutRef.current = window.setTimeout(() => {
-          connectWebSocket();
+          void connectWebSocket();
         }, 3000);
       }
     };
@@ -205,16 +282,28 @@ export default function SessionPage() {
       try {
         const event = JSON.parse(evt.data as string) as Record<string, unknown>;
 
-        // Handle meta events
         if (event.type === "connected") {
+          wsReadyRef.current = true;
+          setConnectionStatus("connected");
           lastSeqRef.current = event.lastSeq as number;
+
+          const pending = pendingInitialPromptRef.current;
+          if (pending && !initialPromptSentRef.current) {
+            initialPromptSentRef.current = true;
+            pendingInitialPromptRef.current = null;
+            sendPrompt(pending, true);
+            if (pendingPromptKey) {
+              sessionStorage.removeItem(pendingPromptKey);
+            }
+            navigate(location.pathname, { replace: true, state: {} });
+          }
+
           return;
         }
         if (event.type === "replay_start" || event.type === "replay_end") {
           return;
         }
 
-        // Append to events list (for debug view)
         const seq = (event.seq as number) ?? lastSeqRef.current + 1;
         const newEvent: JournalEvent = {
           seq,
@@ -225,7 +314,6 @@ export default function SessionPage() {
         setEvents((prev) => [...prev, newEvent]);
         lastSeqRef.current = seq;
 
-        // Re-fetch history on turn boundaries (full messages now in JSONL)
         if (
           event.type === "turn_end" ||
           event.type === "agent_end" ||
@@ -237,10 +325,10 @@ export default function SessionPage() {
         // Ignore parse errors
       }
     };
-  }, [id, refreshHistory]);
+  }, [id, refreshHistory, sendPrompt, navigate, location.pathname, pendingPromptKey]);
 
   useEffect(() => {
-    connectWebSocket();
+    void connectWebSocket();
 
     return () => {
       if (reconnectTimeoutRef.current) {
@@ -253,7 +341,7 @@ export default function SessionPage() {
     };
   }, [connectWebSocket]);
 
-  // Send prompt
+
   const handleSubmit = () => {
     if (!inputText.trim() || !wsRef.current || isSubmitting) return;
 
@@ -261,45 +349,42 @@ export default function SessionPage() {
     setInputText("");
     setIsSubmitting(true);
 
-    // Send prompt command over WebSocket
-    wsRef.current.send(
-      JSON.stringify({
-        type: "prompt",
-        message,
-        id: crypto.randomUUID(),
-      }),
-    );
-
-    // Add optimistic user message to conversation
-    const optimisticId = `optimistic-${Date.now()}`;
-    setHistoryItems((prev) => [
-      ...prev,
-      {
-        type: "user" as const,
-        id: optimisticId,
-        text: message,
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-
-    // Also add to debug events
-    const seq = lastSeqRef.current + 1;
-    setEvents((prev) => [
-      ...prev,
-      {
-        seq,
-        type: "prompt",
-        payload: { type: "prompt", message },
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-    lastSeqRef.current = seq;
-
-    // Reset submitting state after a moment
+    sendPrompt(message, true);
     setTimeout(() => setIsSubmitting(false), 500);
   };
 
-  // Handle textarea keyboard
+  const handleArchive = async () => {
+    if (!id || !session || session.status === "archived") return;
+    if (!confirm("Archive this session?")) return;
+
+    setIsArchiving(true);
+    const res = await api.post<{ ok: true }>(`/sessions/${id}/archive`, {});
+    setIsArchiving(false);
+
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+
+    navigate("/");
+  };
+
+  const handleDelete = async () => {
+    if (!id || !session || session.status !== "archived") return;
+    if (!confirm("Delete this archived session permanently?")) return;
+
+    setIsDeleting(true);
+    const res = await api.delete<{ ok: true }>(`/sessions/${id}`);
+    setIsDeleting(false);
+
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+
+    navigate("/");
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -307,7 +392,6 @@ export default function SessionPage() {
     }
   };
 
-  // Auto-resize textarea - run when input changes
   const resizeTextarea = () => {
     const textarea = inputRef.current;
     if (textarea) {
@@ -329,7 +413,7 @@ export default function SessionPage() {
             className="mt-4 inline-flex items-center gap-2 text-sm text-muted hover:text-fg"
           >
             <ArrowLeftIcon className="w-4 h-4" />
-            Back to sessions
+            Back to home
           </Link>
         </div>
       </div>
@@ -341,7 +425,6 @@ export default function SessionPage() {
       data-collapsed={collapsed || undefined}
       className="fixed inset-0 flex flex-col bg-bg z-10 md:left-64 md:data-[collapsed]:left-14"
     >
-      {/* Header */}
       <header className="flex-shrink-0 px-6 py-3 border-b border-border bg-surface md:px-10">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -358,6 +441,11 @@ export default function SessionPage() {
                 </h1>
                 {session && <StatusBadge status={session.status} />}
                 <ConnectionBadge status={connectionStatus} />
+                {sandboxStatus && (
+                  <span className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-muted">
+                    sandbox: {sandboxStatus}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-muted">
                 {session?.mode} session
@@ -371,13 +459,32 @@ export default function SessionPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleArchive}
+              disabled={!session || session.status === "archived" || isArchiving}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
+            >
+              <ArchiveBoxIcon className="size-4" />
+              Archive
+            </button>
+            {session?.status === "archived" && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-status-err/30 px-2.5 py-1.5 text-xs text-status-err hover:bg-status-err/10 disabled:opacity-50"
+              >
+                <TrashIcon className="size-4" />
+                Delete
+              </button>
+            )}
             <ViewToggle mode={viewMode} onChange={setViewMode} />
             <span className="text-xs text-muted">{events.length} events</span>
           </div>
         </div>
       </header>
 
-      {/* Content area */}
       <div className="flex-1 overflow-y-auto bg-bg px-6 md:px-10">
         <div className="max-w-4xl mx-auto">
           {viewMode === "chat" ? (
@@ -388,7 +495,6 @@ export default function SessionPage() {
         </div>
       </div>
 
-      {/* Input area (only in chat mode) */}
       {viewMode === "chat" && (
         <div className="flex-shrink-0 border-t border-border bg-surface px-6 py-4 md:px-10">
           <div className="max-w-4xl mx-auto">
@@ -404,7 +510,9 @@ export default function SessionPage() {
                       ? "Type a message... (Enter to send, Shift+Enter for newline)"
                       : "Waiting for connection..."
                   }
-                  disabled={connectionStatus !== "connected"}
+                  disabled={
+                    connectionStatus !== "connected" || session?.status === "archived"
+                  }
                   rows={1}
                   className={cn(
                     "w-full resize-none rounded-xl border border-border bg-bg px-4 py-3 pr-10",
@@ -429,7 +537,8 @@ export default function SessionPage() {
                 disabled={
                   !inputText.trim() ||
                   connectionStatus !== "connected" ||
-                  isSubmitting
+                  isSubmitting ||
+                  session?.status === "archived"
                 }
                 className={cn(
                   "flex-shrink-0 p-3 rounded-xl transition-colors",
@@ -441,6 +550,9 @@ export default function SessionPage() {
                 <PaperPlaneTiltIcon className="w-5 h-5" weight="fill" />
               </button>
             </div>
+            {error && (
+              <p className="mt-2 text-xs text-status-err">{error}</p>
+            )}
           </div>
         </div>
       )}

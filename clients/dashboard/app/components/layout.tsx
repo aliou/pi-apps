@@ -82,13 +82,14 @@ export default function AppLayout() {
 
   // Determine current page label for mobile header
   const currentLabel = (() => {
-    if (location.pathname === "/") return "Sessions";
+    if (location.pathname === "/") return "New Session";
     if (location.pathname.startsWith("/sessions/")) return "Session";
     if (location.pathname.startsWith("/settings")) {
       if (location.pathname === "/settings/secrets") return "Settings: Secrets";
       if (location.pathname === "/settings/github") return "Settings: GitHub";
       if (location.pathname === "/settings/environments")
         return "Settings: Environments";
+      if (location.pathname === "/settings/models") return "Settings: Models";
       return "Settings";
     }
     return "Pi Relay";
@@ -290,6 +291,19 @@ export default function AppLayout() {
                   >
                     <CubeIcon className="size-[18px]" weight="regular" />
                     Environments
+                  </NavLink>
+                  <NavLink
+                    to="/settings/models"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+                      location.pathname === "/settings/models"
+                        ? "bg-surface text-fg"
+                        : "text-muted hover:bg-surface/50 hover:text-fg",
+                    )}
+                  >
+                    <CodeIcon className="size-[18px]" weight="regular" />
+                    Models
                   </NavLink>
                 </div>
               </Collapsible.Content>

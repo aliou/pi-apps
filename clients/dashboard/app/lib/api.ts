@@ -97,6 +97,14 @@ export interface GitHubRepo {
   defaultBranch: string;
 }
 
+export interface ModelInfo {
+  provider: string;
+  modelId: string;
+  name?: string;
+  contextWindow?: number;
+  maxOutput?: number;
+}
+
 export interface JournalEvent {
   seq: number;
   type: string;

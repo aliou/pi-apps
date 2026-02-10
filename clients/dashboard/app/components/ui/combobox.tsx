@@ -10,11 +10,11 @@ const styles = {
     "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-muted/70 focus:border-accent",
   trigger:
     "absolute right-1 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-muted hover:text-fg",
-  positioner: "z-20",
+  positioner: "z-50",
   content:
     "mt-1 max-h-72 overflow-auto rounded-lg border border-border bg-bg p-1 shadow-xl",
   item:
-    "flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-sm text-fg outline-none data-[highlighted]:bg-surface",
+    "flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm text-fg outline-none data-[highlighted]:bg-surface",
   itemText: "truncate",
   itemIndicator: "text-accent",
 };
