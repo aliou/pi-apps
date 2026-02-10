@@ -72,6 +72,23 @@ Run `make help` for all targets. Key ones:
 - `make test` - run native tests
 - `make clean` - remove generated projects and build artifacts
 
+## Docker Images
+
+Pre-built images are published to GitHub Container Registry on pushes to `main`.
+
+| Image | Path | Port |
+|-------|------|------|
+| Relay server | `ghcr.io/aliou/pi-relay` | 31415 |
+| Dashboard | `ghcr.io/aliou/pi-dashboard` | 8080 |
+
+Sandbox images (used by the relay to run pi sessions):
+
+| Image | Path |
+|-------|------|
+| Alpine (arm64) | `ghcr.io/aliou/pi-sandbox-alpine-arm64` |
+| Codex (universal) | `ghcr.io/aliou/pi-sandbox-codex-universal` |
+| Cloudflare | `ghcr.io/aliou/pi-sandbox-cloudflare` |
+
 ## Requirements
 
 - Nix (for development shell)
