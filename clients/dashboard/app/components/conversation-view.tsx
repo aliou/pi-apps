@@ -31,6 +31,13 @@ function findDiffText(output: string): string | undefined {
   return output;
 }
 
+function trimCodeBlockTrailingBlankLines(markdown: string): string {
+  return markdown.replace(/```([^\n`]*)\n([\s\S]*?)```/g, (_match, language, code) => {
+    const trimmedCode = String(code).replace(/\n+$/, "");
+    return `\`\`\`${language}\n${trimmedCode}\n\`\`\``;
+  });
+}
+
 export function ConversationView({
   items,
   autoScroll = true,
@@ -122,14 +129,18 @@ function AssistantMessage({
           <div
             className={cn(
               "text-sm text-fg [&_.sd-markdown]:text-sm",
-              "[&_.sd-markdown_pre]:overflow-x-auto [&_.sd-markdown_pre]:rounded-md [&_.sd-markdown_pre]:bg-bg-deep [&_.sd-markdown_pre]:p-3",
+              "[&_[data-streamdown=code-block]]:overflow-hidden [&_[data-streamdown=code-block]]:rounded-md [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border/80",
+              "[&_[data-streamdown=code-block-header]]:hidden",
+              "[&_[data-streamdown=code-block-body]]:bg-bg-deep [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:border-0",
+              "dark:[&_[data-streamdown=code-block-body]]:bg-[#2B3E54]",
+              "[&_.sd-markdown_pre]:overflow-x-auto [&_.sd-markdown_pre]:rounded-md",
               "[&_[data-streamdown=inline-code]]:font-mono [&_[data-streamdown=inline-code]]:text-[0.92em]",
               "[&_[data-streamdown=inline-code]]:rounded-md [&_[data-streamdown=inline-code]]:border [&_[data-streamdown=inline-code]]:border-border/80",
               "[&_[data-streamdown=inline-code]]:bg-bg-deep [&_[data-streamdown=inline-code]]:px-1.5 [&_[data-streamdown=inline-code]]:py-0.5",
               "dark:[&_[data-streamdown=inline-code]]:bg-[#203246] dark:[&_[data-streamdown=inline-code]]:text-[#D8E4F2] dark:[&_[data-streamdown=inline-code]]:border-[#36506B]",
             )}
           >
-            <Streamdown>{item.text}</Streamdown>
+            <Streamdown>{trimCodeBlockTrailingBlankLines(item.text)}</Streamdown>
           </div>
           <button
             type="button"
