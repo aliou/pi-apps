@@ -54,7 +54,7 @@
               enable = true;
               name = "biome-check-relay";
               description = "Lint and format relay server TypeScript files";
-              entry = "cd server/relay && ${pkgs.pnpm}/bin/pnpm exec biome check --no-errors-on-unmatched";
+              entry = "cd server/relay && ${pkgs.pnpm}/bin/pnpm exec biome check --write --no-errors-on-unmatched --staged";
               files = "^server/relay/.*\\.(ts|tsx|js|jsx|json|mjs)$";
               language = "system";
               pass_filenames = false;
@@ -63,7 +63,7 @@
               enable = true;
               name = "biome-check-dashboard";
               description = "Lint and format dashboard TypeScript files";
-              entry = "cd clients/dashboard && ${pkgs.pnpm}/bin/pnpm exec biome check --no-errors-on-unmatched";
+              entry = "cd clients/dashboard && ${pkgs.pnpm}/bin/pnpm exec biome check --write --no-errors-on-unmatched --staged";
               files = "^clients/dashboard/.*\\.(ts|tsx|js|jsx|json|mjs)$";
               language = "system";
               pass_filenames = false;

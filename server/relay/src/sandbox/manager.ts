@@ -258,7 +258,10 @@ export class SandboxManager {
       );
       await handle.terminate();
     } catch (err) {
-      console.error(`[sandbox] terminate failed for ${providerId} (may already be gone):`, err);
+      console.error(
+        `[sandbox] terminate failed for ${providerId} (may already be gone):`,
+        err,
+      );
     }
   }
 

@@ -311,7 +311,10 @@ class CloudflareSandboxHandle implements SandboxHandle {
         this.setStatus("error");
       }
     } catch (err) {
-      console.error(`[cloudflare] status poll failed for sandbox ${this.config.sessionId}:`, err);
+      console.error(
+        `[cloudflare] status poll failed for sandbox ${this.config.sessionId}:`,
+        err,
+      );
       this.setStatus("error");
     }
   }

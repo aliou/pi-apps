@@ -373,7 +373,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         this.handleCache.delete(sessionId);
         this.cleanupSecretsDir(sessionId);
       } catch (err) {
-        console.error(`[docker] cleanup: failed to remove container ${c.Id}:`, err);
+        console.error(
+          `[docker] cleanup: failed to remove container ${c.Id}:`,
+          err,
+        );
       }
     }
 
@@ -597,7 +600,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       try {
         rmSync(secretsDir, { recursive: true, force: true });
       } catch (err) {
-        console.error(`[docker] failed to clean up secrets dir for session ${sessionId}:`, err);
+        console.error(
+          `[docker] failed to clean up secrets dir for session ${sessionId}:`,
+          err,
+        );
       }
       this.secretsDirs.delete(sessionId);
     }
@@ -753,12 +759,18 @@ class DockerSandboxHandle implements SandboxHandle {
     try {
       await this.container.stop({ t: 10 });
     } catch (err) {
-      console.error(`[docker] terminate: failed to stop container ${this.container.id}:`, err);
+      console.error(
+        `[docker] terminate: failed to stop container ${this.container.id}:`,
+        err,
+      );
     }
     try {
       await this.container.remove({ force: true });
     } catch (err) {
-      console.error(`[docker] terminate: failed to remove container ${this.container.id}:`, err);
+      console.error(
+        `[docker] terminate: failed to remove container ${this.container.id}:`,
+        err,
+      );
     }
     this.setStatus("stopped");
   }
@@ -782,7 +794,10 @@ class DockerSandboxHandle implements SandboxHandle {
       await this.container.wait();
       this.setStatus("stopped");
     } catch (err) {
-      console.error(`[docker] container ${this.container.id} monitor error:`, err);
+      console.error(
+        `[docker] container ${this.container.id} monitor error:`,
+        err,
+      );
       this.setStatus("error");
     }
   }

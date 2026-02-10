@@ -201,7 +201,10 @@ export function sessionsRoutes(): Hono<AppEnv> {
               sandboxImageDigest: handle.imageDigest,
             });
           } catch (err) {
-            console.error(`[sessions] failed to update session ${session.id} after sandbox creation:`, err);
+            console.error(
+              `[sessions] failed to update session ${session.id} after sandbox creation:`,
+              err,
+            );
           }
         })
         .catch((err) => {
