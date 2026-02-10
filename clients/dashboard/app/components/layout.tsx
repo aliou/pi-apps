@@ -1,17 +1,53 @@
 import {
+  CaretDownIcon,
+  CaretRightIcon,
+  ChatCircleIcon,
+  CodeIcon,
+  CubeIcon,
   GearIcon,
+  GitBranchIcon,
+  GithubLogoIcon,
+  KeyIcon,
   ListIcon,
   SidebarSimpleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { api, type Session } from "../lib/api";
 import { useSidebar } from "../lib/sidebar";
 import { cn, getSessionDisplayTitle } from "../lib/utils";
 import { Logo } from "./logo";
 import { StatusDot } from "./status-badge";
 import { ThemeToggle, ThemeToggleCycler } from "./theme-toggle";
+import { Collapsible } from "./ui";
+
+function formatRelativeTime(iso: string): string {
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  if (!Number.isFinite(diffMs)) return "-";
+
+  const diffSec = Math.max(0, Math.floor(diffMs / 1000));
+  if (diffSec < 60) return "now";
+
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m`;
+
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h`;
+
+  const diffD = Math.floor(diffH / 24);
+  return `${diffD}d`;
+}
+
+function getRepoLabel(session: Session): string | undefined {
+  // Match native app: prefer fullName (user/name). Fallback to repoPath basename.
+  if (session.repoFullName) return session.repoFullName;
+  if (!session.repoPath) return undefined;
+
+  const parts = session.repoPath.split("/").filter(Boolean);
+  return parts.at(-1);
+}
 
 export default function AppLayout() {
   const { collapsed, toggle } = useSidebar();
@@ -19,22 +55,30 @@ export default function AppLayout() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/settings")) setSettingsOpen(true);
+  }, [location.pathname]);
 
   // Fetch sessions
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     const res = await api.get<Session[]>("/sessions");
     if (res.data) {
       setSessions(res.data);
     }
     setSessionsLoading(false);
-  };
+  }, []);
 
   // Initial fetch and polling
   useEffect(() => {
     fetchSessions();
     const interval = setInterval(fetchSessions, 30000); // Poll every 30s
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchSessions]);
 
   // Determine current page label for mobile header
   const currentLabel = (() => {
@@ -140,6 +184,119 @@ export default function AppLayout() {
           </button>
         </div>
 
+        {/* ── Settings (accordion) ── */}
+        <div
+          className={cn(
+            "shrink-0 border-b border-border",
+            collapsed ? "md:px-2 md:py-3" : "px-3 py-3",
+          )}
+        >
+          {collapsed ? (
+            <NavLink
+              to="/settings/secrets"
+              onClick={() => setMobileOpen(false)}
+              title="Settings"
+              className={cn(
+                "flex items-center rounded-lg text-sm font-medium transition-colors",
+                "md:justify-center md:p-2",
+                location.pathname.startsWith("/settings")
+                  ? "bg-surface text-fg"
+                  : "text-muted hover:bg-surface/50 hover:text-fg",
+              )}
+            >
+              <GearIcon
+                className="size-[18px] shrink-0"
+                weight={
+                  location.pathname.startsWith("/settings") ? "fill" : "regular"
+                }
+              />
+              <span className="md:hidden">Settings</span>
+            </NavLink>
+          ) : (
+            <Collapsible.Root
+              open={settingsOpen}
+              onOpenChange={(details) => {
+                setSettingsOpen(details.open);
+              }}
+            >
+              <Collapsible.Trigger
+                type="button"
+                onClick={() => {
+                  // On open / first click, always navigate to the first settings page.
+                  if (!settingsOpen) navigate("/settings/secrets");
+                }}
+                className={cn(
+                  "w-full flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  location.pathname.startsWith("/settings")
+                    ? "bg-surface text-fg"
+                    : "text-muted hover:bg-surface/50 hover:text-fg",
+                )}
+              >
+                <GearIcon
+                  className="size-[18px] shrink-0"
+                  weight={
+                    location.pathname.startsWith("/settings")
+                      ? "fill"
+                      : "regular"
+                  }
+                />
+                <span className="ml-3">Settings</span>
+                <span className="ml-auto text-muted">
+                  {settingsOpen ? (
+                    <CaretDownIcon className="size-4" />
+                  ) : (
+                    <CaretRightIcon className="size-4" />
+                  )}
+                </span>
+              </Collapsible.Trigger>
+
+              <Collapsible.Content>
+                <div className="mt-1 flex flex-col gap-1 pl-3">
+                  <NavLink
+                    to="/settings/secrets"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+                      location.pathname === "/settings/secrets"
+                        ? "bg-surface text-fg"
+                        : "text-muted hover:bg-surface/50 hover:text-fg",
+                    )}
+                  >
+                    <KeyIcon className="size-[18px]" weight="regular" />
+                    Secrets
+                  </NavLink>
+                  <NavLink
+                    to="/settings/github"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+                      location.pathname === "/settings/github"
+                        ? "bg-surface text-fg"
+                        : "text-muted hover:bg-surface/50 hover:text-fg",
+                    )}
+                  >
+                    <GithubLogoIcon className="size-[18px]" weight="regular" />
+                    GitHub
+                  </NavLink>
+                  <NavLink
+                    to="/settings/environments"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+                      location.pathname === "/settings/environments"
+                        ? "bg-surface text-fg"
+                        : "text-muted hover:bg-surface/50 hover:text-fg",
+                    )}
+                  >
+                    <CubeIcon className="size-[18px]" weight="regular" />
+                    Environments
+                  </NavLink>
+                </div>
+              </Collapsible.Content>
+            </Collapsible.Root>
+          )}
+        </div>
+
         {/* ── Sessions List Section ── */}
         <div
           className={cn(
@@ -183,11 +340,26 @@ export default function AppLayout() {
                 )}
               </div>
             ) : (
-              <div className="flex flex-col gap-1">
-                {sessions.map((session) => {
-                  const isActive =
+              (() => {
+                const sorted = [...sessions].sort((a, b) =>
+                  b.lastActivityAt.localeCompare(a.lastActivityAt),
+                );
+
+                const activeSessions = sorted.filter(
+                  (s) => s.status === "active" || s.status === "creating",
+                );
+                const idleSessions = sorted.filter(
+                  (s) => s.status === "suspended" || s.status === "error",
+                );
+                const archivedSessions = sorted.filter(
+                  (s) => s.status === "deleted",
+                );
+
+                const renderRow = (session: Session) => {
+                  const isCurrent =
                     location.pathname === `/sessions/${session.id}`;
                   const displayName = getSessionDisplayTitle(session);
+                  const repoLabel = getRepoLabel(session);
 
                   return (
                     <NavLink
@@ -196,59 +368,117 @@ export default function AppLayout() {
                       onClick={() => setMobileOpen(false)}
                       title={collapsed ? displayName : undefined}
                       className={cn(
-                        "flex items-center rounded-lg text-sm transition-colors",
+                        "w-full rounded-lg text-sm transition-colors",
                         collapsed
-                          ? "md:justify-center md:p-2"
-                          : "gap-2.5 px-3 py-2",
-                        isActive
+                          ? "flex items-center md:justify-center md:p-2"
+                          : "flex items-start gap-2.5 px-3 py-2",
+                        isCurrent
                           ? "bg-surface text-fg"
                           : "text-muted hover:bg-surface/50 hover:text-fg",
                       )}
                     >
                       <StatusDot status={session.status} className="shrink-0" />
-                      <span
-                        className={cn("truncate", collapsed && "md:hidden")}
+
+                      <div
+                        className={cn(
+                          "min-w-0 flex flex-1 items-start justify-between gap-3",
+                          collapsed && "md:hidden",
+                        )}
                       >
-                        {displayName}
-                      </span>
+                        <div className="min-w-0">
+                          <div className="truncate text-fg">{displayName}</div>
+
+                          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
+                            {session.mode === "chat" ? (
+                              <ChatCircleIcon className="size-3.5" />
+                            ) : (
+                              <>
+                                <CodeIcon className="size-3.5 text-fg" />
+                                {repoLabel && (
+                                  <span className="inline-flex min-w-0 items-center gap-1">
+                                    <GitBranchIcon className="size-3.5 shrink-0" />
+                                    <span className="truncate">
+                                      {repoLabel}
+                                    </span>
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 pt-0.5 text-xs text-muted tabular-nums">
+                          {formatRelativeTime(session.lastActivityAt)}
+                        </div>
+                      </div>
                     </NavLink>
                   );
-                })}
-              </div>
+                };
+
+                const Section = ({
+                  title,
+                  items,
+                }: {
+                  title: string;
+                  items: Session[];
+                }) => {
+                  if (items.length === 0) return null;
+                  return (
+                    <div className="flex flex-col gap-1">
+                      <div
+                        className={cn("px-3 pt-2", collapsed && "md:hidden")}
+                      >
+                        <span className="text-[11px] font-medium uppercase tracking-wider text-muted/70">
+                          {title}
+                        </span>
+                      </div>
+                      {items.map(renderRow)}
+                    </div>
+                  );
+                };
+
+                return (
+                  <div className="flex flex-col gap-2">
+                    <Section title="Active" items={activeSessions} />
+                    <Section title="Idle" items={idleSessions} />
+
+                    {archivedSessions.length > 0 && !collapsed ? (
+                      <Collapsible.Root
+                        open={archivedOpen}
+                        onOpenChange={(details) =>
+                          setArchivedOpen(details.open)
+                        }
+                      >
+                        <div className="px-3 pt-2">
+                          <Collapsible.Trigger
+                            type="button"
+                            className={cn(
+                              "w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium",
+                              "text-muted hover:bg-surface/50 hover:text-fg",
+                            )}
+                          >
+                            Archived
+                            <span className="ml-auto text-muted">
+                              {archivedOpen ? (
+                                <CaretDownIcon className="size-4" />
+                              ) : (
+                                <CaretRightIcon className="size-4" />
+                              )}
+                            </span>
+                          </Collapsible.Trigger>
+                        </div>
+                        <Collapsible.Content>
+                          <div className="mt-1 flex flex-col gap-1">
+                            {archivedSessions.map(renderRow)}
+                          </div>
+                        </Collapsible.Content>
+                      </Collapsible.Root>
+                    ) : null}
+                  </div>
+                );
+              })()
             )}
           </div>
-        </div>
-
-        {/* Spacer */}
-        <div className="shrink-0" />
-
-        {/* ── Settings Link ── */}
-        <div
-          className={cn(
-            "shrink-0 border-t border-border py-3",
-            collapsed ? "md:px-2" : "px-3",
-          )}
-        >
-          <NavLink
-            to="/settings/secrets"
-            onClick={() => setMobileOpen(false)}
-            title={collapsed ? "Settings" : undefined}
-            className={cn(
-              "flex items-center rounded-lg text-sm font-medium transition-colors",
-              collapsed ? "md:justify-center md:p-2" : "gap-3 px-3 py-2",
-              location.pathname.startsWith("/settings")
-                ? "bg-surface text-fg"
-                : "text-muted hover:bg-surface/50 hover:text-fg",
-            )}
-          >
-            <GearIcon
-              className="size-[18px] shrink-0"
-              weight={
-                location.pathname.startsWith("/settings") ? "fill" : "regular"
-              }
-            />
-            <span className={cn(collapsed && "md:hidden")}>Settings</span>
-          </NavLink>
         </div>
 
         {/* ── Footer ── */}

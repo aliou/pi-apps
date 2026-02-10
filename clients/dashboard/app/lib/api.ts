@@ -58,7 +58,13 @@ export interface Session {
   id: string;
   mode: "chat" | "code";
   status: "creating" | "active" | "suspended" | "error" | "deleted";
+
+  // Repo linkage
+  // repoId is the repo primary key in our DB (can be owner/name or a numeric GitHub id string)
   repoId?: string;
+  // repoFullName is the canonical user/name string (joined from repos table)
+  repoFullName?: string | null;
+
   repoPath?: string;
   branchName?: string;
   name?: string;

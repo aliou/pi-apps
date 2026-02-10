@@ -361,7 +361,11 @@ export default function SessionPage() {
               </div>
               <p className="text-xs text-muted">
                 {session?.mode} session
-                {session?.repoId && ` - ${session.repoId}`}
+                {session?.repoFullName
+                  ? ` - ${session.repoFullName}`
+                  : session?.repoId
+                    ? ` - ${session.repoId}`
+                    : ""}
               </p>
             </div>
           </div>
