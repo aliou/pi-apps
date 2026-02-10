@@ -8,6 +8,7 @@ import {
   WrenchIcon,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { Streamdown } from "streamdown";
 import type { HistoryItem } from "../lib/history";
 import { cn } from "../lib/utils";
 
@@ -104,7 +105,9 @@ function AssistantMessage({
           <span className="text-xs font-semibold text-muted">Pi</span>
         </div>
         <div className="bg-surface border border-border rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm group relative">
-          <p className="text-sm whitespace-pre-wrap text-fg">{item.text}</p>
+          <div className="text-sm text-fg [&_.sd-markdown]:text-sm [&_.sd-markdown_pre]:overflow-x-auto [&_.sd-markdown_pre]:rounded-md [&_.sd-markdown_pre]:bg-bg-deep [&_.sd-markdown_pre]:p-3 [&_.sd-markdown_code]:font-mono">
+            <Streamdown>{item.text}</Streamdown>
+          </div>
           <button
             type="button"
             onClick={handleCopy}

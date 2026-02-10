@@ -9,6 +9,7 @@ export default [
   layout("components/layout.tsx", [
     index("routes/dashboard.tsx"),
     route("sessions/:id", "routes/session.tsx"),
+    route("ui", "routes/ui.tsx"),
     layout("routes/settings-layout.tsx", [
       route("settings", "routes/settings-index.tsx"),
       route("settings/secrets", "routes/settings.tsx"),

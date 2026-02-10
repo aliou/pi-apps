@@ -87,12 +87,16 @@ export default function AppLayout() {
           )}
         >
           <div className="flex items-center justify-between px-5 py-4">
-            <div className="flex items-center gap-3">
+            <NavLink
+              to="/"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-3"
+            >
               <Logo variant="accent" className="size-6 shrink-0" />
               <span className="text-base font-semibold tracking-wide text-fg">
                 Pi Relay
               </span>
-            </div>
+            </NavLink>
 
             {/* Desktop: collapse toggle */}
             <button
@@ -123,7 +127,9 @@ export default function AppLayout() {
             collapsed && "md:flex",
           )}
         >
-          <Logo variant="accent" className="size-6" />
+          <NavLink to="/" onClick={() => setMobileOpen(false)}>
+            <Logo variant="accent" className="size-6" />
+          </NavLink>
           <button
             type="button"
             onClick={toggle}
