@@ -262,6 +262,35 @@ class CloudflareSandboxHandle implements SandboxHandle {
     this.setStatus("stopped");
   }
 
+  /**
+   * Execute a command inside the running container via the bridge's /exec endpoint.
+   */
+  async exec(command: string): Promise<{ exitCode: number; output: string }> {
+    const response = await this.workerFetch(
+      `/api/sandboxes/${this.config.sessionId}/exec`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command }),
+      },
+    );
+
+    const text = await response.text();
+    if (!response.ok) {
+      return { exitCode: 1, output: text };
+    }
+
+    try {
+      const data = JSON.parse(text) as { output?: string; exitCode?: number };
+      return {
+        exitCode: data.exitCode ?? 0,
+        output: data.output ?? "",
+      };
+    } catch {
+      return { exitCode: 0, output: text };
+    }
+  }
+
   onStatusChange(handler: (status: SandboxStatus) => void): () => void {
     this.statusListeners.add(handler);
     return () => {

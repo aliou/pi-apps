@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import type { AppDatabase } from "./db/connection";
 import { environmentsRoutes } from "./routes/environments";
+import { extensionConfigsRoutes } from "./routes/extension-configs";
 import { githubRoutes } from "./routes/github";
 import { healthRoutes } from "./routes/health";
 import { modelsRoutes } from "./routes/models";
@@ -13,6 +14,7 @@ import type { SandboxLogStore } from "./sandbox/log-store";
 import type { SandboxManager } from "./sandbox/manager";
 import type { EnvironmentService } from "./services/environment.service";
 import type { EventJournal } from "./services/event-journal";
+import type { ExtensionConfigService } from "./services/extension-config.service";
 import type { GitHubService } from "./services/github.service";
 import type { RepoService } from "./services/repo.service";
 import type { SecretsService } from "./services/secrets.service";
@@ -28,6 +30,7 @@ export type AppEnv = {
     sandboxManager: SandboxManager;
     secretsService: SecretsService;
     environmentService: EnvironmentService;
+    extensionConfigService: ExtensionConfigService;
     sandboxLogStore: SandboxLogStore;
     sessionDataDir: string;
   };
@@ -42,6 +45,7 @@ export interface AppServices {
   sandboxManager: SandboxManager;
   secretsService: SecretsService;
   environmentService: EnvironmentService;
+  extensionConfigService: ExtensionConfigService;
   sandboxLogStore: SandboxLogStore;
   sessionDataDir: string;
 }
@@ -64,6 +68,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     c.set("sandboxManager", services.sandboxManager);
     c.set("secretsService", services.secretsService);
     c.set("environmentService", services.environmentService);
+    c.set("extensionConfigService", services.extensionConfigService);
     c.set("sandboxLogStore", services.sandboxLogStore);
     c.set("sessionDataDir", services.sessionDataDir);
     await next();
@@ -89,6 +94,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     secretsRoutes(services.secretsService, services.sandboxManager),
   );
   app.route("/api/environments", environmentsRoutes());
+  app.route("/api/extension-configs", extensionConfigsRoutes());
 
   return app;
 }

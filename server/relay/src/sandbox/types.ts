@@ -82,6 +82,12 @@ export interface SandboxHandle {
   resume(secrets?: Record<string, string>, githubToken?: string): Promise<void>;
 
   /**
+   * Execute a command inside the running sandbox.
+   * Not all providers support this. Returns undefined if unsupported.
+   */
+  exec?(command: string): Promise<{ exitCode: number; output: string }>;
+
+  /**
    * Get a message-oriented channel to the pi process.
    * Assumes the sandbox is running (call resume() first if needed).
    * Throws if not running.

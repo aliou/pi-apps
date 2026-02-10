@@ -89,6 +89,23 @@ app.delete("/api/sandboxes/:id", async (c) => {
   );
 });
 
+// Execute a command inside the container (forwarded to bridge's /exec)
+app.post("/api/sandboxes/:id/exec", async (c) => {
+  const id = c.req.param("id");
+  if (!validateSandboxId(id)) {
+    return c.json({ error: "Invalid sandbox ID format" }, { status: 400 });
+  }
+  const body = await c.req.json();
+  const container = getContainer(c.env.PI_SANDBOX, id);
+  return container.fetch(
+    new Request("http://container/exec", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+});
+
 // List all sandboxes -- not implemented.
 // CF DOs don't have a "list all instances" API. The relay server's DB is
 // the source of truth for session tracking.

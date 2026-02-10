@@ -44,6 +44,9 @@ export const sessions = sqliteTable("sessions", {
   currentModelProvider: text("current_model_provider"),
   currentModelId: text("current_model_id"),
   systemPrompt: text("system_prompt"),
+  extensionsStale: integer("extensions_stale", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: text("created_at").notNull(),
   lastActivityAt: text("last_activity_at").notNull(),
 });
@@ -124,6 +127,30 @@ export const secrets = sqliteTable(
   (table) => [uniqueIndex("secrets_env_var_idx").on(table.envVar)],
 );
 
+// -- extension configs -----------------------------------------
+export const extensionConfigs = sqliteTable(
+  "extension_configs",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope", {
+      enum: ["global", "chat", "code", "session"],
+    }).notNull(),
+    sessionId: text("session_id").references(() => sessions.id, {
+      onDelete: "cascade",
+    }),
+    package: text("package").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("extension_configs_scope_session_package_idx").on(
+      table.scope,
+      table.sessionId,
+      table.package,
+    ),
+    index("extension_configs_session_idx").on(table.sessionId),
+  ],
+);
+
 // Type exports
 export type Environment = typeof environments.$inferSelect;
 export type NewEnvironment = typeof environments.$inferInsert;
@@ -142,3 +169,6 @@ export type NewSetting = typeof settings.$inferInsert;
 
 export type Secret = typeof secrets.$inferSelect;
 export type NewSecret = typeof secrets.$inferInsert;
+
+export type ExtensionConfig = typeof extensionConfigs.$inferSelect;
+export type NewExtensionConfig = typeof extensionConfigs.$inferInsert;

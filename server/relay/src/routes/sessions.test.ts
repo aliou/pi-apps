@@ -4,6 +4,7 @@ import type { AppDatabase } from "../db/connection";
 import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
+import { ExtensionConfigService } from "../services/extension-config.service";
 import { GitHubService } from "../services/github.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
@@ -32,6 +33,7 @@ describe("Sessions Routes", () => {
       sandboxManager: createTestSandboxManager(),
       secretsService: createTestSecretsService(db),
       environmentService,
+      extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
     };

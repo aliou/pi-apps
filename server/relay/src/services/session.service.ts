@@ -34,6 +34,7 @@ export interface UpdateSessionParams {
   currentModelId?: string;
   sandboxImageDigest?: string;
   sandboxProviderId?: string;
+  extensionsStale?: boolean;
 }
 
 export type SessionRecord = Session & {
@@ -172,6 +173,9 @@ export class SessionService {
     }
     if (fields.sandboxProviderId !== undefined) {
       updates.sandboxProviderId = fields.sandboxProviderId;
+    }
+    if (fields.extensionsStale !== undefined) {
+      updates.extensionsStale = fields.extensionsStale;
     }
 
     this.db

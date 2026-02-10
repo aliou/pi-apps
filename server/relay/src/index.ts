@@ -16,6 +16,7 @@ import { SandboxManager } from "./sandbox/manager";
 import { CryptoService } from "./services/crypto.service";
 import { EnvironmentService } from "./services/environment.service";
 import { EventJournal } from "./services/event-journal";
+import { ExtensionConfigService } from "./services/extension-config.service";
 import { GitHubService } from "./services/github.service";
 import { IdleReaper } from "./services/idle-reaper";
 import { RepoService } from "./services/repo.service";
@@ -99,6 +100,10 @@ async function main() {
   const environmentService = new EnvironmentService(db);
   console.log("Environment service initialized");
 
+  // Initialize extension config service
+  const extensionConfigService = new ExtensionConfigService(db);
+  console.log("Extension config service initialized");
+
   // Prune old events on startup (7 days)
   const cutoffDate = new Date(
     Date.now() - 7 * 24 * 60 * 60 * 1000,
@@ -119,6 +124,7 @@ async function main() {
       sandboxManager,
       secretsService,
       environmentService,
+      extensionConfigService,
       sandboxLogStore,
       sessionDataDir,
     },

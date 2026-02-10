@@ -11,6 +11,10 @@ import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EnvironmentConfig } from "../services/environment.service";
 import type { SessionMode } from "../services/session.service";
 import { readSessionHistory } from "../services/session-history";
+import {
+  buildSettingsJson,
+  writeSessionSettings,
+} from "../services/settings-generator";
 
 interface CreateSessionRequest {
   mode: SessionMode;
@@ -157,6 +161,10 @@ export function sessionsRoutes(): Hono<AppEnv> {
     }
 
     try {
+      // Write settings.json with resolved extension packages
+      const extensionConfigService = c.get("extensionConfigService");
+      const sessionDataDir = c.get("sessionDataDir");
+
       // Create session in database
       const session = sessionService.create({
         mode: body.mode,
@@ -168,6 +176,13 @@ export function sessionsRoutes(): Hono<AppEnv> {
         systemPrompt: body.systemPrompt,
         sandboxProvider,
       });
+
+      // Write settings.json for extension packages (before sandbox starts)
+      const packages = extensionConfigService.getResolvedPackages(
+        session.id,
+        body.mode as "chat" | "code",
+      );
+      writeSessionSettings(sessionDataDir, session.id, packages);
 
       // Read secrets fresh for sandbox injection
       const secrets = await secretsService.getAllAsEnv();
@@ -204,8 +219,22 @@ export function sessionsRoutes(): Hono<AppEnv> {
             );
 
       createPromise
-        .then((handle) => {
+        .then(async (handle) => {
           try {
+            // For Cloudflare sandboxes, write settings.json via exec
+            // (no bind mount available like Docker)
+            if (
+              sandboxProvider === "cloudflare" &&
+              packages.length > 0 &&
+              handle.exec
+            ) {
+              const settingsJson = buildSettingsJson(packages);
+              const escaped = settingsJson.replace(/'/g, "'\\''");
+              await handle.exec(
+                `mkdir -p /data/agent && printf '%s\\n' '${escaped}' > /data/agent/settings.json`,
+              );
+            }
+
             sessionService.update(session.id, {
               status: "active",
               sandboxProviderId: handle.providerId,
@@ -308,6 +337,16 @@ export function sessionsRoutes(): Hono<AppEnv> {
           console.log(
             `[activate] session=${id} provider=${current.sandboxProvider} providerId=${current.sandboxProviderId} status=${current.status}`,
           );
+
+          // Regenerate settings.json (picks up extension config changes)
+          const extensionConfigService = c.get("extensionConfigService");
+          const sessionDataDir = c.get("sessionDataDir");
+          const extPackages = extensionConfigService.getResolvedPackages(
+            id,
+            current.mode as "chat" | "code",
+          );
+          writeSessionSettings(sessionDataDir, id, extPackages);
+
           const secrets = await secretsService.getAllAsEnv();
           // Read GitHub token for git credential refresh
           const tokenSetting = db
@@ -341,9 +380,25 @@ export function sessionsRoutes(): Hono<AppEnv> {
             `[activate] session=${id} resumed, sandboxStatus=${handle.status}`,
           );
 
-          // Update status to active
-          if (current.status !== "active") {
-            sessionService.update(id, { status: "active" });
+          // For Cloudflare, write settings.json via exec after resume
+          if (
+            current.sandboxProvider === "cloudflare" &&
+            extPackages.length > 0 &&
+            handle.exec
+          ) {
+            const settingsJson = buildSettingsJson(extPackages);
+            const escaped = settingsJson.replace(/'/g, "'\\''");
+            await handle.exec(
+              `mkdir -p /data/agent && printf '%s\\n' '${escaped}' > /data/agent/settings.json`,
+            );
+          }
+
+          // Update status to active and clear stale extensions flag
+          if (current.status !== "active" || current.extensionsStale) {
+            sessionService.update(id, {
+              status: "active",
+              extensionsStale: false,
+            });
           }
 
           const lastSeq = eventJournal.getMaxSeq(id);
