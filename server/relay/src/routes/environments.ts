@@ -201,6 +201,7 @@ export function environmentsRoutes(): Hono<AppEnv> {
         error: null,
       });
     } catch (err) {
+      console.error("Failed to create environment:", err);
       const message =
         err instanceof Error ? err.message : "Failed to create environment";
       return c.json({ data: null, error: message }, 500);
@@ -266,6 +267,7 @@ export function environmentsRoutes(): Hono<AppEnv> {
         error: null,
       });
     } catch (err) {
+      console.error(`Failed to update environment ${id}:`, err);
       const message =
         err instanceof Error ? err.message : "Failed to update environment";
       return c.json({ data: null, error: message }, 500);

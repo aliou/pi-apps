@@ -73,6 +73,7 @@ export function secretsRoutes(
       await refreshSecrets();
       return c.json({ data: secret, error: null }, 201);
     } catch (err) {
+      console.error("Failed to create secret:", err);
       const msg = err instanceof Error ? err.message : "Unknown error";
       // SQLite unique constraint on env_var
       if (msg.includes("UNIQUE constraint")) {
@@ -136,6 +137,7 @@ export function secretsRoutes(
       await refreshSecrets();
       return c.json({ data: { ok: true }, error: null });
     } catch (err) {
+      console.error(`Failed to update secret ${id}:`, err);
       const msg = err instanceof Error ? err.message : "Unknown error";
       if (msg.includes("UNIQUE constraint")) {
         return c.json(

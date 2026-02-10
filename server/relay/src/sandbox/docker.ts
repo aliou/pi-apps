@@ -372,8 +372,8 @@ export class DockerSandboxProvider implements SandboxProvider {
           c.Names[0]?.replace(`/${this.config.containerPrefix}-`, "") ?? "";
         this.handleCache.delete(sessionId);
         this.cleanupSecretsDir(sessionId);
-      } catch {
-        // Ignore errors
+      } catch (err) {
+        console.error(`[docker] cleanup: failed to remove container ${c.Id}:`, err);
       }
     }
 
@@ -498,13 +498,13 @@ export class DockerSandboxProvider implements SandboxProvider {
       try {
         const logs = await container.logs({ stdout: true, stderr: true });
         output = logs.toString().trim();
-      } catch {
-        // Best-effort log capture
+      } catch (err) {
+        console.error("[docker] clone: failed to capture container logs:", err);
       }
       try {
         await container.remove();
-      } catch {
-        // Container may already be gone
+      } catch (err) {
+        console.error("[docker] clone: failed to remove container:", err);
       }
       const detail = output ? `\n${output}` : "";
       throw new Error(
@@ -515,8 +515,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Clean up on success
     try {
       await container.remove();
-    } catch {
-      // Container may already be gone
+    } catch (err) {
+      console.error("[docker] clone: failed to remove container:", err);
     }
   }
 
@@ -596,8 +596,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (secretsDir) {
       try {
         rmSync(secretsDir, { recursive: true, force: true });
-      } catch {
-        // Ignore cleanup errors
+      } catch (err) {
+        console.error(`[docker] failed to clean up secrets dir for session ${sessionId}:`, err);
       }
       this.secretsDirs.delete(sessionId);
     }
@@ -752,13 +752,13 @@ class DockerSandboxHandle implements SandboxHandle {
 
     try {
       await this.container.stop({ t: 10 });
-    } catch {
-      // Container may already be stopped
+    } catch (err) {
+      console.error(`[docker] terminate: failed to stop container ${this.container.id}:`, err);
     }
     try {
       await this.container.remove({ force: true });
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error(`[docker] terminate: failed to remove container ${this.container.id}:`, err);
     }
     this.setStatus("stopped");
   }
@@ -781,7 +781,8 @@ class DockerSandboxHandle implements SandboxHandle {
     try {
       await this.container.wait();
       this.setStatus("stopped");
-    } catch {
+    } catch (err) {
+      console.error(`[docker] container ${this.container.id} monitor error:`, err);
       this.setStatus("error");
     }
   }

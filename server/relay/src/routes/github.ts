@@ -132,6 +132,7 @@ export function githubRoutes(): Hono<AppEnv> {
       const repos = await githubService.listRepos(token);
       return c.json({ data: repos, error: null });
     } catch (err) {
+      console.error("Failed to list repos:", err);
       const message =
         err instanceof Error ? err.message : "Failed to list repos";
       return c.json({ data: null, error: message }, 500);

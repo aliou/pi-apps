@@ -257,8 +257,8 @@ export class SandboxManager {
         envConfig,
       );
       await handle.terminate();
-    } catch {
-      // Sandbox already gone -- that's fine
+    } catch (err) {
+      console.error(`[sandbox] terminate failed for ${providerId} (may already be gone):`, err);
     }
   }
 

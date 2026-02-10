@@ -201,7 +201,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
               sandboxImageDigest: handle.imageDigest,
             });
           } catch (err) {
-            // Database may be closed during test teardown - ignore
+            console.error(`[sessions] failed to update session ${session.id} after sandbox creation:`, err);
           }
         })
         .catch((err) => {
@@ -224,6 +224,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
         error: null,
       });
     } catch (err) {
+      console.error("Failed to create session:", err);
       const message =
         err instanceof Error ? err.message : "Failed to create session";
       return c.json({ data: null, error: message }, 500);

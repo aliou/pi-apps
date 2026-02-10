@@ -47,8 +47,8 @@ export class WebSocketConnection {
       try {
         const payload = JSON.parse(event.payload) as PiEvent;
         this.send(payload);
-      } catch {
-        // Skip malformed events
+      } catch (err) {
+        console.error(`[ws] session=${this.sessionId} skipping malformed replay event:`, err);
       }
     }
 
@@ -85,8 +85,8 @@ export class WebSocketConnection {
       if (raw && raw.readyState === 1) {
         this.ws.send(JSON.stringify(data));
       }
-    } catch {
-      // Ignore send errors
+    } catch (err) {
+      console.error(`[ws] session=${this.sessionId} send error:`, err);
     }
   }
 
