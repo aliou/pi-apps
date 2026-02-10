@@ -15,7 +15,8 @@ RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 WORKDIR /build
 
-ARG VITE_RELAY_URL=""
+# Use placeholder at build time for runtime substitution
+ARG VITE_RELAY_URL="__RELAY_URL_PLACEHOLDER__"
 ENV VITE_RELAY_URL=${VITE_RELAY_URL}
 
 # Install dependencies first (cache layer)
@@ -31,5 +32,9 @@ FROM caddy:alpine
 
 COPY --from=builder /build/build/client /srv
 COPY Caddyfile /etc/caddy/Caddyfile
+COPY docker-entrypoint.sh /usr/local/bin/
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 8080
+CMD ["/usr/local/bin/docker-entrypoint.sh"]

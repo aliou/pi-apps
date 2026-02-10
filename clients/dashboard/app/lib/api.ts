@@ -2,8 +2,13 @@ export type APIResponse<T> =
   | { data: T; error: null }
   | { data: null; error: string };
 
-export const RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "";
-const BASE_URL = `${RELAY_URL}/api`;
+// Export raw value for components that need to detect placeholder
+const rawRelayUrl = import.meta.env.VITE_RELAY_URL ?? "";
+export const RELAY_URL = rawRelayUrl;
+// Handle placeholder: if still unresolved, treat as empty string for API calls
+const processedRelayUrl =
+  rawRelayUrl === "__RELAY_URL_PLACEHOLDER__" ? "" : rawRelayUrl;
+const BASE_URL = `${processedRelayUrl}/api`;
 
 async function request<T>(
   path: string,
