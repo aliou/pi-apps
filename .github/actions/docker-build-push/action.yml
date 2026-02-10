@@ -58,7 +58,7 @@ runs:
       shell: bash
       run: |
         if [ -f "${{ inputs.context }}/Dockerfile" ]; then
-          PI_VERSION=$(grep '^ARG PI_VERSION=' "${{ inputs.context }}/Dockerfile" | cut -d'=' -f2)
+          PI_VERSION=$(sed -n 's/^ARG PI_VERSION=//p' "${{ inputs.context }}/Dockerfile" | head -n 1)
           if [ -n "$PI_VERSION" ]; then
             echo "version=${PI_VERSION}" >> $GITHUB_OUTPUT
             echo "Found PI_VERSION: ${PI_VERSION}"
