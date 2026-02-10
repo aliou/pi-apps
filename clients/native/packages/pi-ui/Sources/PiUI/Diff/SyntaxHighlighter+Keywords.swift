@@ -3,6 +3,7 @@ import Foundation
 // MARK: - Keyword Providers Extension
 
 extension SyntaxHighlighter {
+    // swiftlint:disable:next cyclomatic_complexity
     static func keywordsFor(language: String) -> [String] {
         switch language.lowercased() {
         case "swift":
@@ -23,6 +24,10 @@ extension SyntaxHighlighter {
             return cppKeywords()
         case "bash", "sh", "zsh":
             return bashKeywords()
+        case "json":
+            return ["true", "false", "null"]
+        case "markdown", "md":
+            return []
         default:
             return defaultKeywords()
         }

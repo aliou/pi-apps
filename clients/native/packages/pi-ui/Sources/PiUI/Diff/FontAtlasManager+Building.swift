@@ -87,8 +87,6 @@ extension FontAtlasManager {
         )
 
         drawGlyphsToContext(config: config)
-        uploadGlyphsToTexture(width: atlasLayout.width, height: atlasLayout.height,
-                              isBold: isBold)
 
         if !isBold {
             updateMonoAdvance()

@@ -7,13 +7,15 @@ import simd
 public struct CodeView: View {
     public let code: String
     public let language: String?
+    public let syntaxHighlightingEnabled: Bool
 
     @State private var highlightedText: AttributedString
     private let syntaxHighlighter = SyntaxHighlighter()
 
-    public init(code: String, language: String? = nil) {
+    public init(code: String, language: String? = nil, syntaxHighlightingEnabled: Bool = true) {
         self.code = code
         self.language = language
+        self.syntaxHighlightingEnabled = syntaxHighlightingEnabled
         self._highlightedText = State(initialValue: AttributedString(code))
     }
 
@@ -25,21 +27,23 @@ public struct CodeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(maxHeight: .infinity, alignment: .topLeading)
         }
-        .task(id: "\(language ?? "")\n\(code)") {
+        .task(id: "\(language ?? "")\n\(code)\n\(syntaxHighlightingEnabled)") {
             highlightedText = highlightedCodeText()
         }
     }
 
     private func highlightedCodeText() -> AttributedString {
         let lines = code.components(separatedBy: "\n")
-        guard let language, !language.isEmpty else {
+        guard syntaxHighlightingEnabled,
+              let language,
+              !language.isEmpty else {
             return AttributedString(code)
         }
 
         let colorsByLine = syntaxHighlighter.parsePerCharColors(
             lines: lines,
             language: language,
-            defaultColor: DiffColors.text.simd4
+            defaultColor: SIMD4<Float>(0, 0, 0, 1)
         )
 
         var result = AttributedString()

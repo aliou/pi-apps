@@ -10,12 +10,17 @@ struct ChatInputBar: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message...", text: $text, axis: .vertical)
-                .lineLimit(1...6)
+            TextField("Message...", text: $text)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .focused($isFocused)
+                .submitLabel(.send)
+                .onSubmit {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !isAgentRunning, !trimmed.isEmpty else { return }
+                    onSend()
+                }
 
             if isAgentRunning {
                 Button {

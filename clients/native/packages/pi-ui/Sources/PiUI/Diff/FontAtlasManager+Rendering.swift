@@ -55,6 +55,15 @@ extension FontAtlasManager {
             buildGlyphDescriptor(glyph: glyph, index: index, row: row, col: col,
                                 config: config)
         }
+
+        // Upload the atlas exactly as drawn. Re-drawing into a second context can
+        // desync glyph UV descriptors from texture contents.
+        createAndUploadTexture(
+            from: context,
+            width: config.atlasWidth,
+            height: config.atlasHeight,
+            isBold: config.isBold
+        )
     }
 
     /// Draws a single glyph to the context

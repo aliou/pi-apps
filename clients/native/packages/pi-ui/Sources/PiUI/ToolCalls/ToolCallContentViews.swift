@@ -119,11 +119,15 @@ struct ReadToolContent: View {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(title: "Content")
 
-                    CodeView(code: output, language: inferredLanguage)
-                        .frame(minHeight: 140, maxHeight: 320)
-                        .padding(10)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
+                    CodeView(
+                        code: output,
+                        language: inferredLanguage,
+                        syntaxHighlightingEnabled: true
+                    )
+                    .frame(minHeight: 140, maxHeight: 320)
+                    .padding(10)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
                 }
             }
         }
@@ -153,11 +157,15 @@ struct WriteToolContent: View {
             if let content, !content.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(title: "Content")
-                    CodeView(code: content, language: DiffParser.languageFromFileName(path))
-                        .frame(minHeight: 120, maxHeight: 260)
-                        .padding(10)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
+                    CodeView(
+                        code: content,
+                        language: inferredLanguage,
+                        syntaxHighlightingEnabled: true
+                    )
+                    .frame(minHeight: 120, maxHeight: 260)
+                    .padding(10)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
                 }
             }
 
@@ -165,6 +173,10 @@ struct WriteToolContent: View {
                 OutputSection(title: "Result", output: output)
             }
         }
+    }
+
+    private var inferredLanguage: String? {
+        DiffParser.languageFromFileName(path)
     }
 }
 
@@ -189,17 +201,48 @@ struct EditToolContent: View {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(title: "Changes")
 
+                    let patch = unifiedPatch(oldText: oldText, newText: newText)
+
                     DiffView(
                         patches: [
                             DiffPatchInput(
-                                patch: unifiedPatch(oldText: oldText, newText: newText),
+                                patch: patch,
                                 filename: path,
                                 language: DiffParser.languageFromFileName(path)
                             )
                         ]
                     )
                     .frame(minHeight: 180, maxHeight: 320)
-                    .background(Color.gray.opacity(0.1), in: .rect(cornerRadius: 8))
+                    .background(Color.black, in: .rect(cornerRadius: 8))
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        SectionLabel(title: "Patch")
+                        CodeView(code: patch, language: nil, syntaxHighlightingEnabled: false)
+                            .frame(minHeight: 90, maxHeight: 180)
+                            .padding(8)
+                            .background(Color.gray.opacity(0.12), in: .rect(cornerRadius: 8))
+
+                        SectionLabel(title: "Old")
+                        SectionLabel(title: "Old")
+                        CodeView(
+                            code: oldText,
+                            language: DiffParser.languageFromFileName(path),
+                            syntaxHighlightingEnabled: true
+                        )
+                            .frame(minHeight: 80, maxHeight: 160)
+                            .padding(8)
+                            .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 8))
+
+                        SectionLabel(title: "New")
+                        CodeView(
+                            code: newText,
+                            language: DiffParser.languageFromFileName(path),
+                            syntaxHighlightingEnabled: true
+                        )
+                            .frame(minHeight: 80, maxHeight: 160)
+                            .padding(8)
+                            .background(Color.green.opacity(0.08), in: .rect(cornerRadius: 8))
+                    }
                 }
             }
 
