@@ -108,10 +108,12 @@ The relay server exposes REST endpoints and WebSocket for session communication.
 - `GET /api/sessions` - List sessions
 - `POST /api/sessions` - Create session
 - `GET /api/sessions/:id` - Get session
-- `DELETE /api/sessions/:id` - Delete session
 - `POST /api/sessions/:id/activate` - Activate session (ensure sandbox running, blocks until ready)
+- `POST /api/sessions/:id/archive` - Archive session (stop sandbox, mark as archived)
+- `DELETE /api/sessions/:id` - Hard delete session from DB
 - `GET /api/sessions/:id/events` - Get recent events from journal (for debug view)
 - `GET /api/sessions/:id/history` - Get session conversation from pi's JSONL file
+- `GET /api/sessions/:id/logs` - Get sandbox stderr logs (diagnostics)
 - `GET /api/models` - List available models (based on configured secrets)
 - `GET /api/github/token` - GitHub token status
 - `POST /api/github/token` - Set GitHub token

@@ -23,15 +23,23 @@ Node.js server that wraps pi sessions and exposes REST API + WebSocket for remot
 
 ## Session Lifecycle
 
-Sessions follow this state machine: `creating → active → suspended → deleted`. `error` can be reached from any state except `deleted`.
+Sessions follow this state machine: `creating → active → idle → archived`. `error` can be reached from any state except `archived`.
+
+- `creating`: sandbox being provisioned
+- `active`: sandbox running, session usable
+- `idle`: sandbox paused due to inactivity (resumable via activate)
+- `archived`: user explicitly archived; sandbox terminated (terminal state)
+- `error`: something went wrong
 
 **Client flow:**
 1. `POST /api/sessions` — creates session + starts sandbox provisioning (status: `creating`)
 2. `POST /api/sessions/:id/activate` — blocks until sandbox is running (status: `active`)
 3. Open WebSocket to `ws://host/ws/sessions/:id` — WS requires `active` status
 4. Work (send prompts, receive events)
-5. Close WS → idle timeout → `suspended`
+5. Close WS → idle timeout → `idle`
 6. Come back → `activate` again → open WS
+7. `POST /api/sessions/:id/archive` — archive session (terminal)
+8. `DELETE /api/sessions/:id` — hard delete from DB
 
 **Sandbox manager is stateless.** The DB stores `sandboxProvider` and `sandboxProviderId` per session. The manager delegates to the provider (Docker/mock) and inspects real state (e.g., Docker API) rather than maintaining in-memory maps.
 

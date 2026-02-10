@@ -75,7 +75,7 @@ struct SessionsListView: View {
 
     @ViewBuilder
     private func sessionsList(_ store: SessionsStore) -> some View {
-        let filtered = store.sessions.filter { $0.mode == mode }
+        let filtered = store.sessions.filter { $0.mode == mode && $0.status != .archived }
 
         if filtered.isEmpty && !store.isLoading {
             EmptyStateView(
@@ -85,9 +85,7 @@ struct SessionsListView: View {
                 actionTitle: emptyStateActionTitle,
                 action: {
                     if mode == .chat {
-                        Task {
-                            await createChatSession()
-                        }
+                        Task { await createChatSession() }
                     } else {
                         showNewSession = true
                     }
@@ -96,33 +94,48 @@ struct SessionsListView: View {
         } else {
             List {
                 ForEach(filtered) { session in
-                    Button {
-                        selectedSessionId = session.id
-                    } label: {
-                        SessionRowView(
-                            id: session.id,
-                            name: session.name,
-                            firstUserMessage: session.firstUserMessage,
-                            lastActivityAt: session.lastActivityAt,
-                            mode: session.mode == .chat ? .chat : .code,
-                            displayInfo: SessionDisplayInfo(
-                                isAgentRunning: session.status == .active,
-                                repoFullName: session.repoFullName ?? repoName(from: session.repoPath)
-                            )
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            Task { await store.deleteSession(id: session.id) }
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    }
+                    sessionRow(session, store: store)
                 }
             }
             .refreshable {
                 await store.loadSessions()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sessionRow(_ session: Relay.RelaySession, store: SessionsStore) -> some View {
+        Button {
+            selectedSessionId = session.id
+        } label: {
+            SessionRowView(
+                id: session.id,
+                name: session.name,
+                firstUserMessage: session.firstUserMessage,
+                lastActivityAt: session.lastActivityAt,
+                mode: session.mode == .chat ? .chat : .code,
+                displayInfo: SessionDisplayInfo(
+                    status: displayStatus(for: session.status),
+                    repoFullName: session.repoFullName ?? repoName(from: session.repoPath)
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                Task { await store.deleteSession(id: session.id) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .trailing) {
+            if session.status != .archived {
+                Button {
+                    Task { await store.archiveSession(id: session.id) }
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
+                }
+                .tint(.secondary)
             }
         }
     }
@@ -137,6 +150,16 @@ struct SessionsListView: View {
             // Error creating session - could show an alert here
         }
         isCreatingChat = false
+    }
+
+    private func displayStatus(for status: Relay.SessionStatus) -> SessionDisplayStatus {
+        switch status {
+        case .creating: .creating
+        case .active: .active
+        case .idle: .idle
+        case .archived: .archived
+        case .error: .error
+        }
     }
 
     private func repoName(from repoPath: String?) -> String? {

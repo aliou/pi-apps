@@ -105,15 +105,15 @@ export class EventJournal {
 
   /**
    * Prune events older than cutoff date.
-   * Only prunes events for stopped or deleted sessions.
+   * Only prunes events for archived sessions.
    * Returns number of events deleted.
    */
   pruneOlderThan(cutoffDate: string): number {
-    // Get sessions that are stopped or deleted
+    // Get sessions that are archived
     const prunableSessions = this.db
       .select({ id: sessions.id })
       .from(sessions)
-      .where(inArray(sessions.status, ["deleted"]))
+      .where(inArray(sessions.status, ["archived"]))
       .all();
 
     if (prunableSessions.length === 0) {

@@ -195,7 +195,7 @@ describe("EventJournal", () => {
       const stoppedSession = createSession();
 
       // Mark one as deleted
-      sessionService.update(stoppedSession.id, { status: "deleted" });
+      sessionService.update(stoppedSession.id, { status: "archived" });
 
       // Add old events (use a timestamp in the past)
       const oldDate = new Date(

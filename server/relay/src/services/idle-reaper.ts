@@ -76,30 +76,30 @@ export class IdleReaper {
 
         if (idleMs < timeoutSeconds * 1000) continue;
 
-        await this.suspendSession(session, idleMs);
+        await this.idleSession(session, idleMs);
       } catch (err) {
         console.error(
-          `[idle-reaper] failed to suspend session=${session.id}:`,
+          `[idle-reaper] failed to idle session=${session.id}:`,
           err,
         );
       }
     }
   }
 
-  private async suspendSession(
+  private async idleSession(
     session: SessionRecord,
     idleMs: number,
   ): Promise<void> {
     const idleMinutes = Math.round(idleMs / 60_000);
     console.log(
-      `[idle-reaper] suspending session=${session.id} idle=${idleMinutes}m`,
+      `[idle-reaper] idling session=${session.id} idle=${idleMinutes}m`,
     );
 
     // 1. Notify connected clients
     this.deps.connectionManager.broadcast(session.id, {
       type: "sandbox_status",
       status: "paused",
-      message: "Session suspended due to inactivity",
+      message: "Session idled due to inactivity",
     });
 
     // 2. Pause the sandbox
@@ -123,6 +123,6 @@ export class IdleReaper {
     }
 
     // 3. Update session status
-    this.deps.sessionService.update(session.id, { status: "suspended" });
+    this.deps.sessionService.update(session.id, { status: "idle" });
   }
 }

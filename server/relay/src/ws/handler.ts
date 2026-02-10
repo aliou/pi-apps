@@ -76,7 +76,7 @@ export function createWebSocketHandler(
 
         // Validate session exists and is active
         const session = sessionId ? sessionService.get(sessionId) : null;
-        if (!session || session.status === "deleted") {
+        if (!session || session.status === "archived") {
           wsLog("rejected", sessionId, { reason: "session_not_found" });
           ws.close(4004, "Session not found");
           return;

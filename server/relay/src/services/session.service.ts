@@ -1,4 +1,4 @@
-import { desc, eq, ne } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db/connection";
 import { repos, type Session, sessions } from "../db/schema";
 import type { SandboxProviderType } from "../sandbox/provider-types";
@@ -6,9 +6,9 @@ import type { SandboxProviderType } from "../sandbox/provider-types";
 export type SessionStatus =
   | "creating"
   | "active"
-  | "suspended"
-  | "error"
-  | "deleted";
+  | "idle"
+  | "archived"
+  | "error";
 export type SessionMode = "chat" | "code";
 
 export interface CreateSessionParams {
@@ -107,19 +107,24 @@ export class SessionService {
   }
 
   /**
-   * List all non-deleted sessions, ordered by lastActivityAt desc.
+   * List sessions, ordered by lastActivityAt desc.
+   * By default returns all sessions. Pass status to filter.
    */
-  list(): SessionRecord[] {
-    const rows = this.db
+  list(options?: { status?: SessionStatus[] }): SessionRecord[] {
+    let query = this.db
       .select({
         session: sessions,
         repoFullName: repos.fullName,
       })
       .from(sessions)
       .leftJoin(repos, eq(repos.id, sessions.repoId))
-      .where(ne(sessions.status, "deleted"))
-      .orderBy(desc(sessions.lastActivityAt))
-      .all();
+      .$dynamic();
+
+    if (options?.status && options.status.length > 0) {
+      query = query.where(inArray(sessions.status, options.status));
+    }
+
+    const rows = query.orderBy(desc(sessions.lastActivityAt)).all();
 
     return rows.map((row) => ({
       ...row.session,
@@ -172,6 +177,20 @@ export class SessionService {
     this.db
       .update(sessions)
       .set(updates)
+      .where(eq(sessions.id, sessionId))
+      .run();
+  }
+
+  /**
+   * Archive a session (soft delete). Sets status to "archived".
+   */
+  archive(sessionId: string): void {
+    this.db
+      .update(sessions)
+      .set({
+        status: "archived",
+        lastActivityAt: new Date().toISOString(),
+      })
       .where(eq(sessions.id, sessionId))
       .run();
   }

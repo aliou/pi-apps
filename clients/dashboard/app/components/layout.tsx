@@ -342,10 +342,10 @@ export default function AppLayout() {
                   (s) => s.status === "active" || s.status === "creating",
                 );
                 const idleSessions = sorted.filter(
-                  (s) => s.status === "suspended" || s.status === "error",
+                  (s) => s.status === "idle" || s.status === "error",
                 );
                 const archivedSessions = sorted.filter(
-                  (s) => s.status === "deleted",
+                  (s) => s.status === "archived",
                 );
 
                 const renderRow = (session: Session) => {

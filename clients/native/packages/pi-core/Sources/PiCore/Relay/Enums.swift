@@ -4,9 +4,9 @@ extension Relay {
     public enum SessionStatus: String, Codable, Sendable, Hashable {
         case creating
         case active
-        case suspended
+        case idle
+        case archived
         case error
-        case deleted
     }
 
     public enum SessionMode: String, Codable, Sendable, Hashable {

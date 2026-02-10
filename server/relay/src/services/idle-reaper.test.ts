@@ -171,7 +171,7 @@ describe("IdleReaper", () => {
     await reaper.tick();
 
     const session = sessionService.get(sessionId);
-    expect(session?.status).toBe("suspended");
+    expect(session?.status).toBe("idle");
     expect(broadcasts).toHaveLength(1);
     expect(broadcasts[0]?.sessionId).toBe(sessionId);
     expect(broadcasts[0]?.event).toMatchObject({
@@ -225,7 +225,7 @@ describe("IdleReaper", () => {
     const reaper = new IdleReaper(deps);
     await reaper.tick();
 
-    expect(sessionService.get(shortSessionId)?.status).toBe("suspended");
+    expect(sessionService.get(shortSessionId)?.status).toBe("idle");
     expect(sessionService.get(longSessionId)?.status).toBe("active");
   });
 
@@ -302,7 +302,7 @@ describe("IdleReaper", () => {
       sessionService.get(failSessionId)?.status,
       sessionService.get(okSessionId)?.status,
     ];
-    expect(statuses).toContain("suspended");
+    expect(statuses).toContain("idle");
   });
 
   it("start/stop lifecycle works cleanly", async () => {
@@ -336,7 +336,7 @@ describe("SessionService.listActiveSessions", () => {
     service.update(active.id, { status: "active" });
 
     const suspended = service.create({ mode: "chat" });
-    service.update(suspended.id, { status: "suspended" });
+    service.update(suspended.id, { status: "idle" });
 
     service.create({ mode: "chat" });
     // stays 'creating'

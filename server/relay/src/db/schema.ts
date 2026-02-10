@@ -26,7 +26,7 @@ export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
   mode: text("mode", { enum: ["chat", "code"] }).notNull(),
   status: text("status", {
-    enum: ["creating", "active", "suspended", "error", "deleted"],
+    enum: ["creating", "active", "idle", "archived", "error"],
   })
     .notNull()
     .default("creating"),

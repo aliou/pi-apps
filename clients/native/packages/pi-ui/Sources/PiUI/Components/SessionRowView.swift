@@ -60,7 +60,7 @@ public struct SessionRowView: View {
                         Text(Self.relativeDate(lastActivityAt))
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        if displayInfo.isAgentRunning {
+                        if displayInfo.status == .active {
                             StatusIndicator(.active)
                         }
                     }
@@ -123,7 +123,7 @@ public struct SessionRowView: View {
             lastMessagePreview: "Let me add the dark mode implementation to the theme file.",
             diffAdded: 45,
             diffRemoved: 12,
-            isAgentRunning: true,
+            status: .active,
             repoFullName: "aliou/pi-apps"
         )
     )
@@ -138,7 +138,7 @@ public struct SessionRowView: View {
         mode: .chat,
         displayInfo: SessionDisplayInfo(
             lastMessagePreview: "That sounds like a great idea for the project.",
-            isAgentRunning: false
+            status: .idle
         )
     )
     .padding()
@@ -152,7 +152,7 @@ public struct SessionRowView: View {
         mode: .code,
         displayInfo: SessionDisplayInfo(
             lastMessagePreview: "I've reviewed the README and API docs.",
-            isAgentRunning: false,
+            status: .idle,
             repoFullName: "aliou/pi-apps"
         )
     )
@@ -169,7 +169,7 @@ public struct SessionRowView: View {
             lastMessagePreview: "OAuth2 provider setup is complete.",
             diffAdded: 234,
             diffRemoved: 89,
-            isAgentRunning: false,
+            status: .idle,
             repoFullName: "aliou/auth-system"
         )
     )
@@ -183,7 +183,7 @@ public struct SessionRowView: View {
         firstUserMessage: "Please investigate why onboarding hangs after server validation.",
         lastActivityAt: "2026-02-07T20:10:00Z",
         mode: .chat,
-        displayInfo: SessionDisplayInfo(isAgentRunning: false)
+        displayInfo: SessionDisplayInfo(status: .idle)
     )
     .padding()
 }
@@ -195,7 +195,7 @@ public struct SessionRowView: View {
         firstUserMessage: nil,
         lastActivityAt: "2026-02-07T20:20:00Z",
         mode: .chat,
-        displayInfo: SessionDisplayInfo(isAgentRunning: false)
+        displayInfo: SessionDisplayInfo(status: .idle)
     )
     .padding()
 }

@@ -29,7 +29,15 @@ export function sessionsRoutes(): Hono<AppEnv> {
   // List all sessions
   app.get("/", (c) => {
     const sessionService = c.get("sessionService");
-    const sessions = sessionService.list();
+    const statusParam = c.req.query("status");
+    const statusFilter = statusParam
+      ? (statusParam.split(
+          ",",
+        ) as import("../services/session.service").SessionStatus[])
+      : undefined;
+    const sessions = sessionService.list(
+      statusFilter ? { status: statusFilter } : undefined,
+    );
     return c.json({ data: sessions, error: null });
   });
 
@@ -262,8 +270,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Session not found" }, 404);
     }
 
-    if (session.status === "deleted") {
-      return c.json({ data: null, error: "Session has been deleted" }, 410);
+    if (session.status === "archived") {
+      return c.json({ data: null, error: "Session has been archived" }, 410);
     }
 
     if (session.status === "error") {
@@ -439,8 +447,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
     });
   });
 
-  // Delete a session
-  app.delete("/:id", async (c) => {
+  // Archive a session (stop sandbox, mark as archived)
+  app.post("/:id/archive", async (c) => {
     const sessionService = c.get("sessionService");
     const sandboxManager = c.get("sandboxManager");
     const id = c.req.param("id");
@@ -448,6 +456,10 @@ export function sessionsRoutes(): Hono<AppEnv> {
     const session = sessionService.get(id);
     if (!session) {
       return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    if (session.status === "archived") {
+      return c.json({ data: { ok: true }, error: null });
     }
 
     // Terminate sandbox if running
@@ -468,7 +480,41 @@ export function sessionsRoutes(): Hono<AppEnv> {
       );
     }
 
-    // Delete session (cascade deletes events) and clear logs
+    sessionService.archive(id);
+    c.get("sandboxLogStore").clear(id);
+
+    return c.json({ data: { ok: true }, error: null });
+  });
+
+  // Hard delete a session (permanently removes from DB)
+  app.delete("/:id", async (c) => {
+    const sessionService = c.get("sessionService");
+    const sandboxManager = c.get("sandboxManager");
+    const id = c.req.param("id");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    // Terminate sandbox if still running
+    if (session.sandboxProvider && session.sandboxProviderId) {
+      let envConfig: EnvironmentSandboxConfig | undefined;
+      if (session.environmentId) {
+        const environmentService = c.get("environmentService");
+        const env = environmentService.get(session.environmentId);
+        if (env) {
+          const secretsService = c.get("secretsService");
+          envConfig = await resolveEnvConfig(env, secretsService);
+        }
+      }
+      await sandboxManager.terminateByProviderId(
+        session.sandboxProvider as SandboxProviderType,
+        session.sandboxProviderId,
+        envConfig,
+      );
+    }
+
     sessionService.delete(id);
     c.get("sandboxLogStore").clear(id);
 

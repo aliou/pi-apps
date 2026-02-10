@@ -109,12 +109,22 @@ describe("SessionService", () => {
       expect(list[2]?.id).toBe(session1.id);
     });
 
-    it("excludes deleted sessions", () => {
+    it("includes archived sessions by default", () => {
       const session = service.create({ mode: "chat" });
-      service.update(session.id, { status: "deleted" });
+      service.update(session.id, { status: "archived" });
 
       const list = service.list();
-      expect(list.find((s) => s.id === session.id)).toBeUndefined();
+      expect(list.find((s) => s.id === session.id)).toBeDefined();
+    });
+
+    it("filters by status when specified", () => {
+      const session1 = service.create({ mode: "chat" });
+      const session2 = service.create({ mode: "chat" });
+      service.update(session1.id, { status: "archived" });
+
+      const active = service.list({ status: ["active", "creating"] });
+      expect(active.find((s) => s.id === session1.id)).toBeUndefined();
+      expect(active.find((s) => s.id === session2.id)).toBeDefined();
     });
   });
 

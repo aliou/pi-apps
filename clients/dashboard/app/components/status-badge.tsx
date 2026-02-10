@@ -1,21 +1,21 @@
 import { cn } from "../lib/utils";
 
-type Status = "creating" | "active" | "suspended" | "error" | "deleted";
+type Status = "creating" | "active" | "idle" | "archived" | "error";
 
 const dotColors: Record<Status, string> = {
   creating: "bg-status-info",
   active: "bg-accent",
-  suspended: "bg-muted/40",
+  idle: "bg-muted/40",
+  archived: "bg-muted/20",
   error: "bg-status-err",
-  deleted: "bg-muted/20",
 };
 
 const badgeStyles: Record<Status, string> = {
   creating: "bg-status-info/10 text-status-info",
   active: "bg-accent/10 text-accent",
-  suspended: "bg-muted/10 text-muted",
+  idle: "bg-muted/10 text-muted",
+  archived: "bg-muted/10 text-muted/60",
   error: "bg-status-err/10 text-status-err",
-  deleted: "bg-muted/10 text-muted/60",
 };
 
 interface StatusDotProps {

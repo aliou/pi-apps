@@ -44,6 +44,10 @@ extension Relay {
             return data
         }
 
+        public func archiveSession(id: String) async throws {
+            let _: APIResponse<AnyCodable> = try await post("/api/sessions/\(id)/archive")
+        }
+
         public func deleteSession(id: String) async throws {
             let _: APIResponse<AnyCodable> = try await delete("/api/sessions/\(id)")
         }

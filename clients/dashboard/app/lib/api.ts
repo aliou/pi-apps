@@ -57,7 +57,7 @@ export const api = {
 export interface Session {
   id: string;
   mode: "chat" | "code";
-  status: "creating" | "active" | "suspended" | "error" | "deleted";
+  status: "creating" | "active" | "idle" | "archived" | "error";
 
   // Repo linkage
   // repoId is the repo primary key in our DB (can be owner/name or a numeric GitHub id string)

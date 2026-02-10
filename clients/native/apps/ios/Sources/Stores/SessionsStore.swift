@@ -59,6 +59,11 @@ final class SessionsStore {
         return response.id
     }
 
+    func archiveSession(id: String) async {
+        try? await client.archiveSession(id: id)
+        await loadSessions()
+    }
+
     func deleteSession(id: String) async {
         try? await client.deleteSession(id: id)
         sessions.removeAll { $0.id == id }

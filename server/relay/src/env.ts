@@ -31,7 +31,7 @@ export function getRelayEncryptionKeyVersion(): number {
 
 /**
  * Idle reaper check interval in milliseconds.
- * How often the reaper scans for idle sessions to suspend.
+ * How often the reaper scans for idle sessions.
  * Default: 60000 (60 seconds).
  */
 export function getIdleCheckIntervalMs(): number {

@@ -73,16 +73,31 @@ describe("Sessions Routes", () => {
       expect(json.error).toBeNull();
     });
 
-    it("excludes deleted sessions", async () => {
+    it("includes archived sessions by default", async () => {
       const session = services.sessionService.create({ mode: "chat" });
-      services.sessionService.update(session.id, { status: "deleted" });
+      services.sessionService.update(session.id, { status: "archived" });
 
       const app = createApp({ services });
       const res = await app.request("/api/sessions");
 
       expect(res.status).toBe(200);
       const json = await res.json();
-      expect(json.data).toHaveLength(0);
+      expect(json.data).toHaveLength(1);
+    });
+
+    it("filters by status query param", async () => {
+      services.sessionService.create({ mode: "chat" });
+      const archived = services.sessionService.create({ mode: "chat" });
+      services.sessionService.update(archived.id, { status: "archived" });
+
+      const app = createApp({ services });
+      const res = await app.request(
+        "/api/sessions?status=creating,active,idle",
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data).toHaveLength(1);
     });
   });
 
@@ -249,9 +264,9 @@ describe("Sessions Routes", () => {
       expect(json.error).toBe("Session not found");
     });
 
-    it("returns 410 for deleted session", async () => {
+    it("returns 410 for archived session", async () => {
       const session = services.sessionService.create({ mode: "chat" });
-      services.sessionService.update(session.id, { status: "deleted" });
+      services.sessionService.update(session.id, { status: "archived" });
 
       const app = createApp({ services });
       const res = await app.request(`/api/sessions/${session.id}/activate`, {
@@ -260,7 +275,7 @@ describe("Sessions Routes", () => {
 
       expect(res.status).toBe(410);
       const json = await res.json();
-      expect(json.error).toBe("Session has been deleted");
+      expect(json.error).toBe("Session has been archived");
     });
 
     it("returns 409 for errored session", async () => {
