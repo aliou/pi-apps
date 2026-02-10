@@ -78,6 +78,18 @@ make build-ios     # build iOS simulator (debug)
 make test          # run native tests
 ```
 
+## Docker Images
+
+Published to GitHub Container Registry on pushes to `main`. Each has a workflow in `.github/workflows/` and a Dockerfile in its source directory.
+
+| Image | Source | Port |
+|-------|--------|------|
+| `ghcr.io/aliou/pi-relay` | `server/relay/` | 31415 |
+| `ghcr.io/aliou/pi-dashboard` | `clients/dashboard/` | 8080 |
+| `ghcr.io/aliou/pi-sandbox-alpine-arm64` | `server/sandboxes/docker/sandbox-alpine-arm64/` | - |
+| `ghcr.io/aliou/pi-sandbox-codex-universal` | `server/sandboxes/docker/sandbox-codex-universal/` | - |
+| `ghcr.io/aliou/pi-sandbox-cloudflare` | `server/sandboxes/cloudflare/` | - |
+
 ## Structure
 
 - `server/relay/` - Relay API server (Node.js/Hono/SQLite)
