@@ -91,4 +91,19 @@
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-muted);
   }
+
+  /* Streamdown code blocks: class-based dark mode overrides */
+  .dark .shiki,
+  .dark .shiki span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+    font-style: var(--shiki-dark-font-style) !important;
+    font-weight: var(--shiki-dark-font-weight) !important;
+    text-decoration: var(--shiki-dark-text-decoration) !important;
+  }
+
+  .dark [data-streamdown="code-block-header"] {
+    background-color: #1b2a3a;
+    color: #9fb4c9;
+  }
 }

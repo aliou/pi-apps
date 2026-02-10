@@ -41,7 +41,20 @@ function fencedCode(text: string, language = "text"): string {
 
 function MarkdownCode({ text, language }: { text: string; language?: string }) {
   return (
-    <div className="text-xs [&_.sd-markdown_pre]:overflow-x-auto [&_.sd-markdown_pre]:rounded-md [&_.sd-markdown_pre]:bg-surface [&_.sd-markdown_pre]:p-2">
+    <div
+      className={cn(
+        "text-xs",
+        "[&_[data-streamdown=code-block]]:my-0",
+        "[&_[data-streamdown=code-block]]:rounded-md",
+        "[&_[data-streamdown=code-block]]:border-border",
+        "[&_[data-streamdown=code-block-header]]:bg-bg-deep",
+        "[&_[data-streamdown=code-block-header]]:text-muted",
+        "[&_[data-streamdown=code-block-header]]:px-2",
+        "[&_[data-streamdown=code-block-header]]:py-1.5",
+        "[&_[data-streamdown=code-block-body]]:bg-surface",
+        "[&_[data-streamdown=code-block-body]]:p-2",
+      )}
+    >
       <Streamdown>{fencedCode(text, language ?? "text")}</Streamdown>
     </div>
   );
@@ -102,7 +115,15 @@ export function ChatMessage({
 
 export function ChatMessageMarkdown({ text }: { text: string }) {
   return (
-    <div className="text-sm [&_.sd-markdown_pre]:overflow-x-auto [&_.sd-markdown_pre]:rounded-md [&_.sd-markdown_pre]:bg-bg-deep [&_.sd-markdown_pre]:p-3">
+    <div
+      className={cn(
+        "text-sm [&_.sd-markdown_pre]:overflow-x-auto [&_.sd-markdown_pre]:rounded-md [&_.sd-markdown_pre]:bg-bg-deep [&_.sd-markdown_pre]:p-3",
+        "[&_[data-streamdown=inline-code]]:font-mono [&_[data-streamdown=inline-code]]:text-[0.92em]",
+        "[&_[data-streamdown=inline-code]]:rounded-md [&_[data-streamdown=inline-code]]:border [&_[data-streamdown=inline-code]]:border-border/80",
+        "[&_[data-streamdown=inline-code]]:bg-bg-deep [&_[data-streamdown=inline-code]]:px-1.5 [&_[data-streamdown=inline-code]]:py-0.5",
+        "dark:[&_[data-streamdown=inline-code]]:bg-[#203246] dark:[&_[data-streamdown=inline-code]]:text-[#D8E4F2] dark:[&_[data-streamdown=inline-code]]:border-[#36506B]",
+      )}
+    >
       <Streamdown>{text}</Streamdown>
     </div>
   );
@@ -206,6 +227,159 @@ export function ToolCallDetails({
 
 export function ToolCallStreamDelta({ delta }: { delta: string }) {
   return <p className="text-xs text-muted">Streaming update: {delta}</p>;
+}
+
+export function ReadToolCall({
+  status,
+  path,
+  output,
+}: {
+  status: ToolStatus;
+  path?: string;
+  output?: string;
+}) {
+  return (
+    <ToolCallCard name="read" status={status}>
+      <ToolCallDetails
+        args={path ? JSON.stringify({ path }, null, 2) : undefined}
+        output={output}
+        path={path}
+        toolName="read"
+      />
+    </ToolCallCard>
+  );
+}
+
+export function WriteToolCall({
+  status,
+  path,
+  content,
+}: {
+  status: ToolStatus;
+  path?: string;
+  content?: string;
+}) {
+  return (
+    <ToolCallCard name="write" status={status}>
+      <ToolCallDetails
+        args={path ? JSON.stringify({ path }, null, 2) : undefined}
+        output={content}
+        path={path}
+        toolName="write"
+      />
+    </ToolCallCard>
+  );
+}
+
+export function EditToolCall({
+  status,
+  path,
+  diff,
+  output,
+}: {
+  status: ToolStatus;
+  path?: string;
+  diff?: string;
+  output?: string;
+}) {
+  return (
+    <ToolCallCard name="edit" status={status}>
+      {path ? <SessionEventPill label={path} /> : null}
+      <div className="mt-2">{diff ? <ToolDiffPreview diff={diff} /> : <ToolCallDetails output={output} />}</div>
+    </ToolCallCard>
+  );
+}
+
+export function BashToolCall({
+  status,
+  command,
+  output,
+}: {
+  status: ToolStatus;
+  command?: string;
+  output?: string;
+}) {
+  return (
+    <ToolCallCard name="bash" status={status}>
+      <ToolCallDetails
+        args={command ? JSON.stringify({ command }, null, 2) : undefined}
+        output={output}
+        toolName="bash"
+      />
+    </ToolCallCard>
+  );
+}
+
+export function AskUserToolCall({
+  status,
+  questionCount,
+  output,
+}: {
+  status: ToolStatus;
+  questionCount?: number;
+  output?: string;
+}) {
+  return (
+    <ToolCallCard name="ask_user" status={status}>
+      {typeof questionCount === "number" ? <SessionEventPill label={`${questionCount} question(s)`} /> : null}
+      <div className="mt-2">
+        <ToolCallDetails output={output} toolName="ask_user" />
+      </div>
+    </ToolCallCard>
+  );
+}
+
+export function ProcessToolCall({
+  status,
+  action,
+  output,
+}: {
+  status: ToolStatus;
+  action?: string;
+  output?: string;
+}) {
+  return (
+    <ToolCallCard name="process" status={status}>
+      {action ? <SessionEventPill label={`action: ${action}`} /> : null}
+      <div className="mt-2">
+        <ToolCallDetails output={output} toolName="process" />
+      </div>
+    </ToolCallCard>
+  );
+}
+
+export function NativeToolCall({
+  toolName,
+  status,
+  path,
+  command,
+  output,
+  diff,
+}: {
+  toolName: string;
+  status: ToolStatus;
+  path?: string;
+  command?: string;
+  output?: string;
+  diff?: string;
+}) {
+  if (toolName === "read") return <ReadToolCall status={status} path={path} output={output} />;
+  if (toolName === "write") return <WriteToolCall status={status} path={path} content={output} />;
+  if (toolName === "edit") return <EditToolCall status={status} path={path} diff={diff} output={output} />;
+  if (toolName === "bash") return <BashToolCall status={status} command={command} output={output} />;
+  if (toolName === "ask_user") return <AskUserToolCall status={status} output={output} />;
+  if (toolName === "process") return <ProcessToolCall status={status} output={output} />;
+
+  return (
+    <ToolCallCard name={toolName} status={status}>
+      <ToolCallDetails
+        args={JSON.stringify({ path, command }, null, 2)}
+        output={output}
+        path={path}
+        toolName={toolName}
+      />
+    </ToolCallCard>
+  );
 }
 
 export function ToolResultRenderer({ blocks }: { blocks: ResultBlock[] }) {
