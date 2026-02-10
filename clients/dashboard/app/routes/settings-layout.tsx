@@ -1,14 +1,24 @@
 import { CubeIcon, GearIcon, GithubLogoIcon, KeyIcon } from "@phosphor-icons/react";
-import { NavLink, Outlet } from "react-router";
-import { cn } from "../lib/utils";
+import { Outlet, useLocation, useNavigate } from "react-router";
+import { Tabs } from "../components/ui";
 
 const tabs = [
-  { to: "/settings/secrets", label: "Secrets", icon: KeyIcon },
-  { to: "/settings/github", label: "GitHub", icon: GithubLogoIcon },
-  { to: "/settings/environments", label: "Environments", icon: CubeIcon },
+  { value: "secrets", label: "Secrets", icon: KeyIcon },
+  { value: "github", label: "GitHub", icon: GithubLogoIcon },
+  { value: "environments", label: "Environments", icon: CubeIcon },
 ];
 
 export default function SettingsLayout() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Derive active tab value from pathname
+  const activeValue = location.pathname.split("/")[2] || "secrets";
+
+  const handleValueChange = (details: { value: string }) => {
+    navigate(`/settings/${details.value}`);
+  };
+
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-8">
@@ -22,34 +32,31 @@ export default function SettingsLayout() {
       </div>
 
       {/* Horizontal tab navigation */}
-      <div className="mb-6 border-b border-border">
-        <nav className="flex gap-1">
-          {tabs.map((tab) => (
-            <NavLink
-              key={tab.to}
-              to={tab.to}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors",
-                  isActive
-                    ? "border-accent text-accent"
-                    : "border-transparent text-muted hover:text-fg",
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <tab.icon
-                    className="size-[18px]"
-                    weight={isActive ? "fill" : "regular"}
-                  />
-                  {tab.label}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
+      <Tabs
+        value={activeValue}
+        onValueChange={handleValueChange}
+        className="mb-6"
+      >
+        <Tabs.List className="rounded-lg border border-border bg-bg p-1">
+          {tabs.map((tab) => {
+            const isActive = activeValue === tab.value;
+            return (
+              <Tabs.Trigger
+                key={tab.value}
+                value={tab.value}
+                className="relative z-10 rounded-md border-b-0 px-3 py-2"
+              >
+                <tab.icon
+                  className="size-[18px]"
+                  weight={isActive ? "fill" : "regular"}
+                />
+                {tab.label}
+              </Tabs.Trigger>
+            );
+          })}
+          <Tabs.Indicator className="top-1 bottom-1 rounded-md bg-surface" />
+        </Tabs.List>
+      </Tabs>
 
       {/* Nested page content */}
       <Outlet />

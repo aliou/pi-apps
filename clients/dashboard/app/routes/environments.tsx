@@ -18,6 +18,7 @@ import {
   type ProbeResult,
   type UpdateEnvironmentRequest,
 } from "../lib/api";
+import { Button, Dialog } from "../components/ui";
 
 interface SecretInfo {
   id: string;
@@ -35,11 +36,13 @@ interface SecretInfo {
 function EnvironmentDialog({
   environment,
   images,
+  open,
   onSave,
   onClose,
 }: {
   environment?: Environment;
   images: AvailableImage[];
+  open: boolean;
   onSave: (
     data: CreateEnvironmentRequest | UpdateEnvironmentRequest,
   ) => Promise<void>;
@@ -153,244 +156,235 @@ function EnvironmentDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <button
-        type="button"
-        aria-label="Close dialog"
-        tabIndex={-1}
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
-        onClick={onClose}
-      />
-      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-bg p-6 shadow-xl">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-fg">
-            {isEdit ? "Edit Environment" : "Create Environment"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1 text-muted hover:text-fg"
-          >
-            <XIcon className="size-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Name */}
-          <div>
-            <label
-              htmlFor="env-name"
-              className="mb-1.5 block text-xs font-medium text-muted"
-            >
-              Name
-            </label>
-            <input
-              id="env-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Default, Python Dev, Node.js"
-              className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
-              required
-            />
+    <Dialog open={open} onOpenChange={(e) => !e.open && onClose()}>
+      <Dialog.Backdrop />
+      <Dialog.Positioner>
+        <Dialog.Content>
+          <div className="mb-5 flex items-center justify-between">
+            <Dialog.Title>
+              {isEdit ? "Edit Environment" : "Create Environment"}
+            </Dialog.Title>
+            <Dialog.CloseTrigger>
+              <XIcon className="size-4" />
+            </Dialog.CloseTrigger>
           </div>
 
-          {/* Sandbox Type */}
-          <div>
-            <span className="mb-2.5 block text-xs font-medium text-muted">
-              Sandbox Type
-            </span>
-            <div className="flex gap-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  value="docker"
-                  checked={sandboxType === "docker"}
-                  onChange={(e) =>
-                    setSandboxType(e.target.value as "docker" | "cloudflare")
-                  }
-                  className="size-4 border-border accent-accent"
-                />
-                <span className="text-sm text-fg">Docker</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  value="cloudflare"
-                  checked={sandboxType === "cloudflare"}
-                  onChange={(e) =>
-                    setSandboxType(e.target.value as "docker" | "cloudflare")
-                  }
-                  className="size-4 border-border accent-accent"
-                />
-                <span className="text-sm text-fg">Cloudflare</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Image (Docker only) */}
-          {sandboxType === "docker" && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Name */}
             <div>
               <label
-                htmlFor="env-image"
+                htmlFor="env-name"
                 className="mb-1.5 block text-xs font-medium text-muted"
               >
-                Docker Image
+                Name
               </label>
-              <select
-                id="env-image"
-                value={image}
-                onChange={(e) => setImage(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
-              >
-                {images.map((img) => (
-                  <option key={img.id} value={img.image}>
-                    {img.name}
-                  </option>
-                ))}
-              </select>
-              {images.find((img) => img.image === image)?.description && (
-                <p className="mt-1 text-xs text-muted">
-                  {images.find((img) => img.image === image)?.description}
-                </p>
-              )}
-              {probeStatus === "probing" && (
-                <p className="mt-1.5 text-xs text-muted">
-                  Checking availability...
-                </p>
-              )}
-              {probeStatus === "available" && (
-                <p className="mt-1.5 flex items-center gap-1 text-xs text-green-500">
-                  <CheckCircleIcon className="size-3" weight="fill" />
-                  Available
-                </p>
-              )}
-              {probeStatus === "unavailable" && (
-                <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
-                  <WarningCircleIcon className="size-3" weight="fill" />
-                  {probeError ?? "Not available"}
-                </p>
-              )}
+              <input
+                id="env-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Default, Python Dev, Node.js"
+                className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                required
+              />
             </div>
-          )}
 
-          {/* Worker URL (Cloudflare only) */}
-          {sandboxType === "cloudflare" && (
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="env-worker-url"
-                  className="mb-1.5 block text-xs font-medium text-muted"
-                >
-                  Worker URL
+            {/* Sandbox Type */}
+            <div>
+              <span className="mb-2.5 block text-xs font-medium text-muted">
+                Sandbox Type
+              </span>
+              <div className="flex gap-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    value="docker"
+                    checked={sandboxType === "docker"}
+                    onChange={(e) =>
+                      setSandboxType(e.target.value as "docker" | "cloudflare")
+                    }
+                    className="size-4 border-border accent-accent"
+                  />
+                  <span className="text-sm text-fg">Docker</span>
                 </label>
-                <input
-                  id="env-worker-url"
-                  type="text"
-                  value={workerUrl}
-                  onChange={(e) => setWorkerUrl(e.target.value)}
-                  placeholder="https://your-worker.example.com"
-                  className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
-                  required
-                />
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    value="cloudflare"
+                    checked={sandboxType === "cloudflare"}
+                    onChange={(e) =>
+                      setSandboxType(e.target.value as "docker" | "cloudflare")
+                    }
+                    className="size-4 border-border accent-accent"
+                  />
+                  <span className="text-sm text-fg">Cloudflare</span>
+                </label>
               </div>
+            </div>
 
+            {/* Image (Docker only) */}
+            {sandboxType === "docker" && (
               <div>
                 <label
-                  htmlFor="env-secret-id"
+                  htmlFor="env-image"
                   className="mb-1.5 block text-xs font-medium text-muted"
                 >
-                  Shared Secret
+                  Docker Image
                 </label>
-                {secrets.length === 0 ? (
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-500">
-                    No secrets configured. Add one in Settings first.
-                  </div>
-                ) : (
-                  <select
-                    id="env-secret-id"
-                    value={secretId}
-                    onChange={(e) => setSecretId(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
-                    required
-                  >
-                    <option value="">Select a secret...</option>
-                    {secrets.map((secret) => (
-                      <option key={secret.id} value={secret.id}>
-                        {secret.name} ({secret.envVar})
-                      </option>
-                    ))}
-                  </select>
+                <select
+                  id="env-image"
+                  value={image}
+                  onChange={(e) => setImage(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                >
+                  {images.map((img) => (
+                    <option key={img.id} value={img.image}>
+                      {img.name}
+                    </option>
+                  ))}
+                </select>
+                {images.find((img) => img.image === image)?.description && (
+                  <p className="mt-1 text-xs text-muted">
+                    {images.find((img) => img.image === image)?.description}
+                  </p>
+                )}
+                {probeStatus === "probing" && (
+                  <p className="mt-1.5 text-xs text-muted">
+                    Checking availability...
+                  </p>
+                )}
+                {probeStatus === "available" && (
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-green-500">
+                    <CheckCircleIcon className="size-3" weight="fill" />
+                    Available
+                  </p>
+                )}
+                {probeStatus === "unavailable" && (
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
+                    <WarningCircleIcon className="size-3" weight="fill" />
+                    {probeError ?? "Not available"}
+                  </p>
                 )}
               </div>
+            )}
 
-              {probeStatus === "probing" && (
-                <p className="text-xs text-muted">Checking availability...</p>
-              )}
-              {probeStatus === "available" && (
-                <p className="flex items-center gap-1 text-xs text-green-500">
-                  <CheckCircleIcon className="size-3" weight="fill" />
-                  Available
-                </p>
-              )}
-              {probeStatus === "unavailable" && (
-                <p className="flex items-center gap-1 text-xs text-red-500">
-                  <WarningCircleIcon className="size-3" weight="fill" />
-                  {probeError ?? "Not available"}
-                </p>
-              )}
-            </div>
-          )}
+            {/* Worker URL (Cloudflare only) */}
+            {sandboxType === "cloudflare" && (
+              <div className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="env-worker-url"
+                    className="mb-1.5 block text-xs font-medium text-muted"
+                  >
+                    Worker URL
+                  </label>
+                  <input
+                    id="env-worker-url"
+                    type="text"
+                    value={workerUrl}
+                    onChange={(e) => setWorkerUrl(e.target.value)}
+                    placeholder="https://your-worker.example.com"
+                    className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                    required
+                  />
+                </div>
 
-          {/* Default */}
-          <label
-            htmlFor="env-default"
-            className="flex items-center gap-2.5 rounded-lg border border-border bg-surface/30 px-3 py-2.5"
-          >
-            <input
-              id="env-default"
-              type="checkbox"
-              checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
-              className="size-4 rounded border-border accent-accent"
-            />
-            <div>
-              <span className="text-sm font-medium text-fg">
-                Set as default
-              </span>
-              <p className="text-xs text-muted">
-                Used when no environment is specified for new sessions.
-              </p>
-            </div>
-          </label>
+                <div>
+                  <label
+                    htmlFor="env-secret-id"
+                    className="mb-1.5 block text-xs font-medium text-muted"
+                  >
+                    Shared Secret
+                  </label>
+                  {secrets.length === 0 ? (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-500">
+                      No secrets configured. Add one in Settings first.
+                    </div>
+                  ) : (
+                    <select
+                      id="env-secret-id"
+                      value={secretId}
+                      onChange={(e) => setSecretId(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                      required
+                    >
+                      <option value="">Select a secret...</option>
+                      {secrets.map((secret) => (
+                        <option key={secret.id} value={secret.id}>
+                          {secret.name} ({secret.envVar})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted transition-colors hover:text-fg"
+                {probeStatus === "probing" && (
+                  <p className="text-xs text-muted">Checking availability...</p>
+                )}
+                {probeStatus === "available" && (
+                  <p className="flex items-center gap-1 text-xs text-green-500">
+                    <CheckCircleIcon className="size-3" weight="fill" />
+                    Available
+                  </p>
+                )}
+                {probeStatus === "unavailable" && (
+                  <p className="flex items-center gap-1 text-xs text-red-500">
+                    <WarningCircleIcon className="size-3" weight="fill" />
+                    {probeError ?? "Not available"}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Default */}
+            <label
+              htmlFor="env-default"
+              className="flex items-center gap-2.5 rounded-lg border border-border bg-surface/30 px-3 py-2.5"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={
-                !name.trim() ||
-                (sandboxType === "docker" && !image) ||
-                (sandboxType === "cloudflare" &&
-                  (!workerUrl.trim() || !secretId)) ||
-                probeStatus !== "available" ||
-                saving
-              }
-              className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {saving ? "Saving..." : isEdit ? "Update" : "Create"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+              <input
+                id="env-default"
+                type="checkbox"
+                checked={isDefault}
+                onChange={(e) => setIsDefault(e.target.checked)}
+                className="size-4 rounded border-border accent-accent"
+              />
+              <div>
+                <span className="text-sm font-medium text-fg">
+                  Set as default
+                </span>
+                <p className="text-xs text-muted">
+                  Used when no environment is specified for new sessions.
+                </p>
+              </div>
+            </label>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onClose}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  !name.trim() ||
+                  (sandboxType === "docker" && !image) ||
+                  (sandboxType === "cloudflare" &&
+                    (!workerUrl.trim() || !secretId)) ||
+                  probeStatus !== "available"
+                }
+                loading={saving}
+              >
+                {isEdit ? "Update" : "Create"}
+              </Button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Positioner>
+    </Dialog>
   );
 }
 
@@ -580,14 +574,10 @@ export default function EnvironmentsPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-end">
-        <button
-          type="button"
-          onClick={openCreate}
-          className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-        >
+        <Button onClick={openCreate}>
           <PlusIcon className="size-4" weight="bold" />
           New Environment
-        </button>
+        </Button>
       </div>
 
       {loading ? (
@@ -603,14 +593,10 @@ export default function EnvironmentsPage() {
           <p className="mt-1 text-xs text-muted">
             Create an environment to configure sandbox settings for sessions.
           </p>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
+          <Button onClick={openCreate} className="mt-4">
             <PlusIcon className="size-4" weight="bold" />
             Create Environment
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -627,14 +613,13 @@ export default function EnvironmentsPage() {
       )}
 
       {/* Create/Edit Dialog */}
-      {dialogOpen && (
-        <EnvironmentDialog
-          environment={editingEnv}
-          images={images}
-          onSave={editingEnv ? handleUpdate : handleCreate}
-          onClose={closeDialog}
-        />
-      )}
+      <EnvironmentDialog
+        environment={editingEnv}
+        images={images}
+        open={dialogOpen}
+        onSave={editingEnv ? handleUpdate : handleCreate}
+        onClose={closeDialog}
+      />
     </div>
   );
 }

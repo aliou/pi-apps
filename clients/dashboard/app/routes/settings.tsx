@@ -14,6 +14,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
+import { Button, Tabs } from "../components/ui";
 import { api } from "../lib/api";
 
 // --- Types matching Phase 1 backend ---
@@ -105,14 +106,15 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
 
   if (!open) {
     return (
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="md"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted transition-colors hover:border-accent hover:text-accent"
+        className="border-dashed"
       >
         <PlusIcon className="size-4" />
         Add secret
-      </button>
+      </Button>
     );
   }
 
@@ -202,14 +204,10 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
       </label>
 
       <div className="mt-4 flex justify-end">
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" loading={saving} variant="primary" size="md">
           <FloppyDiskIcon className="size-4" />
-          {saving ? "Creating..." : "Create"}
-        </button>
+          Create
+        </Button>
       </div>
     </form>
   );
@@ -333,15 +331,16 @@ function SecretRow({
             </button>
           </div>
 
-          <button
-            type="button"
+          <Button
             onClick={handleSave}
-            disabled={!value.trim() || saving}
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            disabled={!value.trim()}
+            loading={saving}
+            variant="primary"
+            size="md"
           >
             <FloppyDiskIcon className="size-4" />
-            {saving ? "Saving..." : "Save"}
-          </button>
+            Save
+          </Button>
 
           <button
             type="button"
@@ -361,14 +360,15 @@ function SecretRow({
             )}
           </button>
 
-          <button
-            type="button"
+          <Button
             onClick={handleDelete}
-            disabled={deleting}
-            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+            loading={deleting}
+            variant="danger"
+            size="md"
+            className="border border-red-500/30 bg-transparent text-red-500 hover:bg-red-500/10"
           >
             <TrashIcon className="size-4" />
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -456,48 +456,46 @@ export default function SettingsPage() {
       </p>
 
       {/* Kind filter tabs */}
-      <div className="mb-4 flex gap-1 rounded-lg border border-border bg-bg p-1">
-        {(
-          [
-            { key: "all", label: "All", count: secrets.length },
-            {
-              key: "ai_provider",
-              label: "AI Providers",
-              icon: KeyIcon,
-              count: aiCount,
-            },
-            {
-              key: "env_var",
-              label: "Env Vars",
-              icon: TerminalIcon,
-              count: envCount,
-            },
-            {
-              key: "sandbox_provider",
-              label: "Sandbox",
-              icon: CubeIcon,
-              count: sandboxCount,
-            },
-          ] as const
-        ).map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setKindFilter(tab.key)}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              kindFilter === tab.key
-                ? "bg-surface text-fg shadow-sm"
-                : "text-muted hover:text-fg"
-            }`}
+      <Tabs
+        value={kindFilter}
+        onValueChange={(details) => setKindFilter(details.value as KindFilter)}
+        className="mb-4"
+      >
+        <Tabs.List className="gap-1 rounded-lg border border-border bg-bg p-1">
+          <Tabs.Trigger
+            value="all"
+            className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
           >
-            {"icon" in tab && tab.icon && (
-              <tab.icon className="size-3.5" weight="bold" />
-            )}
-            {tab.label}
-            <span className="ml-0.5 text-muted">{tab.count}</span>
-          </button>
-        ))}
-      </div>
+            All
+            <span className="ml-0.5 text-muted">{secrets.length}</span>
+          </Tabs.Trigger>
+          <Tabs.Trigger
+            value="ai_provider"
+            className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+          >
+            <KeyIcon className="size-3.5" weight="bold" />
+            AI Providers
+            <span className="ml-0.5 text-muted">{aiCount}</span>
+          </Tabs.Trigger>
+          <Tabs.Trigger
+            value="env_var"
+            className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+          >
+            <TerminalIcon className="size-3.5" weight="bold" />
+            Env Vars
+            <span className="ml-0.5 text-muted">{envCount}</span>
+          </Tabs.Trigger>
+          <Tabs.Trigger
+            value="sandbox_provider"
+            className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+          >
+            <CubeIcon className="size-3.5" weight="bold" />
+            Sandbox
+            <span className="ml-0.5 text-muted">{sandboxCount}</span>
+          </Tabs.Trigger>
+          <Tabs.Indicator className="top-1 bottom-1 rounded-md bg-surface" />
+        </Tabs.List>
+      </Tabs>
 
       {loading ? (
         <div className="py-8 text-center text-sm text-muted">Loading...</div>

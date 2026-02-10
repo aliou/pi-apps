@@ -1,10 +1,10 @@
 import {
   CheckCircleIcon,
-  CircleNotchIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import { cn } from "../lib/utils";
+import { Button } from "./ui";
 
 interface TokenFormProps {
   onSubmit: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -69,19 +69,13 @@ export function TokenForm({ onSubmit, isLoading = false }: TokenFormProps) {
         </div>
       )}
 
-      <button
+      <Button
         type="submit"
-        disabled={isLoading || !token.trim()}
-        className={cn(
-          "inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition-colors",
-          "bg-accent text-accent-fg",
-          "hover:bg-accent-hover",
-          "disabled:cursor-not-allowed disabled:opacity-40",
-        )}
+        disabled={!token.trim()}
+        loading={isLoading}
       >
-        {isLoading && <CircleNotchIcon className="size-4 animate-spin" />}
         Save Token
-      </button>
+      </Button>
     </form>
   );
 }

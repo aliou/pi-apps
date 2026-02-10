@@ -11,6 +11,7 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
+    "@ark-ui/react": "^4.3.5",
     "@phosphor-icons/react": "^2.1.7",
     "@react-router/node": "^7.6.1",
     "clsx": "^2.1.1",
