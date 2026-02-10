@@ -62,6 +62,7 @@ export interface Session {
   repoPath?: string;
   branchName?: string;
   name?: string;
+  firstUserMessage?: string;
   currentModelProvider?: string;
   currentModelId?: string;
   createdAt: string;

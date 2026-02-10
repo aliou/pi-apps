@@ -1,7 +1,7 @@
 import { ChatCircleIcon, CodeIcon } from "@phosphor-icons/react";
 import { Link } from "react-router";
 import type { Session } from "../lib/api";
-import { cn } from "../lib/utils";
+import { cn, getSessionDisplayTitle } from "../lib/utils";
 import { StatusDot } from "./status-badge";
 
 interface SessionItemProps {
@@ -11,7 +11,7 @@ interface SessionItemProps {
 
 export function SessionItem({ session, className }: SessionItemProps) {
   const isCode = session.mode === "code";
-  const displayName = session.name || session.id.slice(0, 8);
+  const displayName = getSessionDisplayTitle(session);
   const lastActivity = new Date(session.lastActivityAt);
   const timeAgo = formatTimeAgo(lastActivity);
 

@@ -1,37 +1,54 @@
 import {
-  CubeIcon,
   GearIcon,
-  GithubLogoIcon,
   ListIcon,
   SidebarSimpleIcon,
-  SquaresFourIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
+import { api, type Session } from "../lib/api";
 import { useSidebar } from "../lib/sidebar";
-import { cn } from "../lib/utils";
+import { cn, getSessionDisplayTitle } from "../lib/utils";
 import { Logo } from "./logo";
+import { StatusDot } from "./status-badge";
 import { ThemeToggle, ThemeToggleCycler } from "./theme-toggle";
-
-const navItems = [
-  { to: "/", label: "Sessions", icon: SquaresFourIcon },
-  { to: "/environments", label: "Environments", icon: CubeIcon },
-  { to: "/github", label: "GitHub", icon: GithubLogoIcon },
-  { to: "/settings", label: "Settings", icon: GearIcon },
-];
 
 export default function AppLayout() {
   const { collapsed, toggle } = useSidebar();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
   const location = useLocation();
 
-  const currentLabel =
-    navItems.find(
-      (item) =>
-        item.to === location.pathname ||
-        (item.to === "/" && location.pathname === "/"),
-    )?.label ?? "Pi Relay";
+  // Fetch sessions
+  const fetchSessions = async () => {
+    const res = await api.get<Session[]>("/sessions");
+    if (res.data) {
+      setSessions(res.data);
+    }
+    setSessionsLoading(false);
+  };
+
+  // Initial fetch and polling
+  useEffect(() => {
+    fetchSessions();
+    const interval = setInterval(fetchSessions, 30000); // Poll every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Determine current page label for mobile header
+  const currentLabel = (() => {
+    if (location.pathname === "/") return "Sessions";
+    if (location.pathname.startsWith("/sessions/")) return "Session";
+    if (location.pathname.startsWith("/settings")) {
+      if (location.pathname === "/settings/secrets") return "Settings: Secrets";
+      if (location.pathname === "/settings/github") return "Settings: GitHub";
+      if (location.pathname === "/settings/environments")
+        return "Settings: Environments";
+      return "Settings";
+    }
+    return "Pi Relay";
+  })();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -117,58 +134,118 @@ export default function AppLayout() {
           </button>
         </div>
 
-        {/* Nav */}
-        <nav
+        {/* ── Sessions List Section ── */}
+        <div
           className={cn(
-            "flex flex-col gap-1 py-3",
-            collapsed ? "md:items-center md:px-2" : "",
-            "px-3",
+            "flex min-h-0 flex-1 flex-col",
+            collapsed ? "md:px-2 md:py-3" : "px-3 py-3",
           )}
         >
-          {navItems.map((item) => {
-            // Sessions nav item should also be active on /sessions/:id
-            const isSessionsItem = item.to === "/";
-            const isOnSessionPage = location.pathname.startsWith("/sessions/");
-            const forceActive = isSessionsItem && isOnSessionPage;
+          {/* Sessions label (only in expanded mode) */}
+          <div className={cn("mb-2 px-3", collapsed && "md:hidden")}>
+            <span className="text-xs font-medium uppercase tracking-wider text-muted/70">
+              Sessions
+            </span>
+          </div>
 
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
-                onClick={() => setMobileOpen(false)}
-                title={collapsed ? item.label : undefined}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center rounded-lg text-sm font-medium transition-colors",
-                    collapsed ? "md:justify-center md:p-2" : "",
-                    "gap-3 px-3 py-2",
-                    isActive || forceActive
-                      ? "bg-surface text-fg"
-                      : "text-muted hover:bg-surface/50 hover:text-fg",
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <item.icon
-                      className="size-[18px] shrink-0"
-                      weight={isActive || forceActive ? "fill" : "regular"}
-                    />
-                    <span className={cn(collapsed && "md:hidden")}>
-                      {item.label}
-                    </span>
-                  </>
+          {/* Sessions list (scrollable) */}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {sessionsLoading ? (
+              <div
+                className={cn(
+                  "px-3 py-2 text-xs text-muted",
+                  collapsed && "md:px-0 md:text-center",
                 )}
-              </NavLink>
-            );
-          })}
-        </nav>
+              >
+                {collapsed ? (
+                  <span className="md:hidden">Loading...</span>
+                ) : (
+                  "Loading..."
+                )}
+              </div>
+            ) : sessions.length === 0 ? (
+              <div
+                className={cn(
+                  "px-3 py-2 text-xs text-muted",
+                  collapsed && "md:px-0 md:text-center",
+                )}
+              >
+                {collapsed ? (
+                  <span className="md:hidden">No sessions</span>
+                ) : (
+                  "No sessions"
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {sessions.map((session) => {
+                  const isActive =
+                    location.pathname === `/sessions/${session.id}`;
+                  const displayName = getSessionDisplayTitle(session);
+
+                  return (
+                    <NavLink
+                      key={session.id}
+                      to={`/sessions/${session.id}`}
+                      onClick={() => setMobileOpen(false)}
+                      title={collapsed ? displayName : undefined}
+                      className={cn(
+                        "flex items-center rounded-lg text-sm transition-colors",
+                        collapsed
+                          ? "md:justify-center md:p-2"
+                          : "gap-2.5 px-3 py-2",
+                        isActive
+                          ? "bg-surface text-fg"
+                          : "text-muted hover:bg-surface/50 hover:text-fg",
+                      )}
+                    >
+                      <StatusDot status={session.status} className="shrink-0" />
+                      <span
+                        className={cn("truncate", collapsed && "md:hidden")}
+                      >
+                        {displayName}
+                      </span>
+                    </NavLink>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Spacer */}
-        <div className="flex-1" />
+        <div className="shrink-0" />
 
-        {/* Footer */}
+        {/* ── Settings Link ── */}
+        <div
+          className={cn(
+            "shrink-0 border-t border-border py-3",
+            collapsed ? "md:px-2" : "px-3",
+          )}
+        >
+          <NavLink
+            to="/settings/secrets"
+            onClick={() => setMobileOpen(false)}
+            title={collapsed ? "Settings" : undefined}
+            className={cn(
+              "flex items-center rounded-lg text-sm font-medium transition-colors",
+              collapsed ? "md:justify-center md:p-2" : "gap-3 px-3 py-2",
+              location.pathname.startsWith("/settings")
+                ? "bg-surface text-fg"
+                : "text-muted hover:bg-surface/50 hover:text-fg",
+            )}
+          >
+            <GearIcon
+              className="size-[18px] shrink-0"
+              weight={
+                location.pathname.startsWith("/settings") ? "fill" : "regular"
+              }
+            />
+            <span className={cn(collapsed && "md:hidden")}>Settings</span>
+          </NavLink>
+        </div>
+
+        {/* ── Footer ── */}
         <div
           className={cn(
             "shrink-0 border-t border-border",

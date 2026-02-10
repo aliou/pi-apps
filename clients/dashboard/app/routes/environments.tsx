@@ -578,14 +578,8 @@ export default function EnvironmentsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-fg">Environments</h1>
-          <p className="mt-1 text-sm text-muted">
-            Sandbox configurations for code sessions.
-          </p>
-        </div>
+    <div>
+      <div className="mb-6 flex items-center justify-end">
         <button
           type="button"
           onClick={openCreate}

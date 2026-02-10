@@ -79,18 +79,11 @@ export default function GitHubSetupPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-8">
-        <h1 className="text-xl font-semibold text-fg">GitHub</h1>
-        <p className="mt-1 text-sm text-muted">
-          Configure a Personal Access Token to access repositories.
-        </p>
-      </div>
-
+    <div>
       {tokenInfo?.configured ? (
         <div className="space-y-8">
           {/* Token status */}
-          <div className="rounded-xl border border-border bg-surface/50 p-5">
+          <div>
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 {tokenInfo.valid ? (
@@ -213,7 +206,7 @@ export default function GitHubSetupPage() {
       ) : (
         <div className="space-y-6">
           {/* Instructions */}
-          <div className="rounded-xl border border-border bg-surface/50 p-5">
+          <div>
             <h3 className="mb-3 text-sm font-semibold text-fg">
               Create a Personal Access Token
             </h3>
@@ -254,7 +247,7 @@ export default function GitHubSetupPage() {
           </div>
 
           {/* Token form */}
-          <div className="rounded-xl border border-border bg-surface/50 p-5">
+          <div>
             <TokenForm onSubmit={handleSubmitToken} isLoading={submitting} />
           </div>
         </div>

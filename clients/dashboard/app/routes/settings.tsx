@@ -4,7 +4,6 @@ import {
   EyeIcon,
   EyeSlashIcon,
   FloppyDiskIcon,
-  InfoIcon,
   KeyIcon,
   PlusIcon,
   TerminalIcon,
@@ -443,127 +442,96 @@ export default function SettingsPage() {
   ).length;
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-8">
-        <h1 className="text-xl font-semibold text-fg">Settings</h1>
-        <p className="mt-1 text-sm text-muted">
-          API keys and server configuration.
-        </p>
-      </div>
-
+    <div>
       {/* Secrets Section */}
-      <div className="mt-6 rounded-xl border border-border bg-surface/50 p-5">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
-            <KeyIcon className="size-[18px]" weight="bold" />
-            Secrets
-          </h2>
-        </div>
-        <p className="mb-4 text-xs text-muted">
-          Keys are encrypted at rest (AES-256-GCM) and injected into sandbox
-          containers.
-        </p>
-
-        {/* Kind filter tabs */}
-        <div className="mb-4 flex gap-1 rounded-lg border border-border bg-bg p-1">
-          {(
-            [
-              { key: "all", label: "All", count: secrets.length },
-              {
-                key: "ai_provider",
-                label: "AI Providers",
-                icon: KeyIcon,
-                count: aiCount,
-              },
-              {
-                key: "env_var",
-                label: "Env Vars",
-                icon: TerminalIcon,
-                count: envCount,
-              },
-              {
-                key: "sandbox_provider",
-                label: "Sandbox",
-                icon: CubeIcon,
-                count: sandboxCount,
-              },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setKindFilter(tab.key)}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                kindFilter === tab.key
-                  ? "bg-surface text-fg shadow-sm"
-                  : "text-muted hover:text-fg"
-              }`}
-            >
-              {"icon" in tab && tab.icon && (
-                <tab.icon className="size-3.5" weight="bold" />
-              )}
-              {tab.label}
-              <span className="ml-0.5 text-muted">{tab.count}</span>
-            </button>
-          ))}
-        </div>
-
-        {loading ? (
-          <div className="py-8 text-center text-sm text-muted">Loading...</div>
-        ) : error ? (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-500">
-            {error}
-          </div>
-        ) : (
-          <>
-            <div className="space-y-3">
-              {filtered.length === 0 ? (
-                <div className="py-6 text-center text-sm text-muted">
-                  {kindFilter === "all"
-                    ? "No secrets configured."
-                    : `No ${kindFilter === "ai_provider" ? "AI provider" : kindFilter === "sandbox_provider" ? "sandbox" : "env var"} secrets.`}
-                </div>
-              ) : (
-                filtered.map((secret) => (
-                  <SecretRow
-                    key={secret.id}
-                    secret={secret}
-                    onToggle={handleToggle}
-                    onUpdateValue={handleUpdateValue}
-                    onDelete={handleDelete}
-                  />
-                ))
-              )}
-            </div>
-
-            <div className="mt-4">
-              <AddSecretForm onCreated={loadSecrets} />
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Server info */}
-      <div className="mt-6 rounded-xl border border-border bg-surface/50 p-5">
-        <h2 className="mb-5 flex items-center gap-2 text-sm font-semibold text-fg">
-          <InfoIcon className="size-[18px]" weight="bold" />
-          Server Information
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <KeyIcon className="size-[18px]" weight="bold" />
+          Secrets
         </h2>
-
-        <dl className="space-y-4">
-          <div>
-            <dt className="text-xs font-medium text-muted">Version</dt>
-            <dd className="mt-1 font-mono text-sm text-fg">0.1.0</dd>
-          </div>
-
-          <div>
-            <dt className="text-xs font-medium text-muted">Secrets</dt>
-            <dd className="mt-1 text-sm text-green-500">
-              Enabled (AES-256-GCM encrypted)
-            </dd>
-          </div>
-        </dl>
       </div>
+      <p className="mb-4 text-xs text-muted">
+        Keys are encrypted at rest (AES-256-GCM) and injected into sandbox
+        containers.
+      </p>
+
+      {/* Kind filter tabs */}
+      <div className="mb-4 flex gap-1 rounded-lg border border-border bg-bg p-1">
+        {(
+          [
+            { key: "all", label: "All", count: secrets.length },
+            {
+              key: "ai_provider",
+              label: "AI Providers",
+              icon: KeyIcon,
+              count: aiCount,
+            },
+            {
+              key: "env_var",
+              label: "Env Vars",
+              icon: TerminalIcon,
+              count: envCount,
+            },
+            {
+              key: "sandbox_provider",
+              label: "Sandbox",
+              icon: CubeIcon,
+              count: sandboxCount,
+            },
+          ] as const
+        ).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setKindFilter(tab.key)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              kindFilter === tab.key
+                ? "bg-surface text-fg shadow-sm"
+                : "text-muted hover:text-fg"
+            }`}
+          >
+            {"icon" in tab && tab.icon && (
+              <tab.icon className="size-3.5" weight="bold" />
+            )}
+            {tab.label}
+            <span className="ml-0.5 text-muted">{tab.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="py-8 text-center text-sm text-muted">Loading...</div>
+      ) : error ? (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-500">
+          {error}
+        </div>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {filtered.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted">
+                {kindFilter === "all"
+                  ? "No secrets configured."
+                  : `No ${kindFilter === "ai_provider" ? "AI provider" : kindFilter === "sandbox_provider" ? "sandbox" : "env var"} secrets.`}
+              </div>
+            ) : (
+              filtered.map((secret) => (
+                <SecretRow
+                  key={secret.id}
+                  secret={secret}
+                  onToggle={handleToggle}
+                  onUpdateValue={handleUpdateValue}
+                  onDelete={handleDelete}
+                />
+              ))
+            )}
+          </div>
+
+          <div className="mt-4">
+            <AddSecretForm onCreated={loadSecrets} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
