@@ -41,6 +41,8 @@ final class ConversationStore {
 
     /// Load history from REST, then connect WebSocket for live events.
     func connect() async {
+        if connectionState == .connecting || connectionState == .connected { return }
+
         connectionState = .connecting
 
         // 1. Load history via REST

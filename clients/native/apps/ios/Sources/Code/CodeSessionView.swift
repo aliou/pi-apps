@@ -23,15 +23,19 @@ struct CodeSessionView: View {
         .toolbarVisibility(.hidden, for: .tabBar)
         #endif
         .task {
+            if let store {
+                if store.connectionState == .disconnected {
+                    await store.connect()
+                }
+                return
+            }
+
             let conversationStore = ConversationStore(
                 client: appState.client,
                 sessionId: sessionId
             )
             store = conversationStore
             await conversationStore.connect()
-        }
-        .onDisappear {
-            store?.disconnect()
         }
     }
 
