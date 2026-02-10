@@ -50,12 +50,13 @@ function validateConfig(
     if (!config.image) {
       return "config.image is required for docker environments";
     }
-    // Validate image is in allowed list
-    const validImages: string[] = AVAILABLE_DOCKER_IMAGES.map(
-      (img) => img.image,
+    // Validate image is in allowed list (ignore tag)
+    const stripTag = (s: string) => s.replace(/:[\w.-]+$/, "");
+    const validBases = AVAILABLE_DOCKER_IMAGES.map((img) =>
+      stripTag(img.image),
     );
-    if (!validImages.includes(config.image)) {
-      return `Invalid image. Must be one of: ${validImages.join(", ")}`;
+    if (!validBases.includes(stripTag(config.image))) {
+      return `Invalid image. Must be one of: ${AVAILABLE_DOCKER_IMAGES.map((img) => img.image).join(", ")}`;
     }
   } else if (sandboxType === "cloudflare") {
     if (!config.workerUrl) {
@@ -70,6 +71,18 @@ function validateConfig(
       return "config.secretId is required for cloudflare environments (shared secret for Worker auth)";
     }
   }
+
+  // Validate idleTimeoutSeconds if provided
+  if (config.idleTimeoutSeconds !== undefined) {
+    if (
+      !Number.isInteger(config.idleTimeoutSeconds) ||
+      config.idleTimeoutSeconds < 60 ||
+      config.idleTimeoutSeconds > 86400
+    ) {
+      return "config.idleTimeoutSeconds must be an integer between 60 and 86400";
+    }
+  }
+
   return null;
 }
 
@@ -189,10 +202,19 @@ export function environmentsRoutes(): Hono<AppEnv> {
     }
 
     try {
+      // Apply idleTimeoutSeconds defaults
+      const configToStore = { ...body.config };
+      if (body.sandboxType === "cloudflare") {
+        // Cloudflare manages its own idle timeout; force default
+        configToStore.idleTimeoutSeconds = 3600;
+      } else if (configToStore.idleTimeoutSeconds === undefined) {
+        configToStore.idleTimeoutSeconds = 3600;
+      }
+
       const env = environmentService.create({
         name: body.name.trim(),
         sandboxType: body.sandboxType,
-        config: body.config,
+        config: configToStore,
         isDefault: body.isDefault,
       });
 
@@ -254,9 +276,16 @@ export function environmentsRoutes(): Hono<AppEnv> {
     }
 
     try {
+      // Strip idleTimeoutSeconds changes for Cloudflare environments
+      let configToUpdate = body.config;
+      if (configToUpdate && sandboxType === "cloudflare") {
+        const { idleTimeoutSeconds: _, ...rest } = configToUpdate;
+        configToUpdate = rest;
+      }
+
       environmentService.update(id, {
         name: body.name?.trim(),
-        config: body.config,
+        config: configToUpdate,
         isDefault: body.isDefault,
       });
 
