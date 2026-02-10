@@ -1,14 +1,10 @@
-import {
-  CircleNotchIcon,
-  PlugsIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
+import { CircleNotchIcon, PlugsIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { RELAY_URL } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Logo } from "./logo";
 
-type Status = "checking" | "ok" | "no-url" | "unreachable";
+type Status = "checking" | "ok" | "unreachable";
 
 async function checkHealth(): Promise<boolean> {
   try {
@@ -27,14 +23,7 @@ interface ConnectionGateProps {
 }
 
 export function ConnectionGate({ children }: ConnectionGateProps) {
-  const [status, setStatus] = useState<Status>(() => {
-    // If placeholder is unresolved, it's a config error
-    if (RELAY_URL === "__RELAY_URL_PLACEHOLDER__") return "no-url";
-    // Empty string means same-origin, which is valid
-    if (RELAY_URL === "") return "ok";
-    // Otherwise, check the URL
-    return "checking";
-  });
+  const [status, setStatus] = useState<Status>("checking");
 
   const retry = () => {
     setStatus("checking");
@@ -57,36 +46,6 @@ export function ConnectionGate({ children }: ConnectionGateProps) {
           <>
             <CircleNotchIcon className="mb-4 size-8 animate-spin text-muted" />
             <p className="text-sm text-muted">Connecting to relay server...</p>
-          </>
-        )}
-
-        {status === "no-url" && (
-          <>
-            <WarningCircleIcon
-              className="mb-4 size-8 text-status-warn"
-              weight="fill"
-            />
-            <h1 className="mb-2 text-lg font-semibold text-fg">
-              Server not configured
-            </h1>
-            <p className="mb-5 text-sm text-muted">
-              Set{" "}
-              <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-fg">
-                RELAY_URL
-              </code>{" "}
-              environment variable (or{" "}
-              <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-fg">
-                VITE_RELAY_URL
-              </code>{" "}
-              in{" "}
-              <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-fg">
-                .env
-              </code>{" "}
-              for local dev).
-            </p>
-            <pre className="w-full rounded-lg bg-surface px-4 py-3 text-left font-mono text-xs text-muted">
-              RELAY_URL=http://localhost:31415
-            </pre>
           </>
         )}
 

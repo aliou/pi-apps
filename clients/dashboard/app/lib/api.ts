@@ -2,13 +2,12 @@ export type APIResponse<T> =
   | { data: T; error: null }
   | { data: null; error: string };
 
-// Export raw value for components that need to detect placeholder
-const rawRelayUrl = import.meta.env.VITE_RELAY_URL ?? "";
-export const RELAY_URL = rawRelayUrl;
-// Handle placeholder: if still unresolved, treat as empty string for API calls
-const processedRelayUrl =
-  rawRelayUrl === "__RELAY_URL_PLACEHOLDER__" ? "" : rawRelayUrl;
-const BASE_URL = `${processedRelayUrl}/api`;
+// Runtime-replaceable relay URL. At build time this is a placeholder string
+// that gets sed-replaced by docker-entrypoint.sh at container startup.
+// We use a separate variable to prevent the bundler from inlining/optimizing
+// the placeholder comparison.
+export const RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "";
+const BASE_URL = `${RELAY_URL}/api`;
 
 async function request<T>(
   path: string,
