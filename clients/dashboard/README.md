@@ -1,21 +1,31 @@
-# Pi Relay Dashboard
+# Relay Dashboard
 
-Admin UI for the Pi Relay server. React + Vite + Tailwind CSS v4.
+Admin UI for the relay server.
 
-## Quick Start
+Stack: React Router v7 (SPA), Vite, Tailwind v4, TypeScript, Biome.
+
+## Commands
+
+Run from `clients/dashboard/`:
 
 ```bash
-nix develop
-cd clients/dashboard
 pnpm install
-cp .env.example .env
-pnpm run dev
+pnpm dev
+pnpm build
+pnpm typecheck
 ```
 
-## Configuration
+Or run `make dev` from repo root to start dashboard + relay together.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_RELAY_URL` | (empty) | Base URL of the relay server. Leave empty when served on the same origin. |
+## Environment
 
-During local development, set `VITE_RELAY_URL=http://localhost:31415` to point at a locally running relay server.
+- `VITE_RELAY_URL` — relay base URL.
+  - Empty means same-origin.
+  - Local dev usually: `http://localhost:31415`.
+
+## Structure
+
+- `app/routes/` — route screens.
+- `app/components/` — shared UI.
+- `app/lib/api.ts` — typed REST client for relay endpoints.
+- `app/lib/theme.tsx` — dark/light theme logic.
