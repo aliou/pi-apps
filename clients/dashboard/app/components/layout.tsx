@@ -304,13 +304,6 @@ export default function AppLayout() {
             collapsed ? "md:px-2 md:py-3" : "px-3 py-3",
           )}
         >
-          {/* Sessions label (only in expanded mode) */}
-          <div className={cn("mb-2 px-3", collapsed && "md:hidden")}>
-            <span className="text-xs font-medium uppercase tracking-wider text-muted/70">
-              Sessions
-            </span>
-          </div>
-
           {/* Sessions list (scrollable) */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {sessionsLoading ? (
@@ -371,45 +364,42 @@ export default function AppLayout() {
                         "w-full rounded-lg text-sm transition-colors",
                         collapsed
                           ? "flex items-center md:justify-center md:p-2"
-                          : "flex items-start gap-2.5 px-3 py-2",
+                          : "flex items-center px-3 py-2",
                         isCurrent
                           ? "bg-surface text-fg"
                           : "text-muted hover:bg-surface/50 hover:text-fg",
                       )}
                     >
-                      <StatusDot status={session.status} className="shrink-0" />
-
                       <div
                         className={cn(
-                          "min-w-0 flex flex-1 items-start justify-between gap-3",
+                          "min-w-0 flex flex-1 flex-col",
                           collapsed && "md:hidden",
                         )}
                       >
-                        <div className="min-w-0">
-                          <div className="truncate text-fg">{displayName}</div>
-
-                          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <StatusDot status={session.status} className="shrink-0" />
                             {session.mode === "chat" ? (
-                              <ChatCircleIcon className="size-3.5" />
+                              <ChatCircleIcon className="size-3.5 shrink-0" />
                             ) : (
-                              <>
-                                <CodeIcon className="size-3.5 text-fg" />
-                                {repoLabel && (
-                                  <span className="inline-flex min-w-0 items-center gap-1">
-                                    <GitBranchIcon className="size-3.5 shrink-0" />
-                                    <span className="truncate">
-                                      {repoLabel}
-                                    </span>
-                                  </span>
-                                )}
-                              </>
+                              <CodeIcon className="size-3.5 shrink-0" />
                             )}
+                            <span className="truncate">{displayName}</span>
                           </div>
+
+                          <span className="shrink-0 text-xs text-muted tabular-nums">
+                            {formatRelativeTime(session.lastActivityAt)}
+                          </span>
                         </div>
 
-                        <div className="shrink-0 pt-0.5 text-xs text-muted tabular-nums">
-                          {formatRelativeTime(session.lastActivityAt)}
-                        </div>
+                        {session.mode !== "chat" && repoLabel && (
+                          <div className="mt-0.5 flex min-w-0 items-center gap-1 pl-3.5 text-xs text-muted">
+                            <GitBranchIcon className="size-3.5 shrink-0" />
+                            <span className="truncate">
+                              {repoLabel}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </NavLink>
                   );
