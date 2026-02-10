@@ -99,7 +99,6 @@ export function sessionsRoutes(): Hono<AppEnv> {
     }
 
     if (body.mode === "code") {
-
       // Read GitHub token for repo resolution and sandbox git auth
       const db = c.get("db");
       const tokenSetting = db
