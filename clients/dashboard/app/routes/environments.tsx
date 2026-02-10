@@ -10,6 +10,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
+import { Button, Dialog } from "../components/ui";
 import {
   type AvailableImage,
   api,
@@ -18,7 +19,6 @@ import {
   type ProbeResult,
   type UpdateEnvironmentRequest,
 } from "../lib/api";
-import { Button, Dialog } from "../components/ui";
 
 interface SecretInfo {
   id: string;
@@ -61,6 +61,9 @@ function EnvironmentDialog({
   );
   const [secretId, setSecretId] = useState(environment?.config.secretId ?? "");
   const [isDefault, setIsDefault] = useState(environment?.isDefault ?? false);
+  const [idleTimeout, setIdleTimeout] = useState(
+    environment?.config.idleTimeoutSeconds ?? 3600,
+  );
   const [saving, setSaving] = useState(false);
   const [probeStatus, setProbeStatus] = useState<
     null | "probing" | "available" | "unavailable"
@@ -132,7 +135,9 @@ function EnvironmentDialog({
     setSaving(true);
     try {
       const config =
-        sandboxType === "docker" ? { image } : { workerUrl, secretId };
+        sandboxType === "docker"
+          ? { image, idleTimeoutSeconds: idleTimeout }
+          : { workerUrl, secretId };
 
       if (isEdit) {
         const update: UpdateEnvironmentRequest = {
@@ -224,48 +229,78 @@ function EnvironmentDialog({
 
             {/* Image (Docker only) */}
             {sandboxType === "docker" && (
-              <div>
-                <label
-                  htmlFor="env-image"
-                  className="mb-1.5 block text-xs font-medium text-muted"
-                >
-                  Docker Image
-                </label>
-                <select
-                  id="env-image"
-                  value={image}
-                  onChange={(e) => setImage(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
-                >
-                  {images.map((img) => (
-                    <option key={img.id} value={img.image}>
-                      {img.name}
-                    </option>
-                  ))}
-                </select>
-                {images.find((img) => img.image === image)?.description && (
+              <>
+                <div>
+                  <div className="mb-1.5 flex h-4 items-center gap-2">
+                    <label
+                      htmlFor="env-image"
+                      className="text-xs font-medium leading-4 text-muted"
+                    >
+                      Docker Image
+                    </label>
+                    {probeStatus === "probing" && (
+                      <span className="text-xs leading-4 text-muted">
+                        Checking...
+                      </span>
+                    )}
+                    {probeStatus === "available" && (
+                      <span className="flex items-center gap-1 text-xs leading-4 text-green-500">
+                        <CheckCircleIcon className="size-3" weight="fill" />
+                        Available
+                      </span>
+                    )}
+                    {probeStatus === "unavailable" && (
+                      <span className="flex items-center gap-1 text-xs leading-4 text-red-500">
+                        <WarningCircleIcon className="size-3" weight="fill" />
+                        {probeError ?? "Not available"}
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    id="env-image"
+                    value={image}
+                    onChange={(e) => setImage(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
+                  >
+                    {images.map((img) => (
+                      <option key={img.id} value={img.image}>
+                        {img.name}
+                      </option>
+                    ))}
+                  </select>
+                  {images.find((img) => img.image === image)?.description && (
+                    <p className="mt-1 text-xs text-muted">
+                      {images.find((img) => img.image === image)?.description}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="env-idle-timeout"
+                    className="mb-1.5 block text-xs font-medium text-muted"
+                  >
+                    Idle Timeout
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="env-idle-timeout"
+                      type="number"
+                      min="1"
+                      max="1440"
+                      value={Math.round(idleTimeout / 60)}
+                      onChange={(e) =>
+                        setIdleTimeout(Number(e.target.value) * 60)
+                      }
+                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                    />
+                    <span className="shrink-0 text-xs text-muted">minutes</span>
+                  </div>
                   <p className="mt-1 text-xs text-muted">
-                    {images.find((img) => img.image === image)?.description}
+                    Suspend session after this period of inactivity.
                   </p>
-                )}
-                {probeStatus === "probing" && (
-                  <p className="mt-1.5 text-xs text-muted">
-                    Checking availability...
-                  </p>
-                )}
-                {probeStatus === "available" && (
-                  <p className="mt-1.5 flex items-center gap-1 text-xs text-green-500">
-                    <CheckCircleIcon className="size-3" weight="fill" />
-                    Available
-                  </p>
-                )}
-                {probeStatus === "unavailable" && (
-                  <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
-                    <WarningCircleIcon className="size-3" weight="fill" />
-                    {probeError ?? "Not available"}
-                  </p>
-                )}
-              </div>
+                </div>
+              </>
             )}
 
             {/* Worker URL (Cloudflare only) */}
@@ -360,11 +395,7 @@ function EnvironmentDialog({
 
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={onClose}
-              >
+              <Button type="button" variant="secondary" onClick={onClose}>
                 Cancel
               </Button>
               <Button
@@ -428,6 +459,15 @@ function EnvironmentRow({
 
   const isCloudflare = environment.sandboxType === "cloudflare";
 
+  const formatIdleTimeout = (seconds: number) => {
+    const minutes = seconds / 60;
+    const hours = seconds / 3600;
+    if (seconds % 3600 === 0) {
+      return `Idle: ${hours}h`;
+    }
+    return `Idle: ${minutes}m`;
+  };
+
   return (
     <div className="flex items-center gap-4 rounded-lg border border-border bg-surface/30 p-4">
       <div
@@ -459,7 +499,11 @@ function EnvironmentRow({
             ? secretMeta
               ? `${environment.config.workerUrl} (Secret: ${secretMeta.name})`
               : environment.config.workerUrl
-            : (imageMeta?.name ?? environment.config.image)}
+            : `${imageMeta?.name ?? environment.config.image}${
+                environment.config.idleTimeoutSeconds
+                  ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
+                  : ""
+              }`}
         </p>
       </div>
 
@@ -614,6 +658,7 @@ export default function EnvironmentsPage() {
 
       {/* Create/Edit Dialog */}
       <EnvironmentDialog
+        key={editingEnv?.id ?? "create"}
         environment={editingEnv}
         images={images}
         open={dialogOpen}

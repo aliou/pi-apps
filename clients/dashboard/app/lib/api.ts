@@ -149,6 +149,7 @@ export interface EnvironmentConfig {
   image?: string;
   workerUrl?: string;
   secretId?: string;
+  idleTimeoutSeconds?: number;
   resources?: {
     cpuShares?: number;
     memoryMB?: number;
