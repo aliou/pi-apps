@@ -33,6 +33,8 @@ type LocationState = {
   initialPrompt?: string;
 };
 
+const ALL_EVENTS_FETCH_CHUNK = 1000;
+
 function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   const colors: Record<ConnectionStatus, string> = {
     connecting: "bg-status-warn/20 text-status-warn",
@@ -107,6 +109,40 @@ async function fetchHistory(sessionId: string): Promise<HistoryItem[]> {
   return [];
 }
 
+async function fetchAllEventsUntilSeq(
+  sessionId: string,
+  targetSeq: number,
+): Promise<JournalEvent[]> {
+  const collected: JournalEvent[] = [];
+  let cursor = 0;
+
+  while (cursor < targetSeq) {
+    const limit = Math.min(ALL_EVENTS_FETCH_CHUNK, targetSeq - cursor);
+    const res = await api.get<EventsResponse>(
+      `/sessions/${sessionId}/events?afterSeq=${cursor}&limit=${limit}`,
+    );
+
+    if (!res.data || res.data.events.length === 0) {
+      break;
+    }
+
+    collected.push(...res.data.events);
+    cursor = res.data.lastSeq;
+  }
+
+  return collected;
+}
+
+function mergeEventsBySeq(
+  current: JournalEvent[],
+  incoming: JournalEvent[],
+): JournalEvent[] {
+  const bySeq = new Map<number, JournalEvent>();
+  for (const event of current) bySeq.set(event.seq, event);
+  for (const event of incoming) bySeq.set(event.seq, event);
+  return Array.from(bySeq.values()).sort((a, b) => a.seq - b.seq);
+}
+
 export default function SessionPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -155,6 +191,11 @@ export default function SessionPage() {
   }, [initialPrompt, pendingPromptKey]);
 
   useEffect(() => {
+    setEvents([]);
+    lastSeqRef.current = 0;
+  }, [id]);
+
+  useEffect(() => {
     if (!id) return;
 
     api.get<Session>(`/sessions/${id}`).then((res) => {
@@ -169,17 +210,6 @@ export default function SessionPage() {
   useEffect(() => {
     if (!id) return;
     fetchHistory(id).then(setHistoryItems);
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-
-    api.get<EventsResponse>(`/sessions/${id}/events?limit=500`).then((res) => {
-      if (res.data) {
-        setEvents(res.data.events);
-        lastSeqRef.current = res.data.lastSeq;
-      }
-    });
   }, [id]);
 
   const refreshHistory = useCallback(() => {
@@ -270,9 +300,12 @@ export default function SessionPage() {
     }
 
     setSandboxStatus(activateRes.data.sandboxStatus);
-    lastSeqRef.current = Math.max(lastSeqRef.current, activateRes.data.lastSeq);
+    const activatedLastSeq = Math.max(lastSeqRef.current, activateRes.data.lastSeq);
+    const allEvents = await fetchAllEventsUntilSeq(id, activatedLastSeq);
+    setEvents((prev) => mergeEventsBySeq(prev, allEvents));
+    lastSeqRef.current = activatedLastSeq;
 
-    const wsUrl = `${RELAY_URL.replace("http", "ws")}/ws/sessions/${id}?lastSeq=${lastSeqRef.current}`;
+    const wsUrl = `${RELAY_URL.replace("http", "ws")}/ws/sessions/${id}?lastSeq=${activatedLastSeq}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -345,8 +378,8 @@ export default function SessionPage() {
           payload: event,
           createdAt: new Date().toISOString(),
         };
-        setEvents((prev) => [...prev, newEvent]);
-        lastSeqRef.current = seq;
+        setEvents((prev) => mergeEventsBySeq(prev, [newEvent]));
+        lastSeqRef.current = Math.max(lastSeqRef.current, seq);
 
         if (
           event.type === "turn_end" ||
