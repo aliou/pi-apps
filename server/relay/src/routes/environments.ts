@@ -35,6 +35,7 @@ function toSandboxConfig(
     image: config.image,
     workerUrl: config.workerUrl,
     apiToken,
+    imagePath: config.imagePath,
   };
 }
 
@@ -69,6 +70,13 @@ function validateConfig(
     }
     if (!config.secretId) {
       return "config.secretId is required for cloudflare environments (shared secret for Worker auth)";
+    }
+  } else if (sandboxType === "gondolin") {
+    if (
+      config.imagePath !== undefined &&
+      typeof config.imagePath !== "string"
+    ) {
+      return "config.imagePath must be a string when provided";
     }
   }
 
@@ -105,7 +113,7 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const validTypes: SandboxType[] = ["docker", "cloudflare"];
+    const validTypes: SandboxType[] = ["docker", "cloudflare", "gondolin"];
     if (!body.sandboxType || !validTypes.includes(body.sandboxType)) {
       return c.json(
         {
@@ -185,7 +193,11 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "name is required" }, 400);
     }
 
-    const validSandboxTypes: SandboxType[] = ["docker", "cloudflare"];
+    const validSandboxTypes: SandboxType[] = [
+      "docker",
+      "cloudflare",
+      "gondolin",
+    ];
     if (!body.sandboxType || !validSandboxTypes.includes(body.sandboxType)) {
       return c.json(
         {

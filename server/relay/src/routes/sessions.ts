@@ -188,7 +188,10 @@ export function sessionsRoutes(): Hono<AppEnv> {
           : sandboxManager.createForSession(
               session.id,
               resolvedEnvConfig ?? {
-                sandboxType: sandboxProvider as "docker" | "cloudflare",
+                sandboxType: sandboxProvider as
+                  | "docker"
+                  | "cloudflare"
+                  | "gondolin",
               },
               {
                 repoUrl,
@@ -222,7 +225,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
           );
           try {
             sessionService.update(session.id, { status: "error" });
-          } catch (updateErr) {
+          } catch (_updateErr) {
             // Database may be closed during test teardown - ignore
           }
         });

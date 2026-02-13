@@ -50,9 +50,9 @@ function EnvironmentDialog({
 }) {
   const isEdit = !!environment;
   const [name, setName] = useState(environment?.name ?? "");
-  const [sandboxType, setSandboxType] = useState<"docker" | "cloudflare">(
-    environment?.sandboxType ?? "docker",
-  );
+  const [sandboxType, setSandboxType] = useState<
+    "docker" | "cloudflare" | "gondolin"
+  >(environment?.sandboxType ?? "docker");
   const [image, setImage] = useState(
     environment?.config.image ?? images[0]?.image ?? "",
   );
@@ -60,6 +60,7 @@ function EnvironmentDialog({
     environment?.config.workerUrl ?? "",
   );
   const [secretId, setSecretId] = useState(environment?.config.secretId ?? "");
+  const [imagePath, setImagePath] = useState(environment?.config.imagePath ?? "");
   const [isDefault, setIsDefault] = useState(environment?.isDefault ?? false);
   const [idleTimeout, setIdleTimeout] = useState(
     environment?.config.idleTimeoutSeconds ?? 3600,
@@ -89,7 +90,8 @@ function EnvironmentDialog({
 
     const isConfigComplete =
       (sandboxType === "docker" && !!image) ||
-      (sandboxType === "cloudflare" && !!workerUrl.trim() && !!secretId);
+      (sandboxType === "cloudflare" && !!workerUrl.trim() && !!secretId) ||
+      sandboxType === "gondolin";
 
     if (!isConfigComplete) return;
 
@@ -99,7 +101,11 @@ function EnvironmentDialog({
       setProbeStatus("probing");
 
       const config =
-        sandboxType === "docker" ? { image } : { workerUrl, secretId };
+        sandboxType === "docker"
+          ? { image }
+          : sandboxType === "cloudflare"
+            ? { workerUrl, secretId }
+            : { ...(imagePath.trim() ? { imagePath: imagePath.trim() } : {}) };
 
       const res = await api.post<ProbeResult>("/environments/probe", {
         sandboxType,
@@ -123,21 +129,27 @@ function EnvironmentDialog({
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [sandboxType, image, workerUrl, secretId]);
+  }, [sandboxType, image, workerUrl, secretId, imagePath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     if (sandboxType === "docker" && !image) return;
-    if (sandboxType === "cloudflare" && (!workerUrl.trim() || !secretId))
+    if (sandboxType === "cloudflare" && (!workerUrl.trim() || !secretId)) {
       return;
+    }
 
     setSaving(true);
     try {
       const config =
         sandboxType === "docker"
           ? { image, idleTimeoutSeconds: idleTimeout }
-          : { workerUrl, secretId };
+          : sandboxType === "cloudflare"
+            ? { workerUrl, secretId }
+            : {
+                idleTimeoutSeconds: idleTimeout,
+                ...(imagePath.trim() ? { imagePath: imagePath.trim() } : {}),
+              };
 
       if (isEdit) {
         const update: UpdateEnvironmentRequest = {
@@ -206,7 +218,12 @@ function EnvironmentDialog({
                     value="docker"
                     checked={sandboxType === "docker"}
                     onChange={(e) =>
-                      setSandboxType(e.target.value as "docker" | "cloudflare")
+                      setSandboxType(
+                        e.target.value as
+                          | "docker"
+                          | "cloudflare"
+                          | "gondolin",
+                      )
                     }
                     className="size-4 border-border accent-accent"
                   />
@@ -218,11 +235,33 @@ function EnvironmentDialog({
                     value="cloudflare"
                     checked={sandboxType === "cloudflare"}
                     onChange={(e) =>
-                      setSandboxType(e.target.value as "docker" | "cloudflare")
+                      setSandboxType(
+                        e.target.value as
+                          | "docker"
+                          | "cloudflare"
+                          | "gondolin",
+                      )
                     }
                     className="size-4 border-border accent-accent"
                   />
                   <span className="text-sm text-fg">Cloudflare</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    value="gondolin"
+                    checked={sandboxType === "gondolin"}
+                    onChange={(e) =>
+                      setSandboxType(
+                        e.target.value as
+                          | "docker"
+                          | "cloudflare"
+                          | "gondolin",
+                      )
+                    }
+                    className="size-4 border-border accent-accent"
+                  />
+                  <span className="text-sm text-fg">Gondolin</span>
                 </label>
               </div>
             </div>
@@ -301,6 +340,70 @@ function EnvironmentDialog({
                   </p>
                 </div>
               </>
+            )}
+
+            {/* Gondolin options */}
+            {sandboxType === "gondolin" && (
+              <div className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="env-gondolin-image-path"
+                    className="mb-1.5 block text-xs font-medium text-muted"
+                  >
+                    Guest Assets Path (optional)
+                  </label>
+                  <input
+                    id="env-gondolin-image-path"
+                    type="text"
+                    value={imagePath}
+                    onChange={(e) => setImagePath(e.target.value)}
+                    placeholder="/absolute/path/to/gondolin/assets"
+                    className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                  />
+                  <p className="mt-1 text-xs text-muted">
+                    Leave empty to use Gondolin default asset discovery/download.
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="env-idle-timeout-gondolin"
+                    className="mb-1.5 block text-xs font-medium text-muted"
+                  >
+                    Idle Timeout
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="env-idle-timeout-gondolin"
+                      type="number"
+                      min="1"
+                      max="1440"
+                      value={Math.round(idleTimeout / 60)}
+                      onChange={(e) =>
+                        setIdleTimeout(Number(e.target.value) * 60)
+                      }
+                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                    />
+                    <span className="shrink-0 text-xs text-muted">minutes</span>
+                  </div>
+                </div>
+
+                {probeStatus === "probing" && (
+                  <p className="text-xs text-muted">Checking availability...</p>
+                )}
+                {probeStatus === "available" && (
+                  <p className="flex items-center gap-1 text-xs text-green-500">
+                    <CheckCircleIcon className="size-3" weight="fill" />
+                    Available
+                  </p>
+                )}
+                {probeStatus === "unavailable" && (
+                  <p className="flex items-center gap-1 text-xs text-red-500">
+                    <WarningCircleIcon className="size-3" weight="fill" />
+                    {probeError ?? "Not available"}
+                  </p>
+                )}
+              </div>
             )}
 
             {/* Worker URL (Cloudflare only) */}
@@ -458,6 +561,7 @@ function EnvironmentRow({
   };
 
   const isCloudflare = environment.sandboxType === "cloudflare";
+  const isGondolin = environment.sandboxType === "gondolin";
 
   const formatIdleTimeout = (seconds: number) => {
     const minutes = seconds / 60;
@@ -474,7 +578,9 @@ function EnvironmentRow({
         className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
           isCloudflare
             ? "bg-orange-500/10 text-orange-500"
-            : "bg-accent/10 text-accent"
+            : isGondolin
+              ? "bg-violet-500/10 text-violet-500"
+              : "bg-accent/10 text-accent"
         }`}
       >
         {isCloudflare ? (
@@ -499,11 +605,17 @@ function EnvironmentRow({
             ? secretMeta
               ? `${environment.config.workerUrl} (Secret: ${secretMeta.name})`
               : environment.config.workerUrl
-            : `${imageMeta?.name ?? environment.config.image}${
-                environment.config.idleTimeoutSeconds
-                  ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
-                  : ""
-              }`}
+            : isGondolin
+              ? `Gondolin${environment.config.imagePath ? ` (${environment.config.imagePath})` : ""}${
+                  environment.config.idleTimeoutSeconds
+                    ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
+                    : ""
+                }`
+              : `${imageMeta?.name ?? environment.config.image}${
+                  environment.config.idleTimeoutSeconds
+                    ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
+                    : ""
+                }`}
         </p>
       </div>
 

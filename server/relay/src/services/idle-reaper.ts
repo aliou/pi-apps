@@ -114,12 +114,28 @@ export class IdleReaper {
           );
         }
       }
-      const handle = await this.deps.sandboxManager.getHandleByType(
-        session.sandboxProvider as SandboxProviderType,
-        session.sandboxProviderId,
-        envConfig,
-      );
-      await handle.pause();
+
+      try {
+        const handle = await this.deps.sandboxManager.getHandleByType(
+          session.sandboxProvider as SandboxProviderType,
+          session.sandboxProviderId,
+          envConfig,
+        );
+        await handle.pause();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const notFound =
+          message.includes("Sandbox not found") ||
+          message.includes("not a sandbox");
+
+        if (!notFound) {
+          throw err;
+        }
+
+        console.warn(
+          `[idle-reaper] sandbox already gone for session=${session.id} providerId=${session.sandboxProviderId}`,
+        );
+      }
     }
 
     // 3. Update session status

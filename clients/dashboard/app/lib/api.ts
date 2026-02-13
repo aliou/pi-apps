@@ -146,7 +146,7 @@ export interface SessionHistoryEntry {
 export interface Environment {
   id: string;
   name: string;
-  sandboxType: "docker" | "cloudflare";
+  sandboxType: "docker" | "cloudflare" | "gondolin";
   config: EnvironmentConfig;
   isDefault: boolean;
   createdAt: string;
@@ -157,6 +157,7 @@ export interface EnvironmentConfig {
   image?: string;
   workerUrl?: string;
   secretId?: string;
+  imagePath?: string;
   idleTimeoutSeconds?: number;
   resources?: {
     cpuShares?: number;
@@ -173,7 +174,7 @@ export interface AvailableImage {
 
 export interface CreateEnvironmentRequest {
   name: string;
-  sandboxType: "docker" | "cloudflare";
+  sandboxType: "docker" | "cloudflare" | "gondolin";
   config: EnvironmentConfig;
   isDefault?: boolean;
 }
@@ -186,6 +187,7 @@ export interface UpdateEnvironmentRequest {
 
 export interface SandboxProviderStatus {
   docker: { available: boolean };
+  gondolin: { available: boolean };
 }
 
 export interface ProbeResult {

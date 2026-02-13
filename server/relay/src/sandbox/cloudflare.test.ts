@@ -441,6 +441,7 @@ describe("SandboxManager cloudflare wiring", () => {
     const { SandboxManager } = await import("./manager");
     const manager = new SandboxManager({
       docker: { sessionDataDir: "/tmp/test", secretsBaseDir: "/tmp/test" },
+      gondolin: { sessionDataDir: "/tmp/test" },
     });
     const available = await manager.isProviderAvailable({
       sandboxType: "cloudflare",
@@ -455,6 +456,7 @@ describe("SandboxManager cloudflare wiring", () => {
     const { SandboxManager } = await import("./manager");
     const manager = new SandboxManager({
       docker: { sessionDataDir: "/tmp/test", secretsBaseDir: "/tmp/test" },
+      gondolin: { sessionDataDir: "/tmp/test" },
     });
     const available = await manager.isProviderAvailable({
       sandboxType: "cloudflare",

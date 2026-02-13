@@ -16,6 +16,9 @@ describe("ModelsIntrospectionService", () => {
         sessionDataDir: "/tmp/pi-test-sessions",
         secretsBaseDir: "/tmp/pi-test-secrets",
       },
+      gondolin: {
+        sessionDataDir: "/tmp/pi-test-sessions",
+      },
     });
 
     const service = new ModelsIntrospectionService(

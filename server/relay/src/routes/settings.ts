@@ -24,9 +24,20 @@ export function settingsRoutes(): Hono<AppEnv> {
       // Docker not available
     }
 
+    // Check Gondolin availability
+    let gondolinAvailable = false;
+    try {
+      gondolinAvailable = await sandboxManager.isProviderAvailable({
+        sandboxType: "gondolin",
+      });
+    } catch {
+      // Gondolin not available
+    }
+
     return c.json({
       data: {
         docker: { available: dockerAvailable },
+        gondolin: { available: gondolinAvailable },
       },
       error: null,
     });

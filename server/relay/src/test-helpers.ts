@@ -67,6 +67,9 @@ export function createTestSandboxManager(): SandboxManager {
       sessionDataDir: "/tmp/pi-test-sessions",
       secretsBaseDir: "/tmp/pi-test-secrets",
     },
+    gondolin: {
+      sessionDataDir: "/tmp/pi-test-sessions",
+    },
   });
 
   // Override createForSession to use mock provider in tests

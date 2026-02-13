@@ -81,6 +81,9 @@ async function main() {
       sessionDataDir,
       secretsBaseDir: paths.stateDir,
     },
+    gondolin: {
+      sessionDataDir,
+    },
     logStore: sandboxLogStore,
   });
   console.log("Sandbox manager initialized (on-demand providers)");

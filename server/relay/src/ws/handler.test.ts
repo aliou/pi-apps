@@ -26,6 +26,9 @@ describe("WebSocket Handler", () => {
           sessionDataDir: "/tmp/pi-test-sessions",
           secretsBaseDir: "/tmp/pi-test-secrets",
         },
+        gondolin: {
+          sessionDataDir: "/tmp/pi-test-sessions",
+        },
       }),
       environmentService: new EnvironmentService(db),
       secretsService: createTestSecretsService(db),

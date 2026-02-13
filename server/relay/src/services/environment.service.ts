@@ -8,12 +8,14 @@ import type { SandboxResourceTier } from "../sandbox/provider-types";
  * Fields are provider-specific:
  * - Docker: image (required), resourceTier (optional)
  * - Cloudflare: workerUrl (required), resourceTier (optional)
+ * - Gondolin: imagePath (optional), resourceTier (optional)
  */
 /**
  * Per-environment config stored as JSON in the environments table.
  * Fields are provider-specific:
  * - Docker: image (required), resourceTier (optional)
  * - Cloudflare: workerUrl (required), secretId (required, references secrets table), resourceTier (optional)
+ * - Gondolin: imagePath (optional), resourceTier (optional)
  */
 export interface EnvironmentConfig {
   /** Docker image name (required for docker type) */
@@ -22,12 +24,14 @@ export interface EnvironmentConfig {
   workerUrl?: string;
   /** Secret ID referencing the shared secret in the secrets table (required for cloudflare type) */
   secretId?: string;
+  /** Optional custom guest assets directory for Gondolin environments. */
+  imagePath?: string;
   resourceTier?: SandboxResourceTier;
   /** Idle timeout in seconds before the reaper idles the session. Default: 3600 (1 hour). */
   idleTimeoutSeconds?: number;
 }
 
-export type SandboxType = "docker" | "cloudflare";
+export type SandboxType = "docker" | "cloudflare" | "gondolin";
 
 export interface CreateEnvironmentParams {
   name: string;

@@ -131,6 +131,7 @@ fi
 session_ids=$(sqlite3 "$DB" "SELECT id FROM sessions;")
 
 # Remove sandbox containers
+# TODO: filter by sandbox_provider='docker' to avoid checking non-docker provider IDs (e.g. gondolin-*), and add provider-specific cleanup hooks where needed.
 provider_ids=$(sqlite3 "$DB" "SELECT sandbox_provider_id FROM sessions WHERE sandbox_provider_id IS NOT NULL;")
 for pid in $provider_ids; do
   container=$(docker ps -a -q --filter "id=$pid" 2>/dev/null || true)

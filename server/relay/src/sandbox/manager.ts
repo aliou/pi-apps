@@ -2,6 +2,7 @@ import type { EnvironmentRecord } from "../services/environment.service";
 import type { SecretsService } from "../services/secrets.service";
 import { CloudflareSandboxProvider } from "./cloudflare";
 import { DockerSandboxProvider } from "./docker";
+import { GondolinSandboxProvider } from "./gondolin";
 import type { SandboxLogStore } from "./log-store";
 import { MockSandboxProvider } from "./mock";
 import type { SandboxProviderType } from "./provider-types";
@@ -23,13 +24,15 @@ import type {
  * Callers resolve secrets before passing this to the manager.
  */
 export interface EnvironmentSandboxConfig {
-  sandboxType: "docker" | "cloudflare";
+  sandboxType: "docker" | "cloudflare" | "gondolin";
   /** Docker image name (for docker type) */
   image?: string;
   /** Cloudflare Worker URL (for cloudflare type) */
   workerUrl?: string;
   /** Decrypted shared secret for Worker auth (for cloudflare type) */
   apiToken?: string;
+  /** Optional custom guest assets directory for Gondolin (for gondolin type) */
+  imagePath?: string;
 }
 
 export interface SandboxManagerConfig {
@@ -40,6 +43,9 @@ export interface SandboxManagerConfig {
   docker: {
     sessionDataDir: string;
     secretsBaseDir: string;
+  };
+  gondolin: {
+    sessionDataDir: string;
   };
   /** Optional log store for buffering sandbox stderr lines. */
   logStore?: SandboxLogStore;
@@ -108,6 +114,24 @@ export class SandboxManager {
       // Always rebuild -- token may have changed.
       const provider = new CloudflareSandboxProvider({ workerUrl, apiToken });
       this.providerCache.set(cacheKey, provider);
+      return provider;
+    }
+
+    if (envConfig.sandboxType === "gondolin") {
+      const imagePath = envConfig.imagePath;
+      const cacheKey = `gondolin:${imagePath ?? "default"}`;
+
+      let provider = this.providerCache.get(cacheKey);
+      if (!provider) {
+        provider = new GondolinSandboxProvider(
+          {
+            sessionDataDir: this.config.gondolin.sessionDataDir,
+            imagePath,
+          },
+          this.config.logStore,
+        );
+        this.providerCache.set(cacheKey, provider);
+      }
       return provider;
     }
 
@@ -328,12 +352,14 @@ export async function resolveEnvConfig(
     image?: string;
     workerUrl?: string;
     secretId?: string;
+    imagePath?: string;
   };
 
   const result: EnvironmentSandboxConfig = {
-    sandboxType: env.sandboxType as "docker" | "cloudflare",
+    sandboxType: env.sandboxType as "docker" | "cloudflare" | "gondolin",
     image: config.image,
     workerUrl: config.workerUrl,
+    imagePath: config.imagePath,
   };
 
   if (env.sandboxType === "cloudflare" && config.secretId) {

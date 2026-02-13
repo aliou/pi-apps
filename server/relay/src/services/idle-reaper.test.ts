@@ -41,7 +41,7 @@ function createTestDeps(overrides?: Partial<IdleReaperDeps>): {
   }) => {
     const config = JSON.parse(env.config);
     return {
-      sandboxType: env.sandboxType as "docker" | "cloudflare",
+      sandboxType: env.sandboxType as "docker" | "cloudflare" | "gondolin",
       image: config.image,
       workerUrl: config.workerUrl,
     } satisfies EnvironmentSandboxConfig;

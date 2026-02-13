@@ -20,6 +20,7 @@ extension Relay {
         case mock
         case docker
         case cloudflare
+        case gondolin
     }
 
     public enum SandboxStatus: String, Codable, Sendable, Hashable {
@@ -33,6 +34,7 @@ extension Relay {
     public enum SandboxType: String, Codable, Sendable, Hashable {
         case docker
         case cloudflare
+        case gondolin
     }
 
     public enum SandboxResourceTier: String, Codable, Sendable, Hashable {

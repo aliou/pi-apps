@@ -96,7 +96,15 @@
               pkgs.nodejs_22
               pkgs.pnpm
               pkgs.pre-commit
+              pkgs.qemu
+              # Gondolin custom image build requirements
+              pkgs.zig
+              pkgs.lz4
+              pkgs.curl
+              pkgs.python3
+              pkgs.e2fsprogs
               pkgs.websocat
+              pkgs.bun
             ];
 
             shellHook = ''
