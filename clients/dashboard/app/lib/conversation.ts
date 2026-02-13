@@ -118,6 +118,7 @@ export function parseEventsToConversation(
       // Assistant message streaming update
       case "message_update": {
         const p = payload as MessageUpdatePayload;
+        const evt = p.assistantMessageEvent;
 
         // If we don't have an active assistant message, create one
         if (!currentAssistantId) {
@@ -126,7 +127,6 @@ export function parseEventsToConversation(
         }
 
         // Handle delta events
-        const evt = p.assistantMessageEvent;
         if (evt?.type === "text_delta" && evt.delta) {
           currentAssistantText += evt.delta;
         }

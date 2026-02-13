@@ -7,22 +7,21 @@ import {
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { ConversationView } from "../components/conversation-view";
 import { DebugView } from "../components/debug-view";
 import { StatusBadge } from "../components/status-badge";
 import {
-  api,
   type ActivateResponse,
+  api,
   type EventsResponse,
   type JournalEvent,
   RELAY_URL,
   type Session,
-  type SessionHistoryResponse,
 } from "../lib/api";
-import type { HistoryItem } from "../lib/history";
-import { parseHistoryToConversation } from "../lib/history";
+import { parseEventsToConversation } from "../lib/conversation";
+import { mergeCanonicalEvents } from "../lib/events";
 import { useSidebar } from "../lib/sidebar";
 import { cn } from "../lib/utils";
 
@@ -101,14 +100,6 @@ function ViewToggle({
   );
 }
 
-async function fetchHistory(sessionId: string): Promise<HistoryItem[]> {
-  const res = await api.get<SessionHistoryResponse>(`/sessions/${sessionId}/history`);
-  if (res.data) {
-    return parseHistoryToConversation(res.data.entries);
-  }
-  return [];
-}
-
 async function fetchAllEventsUntilSeq(
   sessionId: string,
   targetSeq: number,
@@ -133,16 +124,6 @@ async function fetchAllEventsUntilSeq(
   return collected;
 }
 
-function mergeEventsBySeq(
-  current: JournalEvent[],
-  incoming: JournalEvent[],
-): JournalEvent[] {
-  const bySeq = new Map<number, JournalEvent>();
-  for (const event of current) bySeq.set(event.seq, event);
-  for (const event of incoming) bySeq.set(event.seq, event);
-  return Array.from(bySeq.values()).sort((a, b) => a.seq - b.seq);
-}
-
 export default function SessionPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -150,7 +131,6 @@ export default function SessionPage() {
   const { collapsed } = useSidebar();
 
   const [session, setSession] = useState<Session | null>(null);
-  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [events, setEvents] = useState<JournalEvent[]>([]);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("disconnected");
@@ -171,7 +151,10 @@ export default function SessionPage() {
   const pendingInitialPromptRef = useRef<string | null>(null);
   const readinessProbeIdRef = useRef<string | null>(null);
 
-  const conversationItems = historyItems;
+  const conversationItems = useMemo(
+    () => parseEventsToConversation(events),
+    [events],
+  );
 
   const locationState = (location.state as LocationState | null) ?? null;
   const initialPrompt = locationState?.initialPrompt?.trim();
@@ -191,6 +174,7 @@ export default function SessionPage() {
   }, [initialPrompt, pendingPromptKey]);
 
   useEffect(() => {
+    if (!id) return;
     setEvents([]);
     lastSeqRef.current = 0;
   }, [id]);
@@ -207,62 +191,37 @@ export default function SessionPage() {
     });
   }, [id]);
 
-  useEffect(() => {
-    if (!id) return;
-    fetchHistory(id).then(setHistoryItems);
-  }, [id]);
+  const sendPrompt = useCallback((message: string): boolean => {
+    if (!wsRef.current || !wsReadyRef.current) return false;
 
-  const refreshHistory = useCallback(() => {
-    if (!id) return;
-    fetchHistory(id).then(setHistoryItems);
-  }, [id]);
+    wsRef.current.send(
+      JSON.stringify({
+        type: "prompt",
+        message,
+        id: crypto.randomUUID(),
+      }),
+    );
 
-  const sendPrompt = useCallback(
-    (message: string, optimistic = true): boolean => {
-      if (!wsRef.current || !wsReadyRef.current) return false;
-
-      wsRef.current.send(
-        JSON.stringify({
-          type: "prompt",
-          message,
-          id: crypto.randomUUID(),
-        }),
-      );
-
-      if (optimistic) {
-        const optimisticId = `optimistic-${Date.now()}`;
-        setHistoryItems((prev) => [
-          ...prev,
-          {
-            type: "user" as const,
-            id: optimisticId,
-            text: message,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-      }
-
-      const seq = lastSeqRef.current + 1;
-      setEvents((prev) => [
-        ...prev,
+    const seq = lastSeqRef.current + 1;
+    setEvents((prev) =>
+      mergeCanonicalEvents(prev, [
         {
           seq,
           type: "prompt",
           payload: { type: "prompt", message },
           createdAt: new Date().toISOString(),
         },
-      ]);
-      lastSeqRef.current = seq;
-      return true;
-    },
-    [],
-  );
+      ]),
+    );
+    lastSeqRef.current = seq;
+    return true;
+  }, []);
 
   const flushPendingInitialPrompt = useCallback(() => {
     const pending = pendingInitialPromptRef.current;
     if (!pending || initialPromptSentRef.current) return;
 
-    const sent = sendPrompt(pending, true);
+    const sent = sendPrompt(pending);
     if (!sent) return;
 
     initialPromptSentRef.current = true;
@@ -300,9 +259,12 @@ export default function SessionPage() {
     }
 
     setSandboxStatus(activateRes.data.sandboxStatus);
-    const activatedLastSeq = Math.max(lastSeqRef.current, activateRes.data.lastSeq);
+    const activatedLastSeq = Math.max(
+      lastSeqRef.current,
+      activateRes.data.lastSeq,
+    );
     const allEvents = await fetchAllEventsUntilSeq(id, activatedLastSeq);
-    setEvents((prev) => mergeEventsBySeq(prev, allEvents));
+    setEvents((prev) => mergeCanonicalEvents(prev, allEvents));
     lastSeqRef.current = activatedLastSeq;
 
     const wsUrl = `${RELAY_URL.replace("http", "ws")}/ws/sessions/${id}?lastSeq=${activatedLastSeq}`;
@@ -378,21 +340,13 @@ export default function SessionPage() {
           payload: event,
           createdAt: new Date().toISOString(),
         };
-        setEvents((prev) => mergeEventsBySeq(prev, [newEvent]));
+        setEvents((prev) => mergeCanonicalEvents(prev, [newEvent]));
         lastSeqRef.current = Math.max(lastSeqRef.current, seq);
-
-        if (
-          event.type === "turn_end" ||
-          event.type === "agent_end" ||
-          event.type === "message_end"
-        ) {
-          refreshHistory();
-        }
       } catch {
         // Ignore parse errors
       }
     };
-  }, [id, refreshHistory, flushPendingInitialPrompt]);
+  }, [id, flushPendingInitialPrompt]);
 
   useEffect(() => {
     void connectWebSocket();
@@ -408,7 +362,6 @@ export default function SessionPage() {
     };
   }, [connectWebSocket]);
 
-
   const handleSubmit = () => {
     if (!inputText.trim() || !wsRef.current || isSubmitting) return;
 
@@ -416,7 +369,7 @@ export default function SessionPage() {
     setInputText("");
     setIsSubmitting(true);
 
-    const sent = sendPrompt(message, true);
+    const sent = sendPrompt(message);
     if (!sent) {
       setIsSubmitting(false);
       return;
@@ -533,7 +486,9 @@ export default function SessionPage() {
             <button
               type="button"
               onClick={handleArchive}
-              disabled={!session || session.status === "archived" || isArchiving}
+              disabled={
+                !session || session.status === "archived" || isArchiving
+              }
               className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
             >
               <ArchiveBoxIcon className="size-4" />
@@ -582,7 +537,8 @@ export default function SessionPage() {
                       : "Waiting for connection..."
                   }
                   disabled={
-                    connectionStatus !== "connected" || session?.status === "archived"
+                    connectionStatus !== "connected" ||
+                    session?.status === "archived"
                   }
                   rows={1}
                   className={cn(
@@ -621,9 +577,7 @@ export default function SessionPage() {
                 <PaperPlaneTiltIcon className="w-5 h-5" weight="fill" />
               </button>
             </div>
-            {error && (
-              <p className="mt-2 text-xs text-status-err">{error}</p>
-            )}
+            {error && <p className="mt-2 text-xs text-status-err">{error}</p>}
           </div>
         </div>
       )}

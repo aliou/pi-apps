@@ -1,12 +1,12 @@
 import { CopyIcon, UserIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
-import { NativeToolCall, RawEntryFallback } from "./session-ui";
-import type { HistoryItem } from "../lib/history";
+import type { ConversationItem } from "../lib/conversation";
 import { cn } from "../lib/utils";
+import { NativeToolCall } from "./session-ui";
 
 interface ConversationViewProps {
-  items: HistoryItem[];
+  items: ConversationItem[];
   autoScroll?: boolean;
 }
 
@@ -32,10 +32,13 @@ function findDiffText(output: string): string | undefined {
 }
 
 function trimCodeBlockTrailingBlankLines(markdown: string): string {
-  return markdown.replace(/```([^\n`]*)\n([\s\S]*?)```/g, (_match, language, code) => {
-    const trimmedCode = String(code).replace(/\n+$/, "");
-    return `\`\`\`${language}\n${trimmedCode}\n\`\`\``;
-  });
+  return markdown.replace(
+    /```([^\n`]*)\n([\s\S]*?)```/g,
+    (_match, language, code) => {
+      const trimmedCode = String(code).replace(/\n+$/, "");
+      return `\`\`\`${language}\n${trimmedCode}\n\`\`\``;
+    },
+  );
 }
 
 export function ConversationView({
@@ -44,14 +47,27 @@ export function ConversationView({
 }: ConversationViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(items.length);
+  const prevLastFingerprintRef = useRef("");
 
   useEffect(() => {
     if (!autoScroll) return;
-    if (items.length > prevLengthRef.current) {
+
+    const last = items[items.length - 1];
+    const lastFingerprint = !last
+      ? ""
+      : `${last.id}:${last.type === "assistant" ? last.text.length : ""}`;
+
+    const appendedItem = items.length > prevLengthRef.current;
+    const streamedAssistantUpdate =
+      items.length > 0 && lastFingerprint !== prevLastFingerprintRef.current;
+
+    if (appendedItem || streamedAssistantUpdate) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
+
     prevLengthRef.current = items.length;
-  }, [items.length, autoScroll]);
+    prevLastFingerprintRef.current = lastFingerprint;
+  }, [items, autoScroll]);
 
   if (items.length === 0) {
     return (
@@ -74,8 +90,6 @@ export function ConversationView({
             return <ToolCallItem key={item.id} item={item} />;
           case "system":
             return <SystemMessage key={item.id} item={item} />;
-          case "raw":
-            return <RawEntryItem key={item.id} item={item} />;
           default:
             return null;
         }
@@ -89,7 +103,7 @@ export function ConversationView({
 function UserMessage({
   item,
 }: {
-  item: Extract<HistoryItem, { type: "user" }>;
+  item: Extract<ConversationItem, { type: "user" }>;
 }) {
   return (
     <div className="flex justify-end">
@@ -109,7 +123,7 @@ function UserMessage({
 function AssistantMessage({
   item,
 }: {
-  item: Extract<HistoryItem, { type: "assistant" }>;
+  item: Extract<ConversationItem, { type: "assistant" }>;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -140,7 +154,9 @@ function AssistantMessage({
               "dark:[&_[data-streamdown=inline-code]]:bg-[#203246] dark:[&_[data-streamdown=inline-code]]:text-[#D8E4F2] dark:[&_[data-streamdown=inline-code]]:border-[#36506B]",
             )}
           >
-            <Streamdown>{trimCodeBlockTrailingBlankLines(item.text)}</Streamdown>
+            <Streamdown>
+              {trimCodeBlockTrailingBlankLines(item.text)}
+            </Streamdown>
           </div>
           <button
             type="button"
@@ -165,7 +181,7 @@ function AssistantMessage({
 function ToolCallItem({
   item,
 }: {
-  item: Extract<HistoryItem, { type: "tool" }>;
+  item: Extract<ConversationItem, { type: "tool" }>;
 }) {
   const parsedArgs = safeParseJson(item.args);
   const argPath = asString(parsedArgs?.path);
@@ -190,26 +206,13 @@ function ToolCallItem({
 function SystemMessage({
   item,
 }: {
-  item: Extract<HistoryItem, { type: "system" }>;
+  item: Extract<ConversationItem, { type: "system" }>;
 }) {
   return (
     <div className="flex justify-center">
       <div className="text-xs text-muted bg-bg-deep px-3 py-1 rounded-full max-w-[80%] truncate">
         {item.text}
       </div>
-    </div>
-  );
-}
-
-// Raw entry (unknown type) — collapsible with JSON
-function RawEntryItem({
-  item,
-}: {
-  item: Extract<HistoryItem, { type: "raw" }>;
-}) {
-  return (
-    <div className="ml-10 my-1">
-      <RawEntryFallback entry={item.entry} />
     </div>
   );
 }

@@ -216,16 +216,18 @@ export function ToolCallDetails({
   output,
   path,
   toolName,
+  defaultOpen = false,
 }: {
   args?: string;
   output?: string;
   path?: string;
   toolName?: string;
+  defaultOpen?: boolean;
 }) {
   const lang = inferCodeLanguage(path, toolName);
 
   return (
-    <details className="rounded border border-border/70 bg-bg-deep" open>
+    <details className="rounded border border-border/70 bg-bg-deep" open={defaultOpen}>
       <summary className="cursor-pointer px-2 py-1 text-xs text-muted">Details</summary>
       <div className="space-y-2 border-t border-border/70 p-2 text-xs">
         {args ? <MarkdownCode text={args} language="json" /> : null}
