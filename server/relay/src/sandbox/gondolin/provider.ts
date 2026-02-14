@@ -39,6 +39,9 @@ const RESOURCE_TIER_SPECS: Record<
 };
 
 const VALIDATION_TIMEOUT_MS = 300_000;
+const PI_PROBE_TIMEOUT_MS = 60_000;
+const NPM_PROBE_TIMEOUT_MS = 30_000;
+const NPM_FIX_TIMEOUT_MS = 120_000;
 
 function getCacheRoot(): string {
   if (process.env.PI_RELAY_CACHE_DIR) {
@@ -93,7 +96,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
       });
 
       const probe = await vm.exec("pi --version", {
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(PI_PROBE_TIMEOUT_MS),
       });
       return probe.exitCode === 0;
     } catch {
@@ -212,14 +215,14 @@ export class GondolinSandboxProvider implements SandboxProvider {
   private async ensureWorkingNpm(vm: VM): Promise<void> {
     const probe = await vm.exec(
       "test -f /usr/lib/node_modules/npm/node_modules/@sigstore/protobuf-specs/dist/__generated__/google/protobuf/timestamp.js",
-      { signal: AbortSignal.timeout(10_000) },
+      { signal: AbortSignal.timeout(NPM_PROBE_TIMEOUT_MS) },
     );
     if (probe.exitCode === 0) {
       return;
     }
 
     const fix = await vm.exec("apk add --no-cache npm", {
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(NPM_FIX_TIMEOUT_MS),
     });
     if (fix.exitCode !== 0) {
       throw new Error(
@@ -551,7 +554,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
     await this.ensureWorkingNpm(vm);
 
     const probe = await vm.exec("pi --version", {
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(PI_PROBE_TIMEOUT_MS),
     });
 
     if (probe.exitCode !== 0) {
