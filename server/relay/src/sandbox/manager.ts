@@ -67,6 +67,8 @@ export class SandboxManager {
   private mockProvider: MockSandboxProvider | null = null;
   /** Cached secrets snapshot for new sandbox creation. */
   private secretsSnapshot: Record<string, string> = {};
+  /** Abort controller for the currently running extension validation. */
+  private activeValidationAbort: AbortController | null = null;
 
   constructor(config: SandboxManagerConfig) {
     this.config = config;
@@ -160,6 +162,73 @@ export class SandboxManager {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Validate a package source by running `pi install` in an ephemeral
+   * Gondolin VM. Returns null if Gondolin is not available (skip validation).
+   */
+  async validateExtensionPackage(
+    source: string,
+  ): Promise<{ valid: boolean; error?: string } | null> {
+    // console.log(`[sandbox-manager] validateExtensionPackage source=${source}`);
+    if (this.activeValidationAbort) {
+      return { valid: false, error: "validation already in progress" };
+    }
+
+    try {
+      const provider = this.getGondolinProvider();
+      if (!provider) {
+        // console.log("[sandbox-manager] gondolin provider missing, skip");
+        return null;
+      }
+      const available = await provider.isAvailable();
+      // console.log(`[sandbox-manager] gondolin available=${available}`);
+      if (!available) return null;
+
+      const abortController = new AbortController();
+      this.activeValidationAbort = abortController;
+      const result = await provider.validatePackage(source, {
+        signal: abortController.signal,
+      });
+      // console.log(`[sandbox-manager] validation result=${JSON.stringify(result)}`);
+      return result;
+    } catch (error) {
+      // console.error(
+      //   `[sandbox-manager] validation exception=${error instanceof Error ? error.message : String(error)}`,
+      // );
+      return null;
+    } finally {
+      this.activeValidationAbort = null;
+    }
+  }
+
+  cancelExtensionValidation(): boolean {
+    if (!this.activeValidationAbort) {
+      return false;
+    }
+    this.activeValidationAbort.abort();
+    this.activeValidationAbort = null;
+    return true;
+  }
+
+  /**
+   * Get a Gondolin provider instance (using default config).
+   * Returns null if not configured.
+   */
+  private getGondolinProvider(): GondolinSandboxProvider | null {
+    const cacheKey = "gondolin:default";
+    let provider = this.providerCache.get(cacheKey);
+    if (!provider) {
+      provider = new GondolinSandboxProvider(
+        {
+          sessionDataDir: this.config.gondolin.sessionDataDir,
+        },
+        this.config.logStore,
+      );
+      this.providerCache.set(cacheKey, provider);
+    }
+    return provider as GondolinSandboxProvider;
   }
 
   /**

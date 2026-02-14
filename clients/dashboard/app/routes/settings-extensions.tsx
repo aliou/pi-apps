@@ -1,6 +1,6 @@
 import { PackageIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import { Button, Tabs } from "../components/ui";
+import { ActionSplitButton, Button, Tabs } from "../components/ui";
 import { api, type ExtensionConfig, type ExtensionScope } from "../lib/api";
 
 type ScopeTab = "global" | "chat" | "code";
@@ -15,10 +15,10 @@ function AddPackageForm({
   const [open, setOpen] = useState(false);
   const [pkg, setPkg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitPackage = async (validate: boolean) => {
     if (!pkg.trim()) return;
 
     setSaving(true);
@@ -27,6 +27,7 @@ function AddPackageForm({
     const res = await api.post<ExtensionConfig>("/extension-configs", {
       scope,
       package: pkg.trim(),
+      validate,
     });
 
     setSaving(false);
@@ -39,6 +40,23 @@ function AddPackageForm({
     setPkg("");
     setOpen(false);
     onAdded();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitPackage(true);
+  };
+
+  const handleCancelValidation = async () => {
+    setCanceling(true);
+    const res = await api.post<{ canceled: boolean }>(
+      "/extension-configs/validation/cancel",
+      {},
+    );
+    setCanceling(false);
+    if (res.error) {
+      setError(res.error);
+    }
   };
 
   if (!open) {
@@ -66,12 +84,13 @@ function AddPackageForm({
         </span>
         <button
           type="button"
+          disabled={saving}
           onClick={() => {
             setOpen(false);
             setPkg("");
             setError(null);
           }}
-          className="text-muted hover:text-fg"
+          className="text-muted hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
         >
           <XIcon className="size-4" />
         </button>
@@ -88,9 +107,10 @@ function AddPackageForm({
         <input
           type="text"
           value={pkg}
+          disabled={saving}
           onChange={(e) => setPkg(e.target.value)}
           placeholder="npm:@scope/package@version or git:github.com/user/repo@tag"
-          className="w-full rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+          className="w-full rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
       </label>
 
@@ -102,10 +122,38 @@ function AddPackageForm({
         git repos.
       </p>
 
-      <div className="mt-4 flex justify-end">
-        <Button type="submit" loading={saving} variant="primary" size="md">
-          Add
-        </Button>
+      <div className="mt-4 flex justify-end gap-2">
+        {saving ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
+            disabled={canceling}
+            onClick={() => void handleCancelValidation()}
+          >
+            {canceling ? "Canceling..." : "Cancel"}
+          </Button>
+        ) : null}
+        <ActionSplitButton.Root>
+          <ActionSplitButton.Main
+            type="submit"
+            loading={saving}
+            disabled={saving || !pkg.trim()}
+            variant="primary"
+            size="md"
+          >
+            Add
+          </ActionSplitButton.Main>
+          <ActionSplitButton.Menu disabled={saving || !pkg.trim()}>
+            <ActionSplitButton.Item
+              value="add-without-validation"
+              onSelect={() => void submitPackage(false)}
+              description="Skips package validation. Validation starts a Gondolin VM and installs the package, which can take some time."
+            >
+              Add without validation
+            </ActionSplitButton.Item>
+          </ActionSplitButton.Menu>
+        </ActionSplitButton.Root>
       </div>
     </form>
   );

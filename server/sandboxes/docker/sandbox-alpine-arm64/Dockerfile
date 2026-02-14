@@ -14,9 +14,10 @@ RUN npm install -g @mariozechner/pi-coding-agent@${PI_VERSION}
 
 FROM alpine:3.21
 
-# Install Node.js runtime (no npm) and base tools
+# Install Node.js runtime and base tools
 RUN apk add --no-cache \
     nodejs \
+    npm \
     bash \
     curl \
     git \
@@ -55,6 +56,7 @@ RUN curl -SsL https://github.com/boxboat/fixuid/releases/download/v0.6.0/fixuid-
 
 # Set environment for runtime
 ENV PI_CODING_AGENT_DIR=/data/agent
+ENV npm_config_prefix=/data/agent/npm
 ENV HOME=/home/user
 
 WORKDIR /workspace

@@ -1,3 +1,4 @@
+export { ActionSplitButton } from "./action-split-button";
 export { Button, type ButtonProps } from "./button";
 export { Collapsible, type CollapsibleRootProps } from "./collapsible";
 export { Combobox, type ComboboxRootProps } from "./combobox";

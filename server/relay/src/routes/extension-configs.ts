@@ -8,6 +8,7 @@ interface AddPackageRequest {
   scope: ExtensionScope;
   package: string;
   sessionId?: string;
+  validate?: boolean;
 }
 
 export function extensionConfigsRoutes(): Hono<AppEnv> {
@@ -63,10 +64,18 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
     return c.json({ data: { packages }, error: null });
   });
 
+  // Cancel an in-flight extension validation.
+  app.post("/validation/cancel", (c) => {
+    const sandboxManager = c.get("sandboxManager");
+    const canceled = sandboxManager.cancelExtensionValidation();
+    return c.json({ data: { canceled }, error: null });
+  });
+
   // Add a package
   app.post("/", async (c) => {
     const extensionConfigService = c.get("extensionConfigService");
     const sessionService = c.get("sessionService");
+    const sandboxManager = c.get("sandboxManager");
 
     let body: AddPackageRequest;
     try {
@@ -106,9 +115,39 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
       }
     }
 
+    // Validate package by installing in an ephemeral Gondolin VM.
+    // If Gondolin is unavailable, skip validation (result is null).
+    const pkg = body.package.trim();
+    const shouldValidate = body.validate !== false;
+    // console.log(
+    //   `[ext-configs] package=${pkg} scope=${body.scope} sessionId=${body.sessionId ?? "-"} validate=${shouldValidate}`,
+    // );
+
+    let validation: { valid: boolean; error?: string } | null = null;
+    if (shouldValidate) {
+      validation = await sandboxManager.validateExtensionPackage(pkg);
+      // console.log(
+      //   `[ext-configs] validation result=${JSON.stringify(validation)} elapsedMs=${Date.now() - startedAt}`,
+      // );
+      if (validation && !validation.valid) {
+        // console.log(
+        //   `[ext-configs] reject package=${pkg} reason=${validation.error ?? "unknown error"}`,
+        // );
+        return c.json(
+          {
+            data: null,
+            error: `package validation failed: ${validation.error ?? "unknown error"}`,
+          },
+          400,
+        );
+      }
+    } else {
+      // console.log(`[ext-configs] validation skipped by request package=${pkg}`);
+    }
+
     const config = extensionConfigService.add({
       scope: body.scope,
-      package: body.package.trim(),
+      package: pkg,
       sessionId: body.scope === "session" ? body.sessionId : undefined,
     });
 
@@ -122,12 +161,18 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
       sessionService.update(sid, { extensionsStale: true });
     }
 
+    const meta: { staleSessionCount?: number; validationSkipped?: boolean } = {};
+    if (staleSessionIds.length > 0) {
+      meta.staleSessionCount = staleSessionIds.length;
+    }
+    if (validation === null) {
+      meta.validationSkipped = true;
+    }
+
     return c.json({
       data: config,
       error: null,
-      ...(staleSessionIds.length > 0 && {
-        meta: { staleSessionCount: staleSessionIds.length },
-      }),
+      ...(Object.keys(meta).length > 0 && { meta }),
     });
   });
 

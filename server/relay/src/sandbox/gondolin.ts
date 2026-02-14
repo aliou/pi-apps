@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import readline from "node:readline";
@@ -23,7 +30,6 @@ import type {
 } from "./types";
 
 const DEFAULT_TIER: SandboxResourceTier = "medium";
-const DEFAULT_SOURCE_IMAGE = "ghcr.io/aliou/pi-sandbox-alpine-arm64:latest";
 
 const RESOURCE_TIER_SPECS: Record<
   SandboxResourceTier,
@@ -44,6 +50,8 @@ const MODEL_KEY_ENV_VARS = [
   "GROQ_API_KEY",
   "TOGETHER_API_KEY",
 ] as const;
+
+const VALIDATION_TIMEOUT_MS = 300_000;
 
 function hasAssets(dir: string): boolean {
   return ["manifest.json", "vmlinuz-virt", "initramfs.cpio.lz4", "rootfs.ext4"]
@@ -72,11 +80,7 @@ function getCacheRoot(): string {
 function getDefaultImageOutPath(): string {
   return process.env.GONDOLIN_IMAGE_OUT
     ? resolve(process.env.GONDOLIN_IMAGE_OUT)
-    : join(getCacheRoot(), "gondolin-custom", "pi-runtime-docker2vm");
-}
-
-function getDocker2VmDir(): string {
-  return join(getCacheRoot(), "docker2vm-src");
+    : join(getCacheRoot(), "gondolin-custom", "pi-runtime-main");
 }
 
 type GondolinSessionMeta = {
@@ -128,6 +132,147 @@ export class GondolinSandboxProvider implements SandboxProvider {
       if (vm) {
         await vm.close().catch(() => undefined);
       }
+    }
+  }
+
+  /**
+   * Validate a package source by spinning up an ephemeral VM and running
+   * `pi install <source>`. Returns { valid, error? }.
+   */
+  async validatePackage(
+    source: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ valid: boolean; error?: string }> {
+    let vm: VM | null = null;
+    let validateDir: string | null = null;
+
+    // console.log(`[gondolin:validate] start source=${source}`);
+    try {
+      const imagePath = await this.resolveImagePath();
+      // console.log(`[gondolin:validate] imagePath=${imagePath}`);
+
+      const validateRoot = join(getCacheRoot(), "gondolin-validate");
+      mkdirSync(validateRoot, { recursive: true });
+      validateDir = mkdtempSync(join(validateRoot, "pkg-"));
+      mkdirSync(join(validateDir, "data"), { recursive: true });
+      mkdirSync(join(validateDir, "config"), { recursive: true });
+      mkdirSync(join(validateDir, "cache"), { recursive: true });
+      mkdirSync(join(validateDir, "state"), { recursive: true });
+
+      vm = await GondolinVM.create({
+        sandbox: { imagePath, netEnabled: true },
+        vfs: {
+          mounts: {
+            "/agent": new RealFSProvider(validateDir),
+          },
+        },
+        env: {
+          ANTHROPIC_API_KEY: "validation-only",
+          PI_CODING_AGENT_DIR: "/agent",
+          npm_config_prefix: "/agent/npm",
+          npm_config_maxsockets: "1",
+          npm_config_fetch_retries: "3",
+          npm_config_fetch_retry_mintimeout: "10000",
+          npm_config_fetch_retry_maxtimeout: "60000",
+        },
+      });
+
+      if (options?.signal) {
+        options.signal.addEventListener(
+          "abort",
+          () => {
+            vm?.close().catch(() => undefined);
+          },
+          { once: true },
+        );
+      }
+
+      await this.ensureWorkingNpm(vm);
+      // console.log("[gondolin:validate] npm ready");
+
+      const timeoutSignal = AbortSignal.timeout(VALIDATION_TIMEOUT_MS);
+      const combinedSignal = options?.signal
+        ? AbortSignal.any([timeoutSignal, options.signal])
+        : timeoutSignal;
+
+      const proc = vm.exec(`pi install ${source}`, {
+        signal: combinedSignal,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const stdoutChunks: string[] = [];
+      const stderrChunks: string[] = [];
+
+      for await (const chunk of proc.output()) {
+        if (chunk.stream === "stdout") {
+          stdoutChunks.push(chunk.text);
+          // process.stdout.write(`[gondolin:validate:stdout] ${chunk.text}`);
+        } else {
+          stderrChunks.push(chunk.text);
+          // process.stderr.write(`[gondolin:validate:stderr] ${chunk.text}`);
+        }
+      }
+
+      const result = await proc;
+
+      // console.log(
+      //   `[gondolin:validate] pi install exitCode=${result.exitCode} stdoutChunks=${stdoutChunks.length} stderrChunks=${stderrChunks.length}`,
+      // );
+
+      if (result.exitCode === 0) {
+        // console.log("[gondolin:validate] success");
+        return { valid: true };
+      }
+
+      const detail =
+        result.stderr?.trim() ||
+        stderrChunks.join("").trim() ||
+        result.stdout?.trim() ||
+        stdoutChunks.join("").trim() ||
+        "unknown error";
+      // console.log(`[gondolin:validate] failed detail=${detail.slice(0, 500)}`);
+      return { valid: false, error: detail };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "validation failed";
+      const canceled =
+        options?.signal?.aborted ||
+        message.includes("aborted") ||
+        message.includes("AbortError");
+      if (canceled) {
+        // console.log("[gondolin:validate] canceled");
+        return { valid: false, error: "validation canceled" };
+      }
+      return {
+        valid: false,
+        error: message,
+      };
+    } finally {
+      if (vm) {
+        await vm.close().catch(() => undefined);
+      }
+      if (validateDir) {
+        rmSync(validateDir, { recursive: true, force: true });
+      }
+    }
+  }
+
+  private async ensureWorkingNpm(vm: VM): Promise<void> {
+    const probe = await vm.exec(
+      "test -f /usr/lib/node_modules/npm/node_modules/@sigstore/protobuf-specs/dist/__generated__/google/protobuf/timestamp.js",
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    if (probe.exitCode === 0) {
+      return;
+    }
+
+    const fix = await vm.exec("apk add --no-cache npm", {
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (fix.exitCode !== 0) {
+      throw new Error(
+        fix.stderr?.trim() || fix.stdout?.trim() || "failed to install npm",
+      );
     }
   }
 
@@ -396,87 +541,12 @@ export class GondolinSandboxProvider implements SandboxProvider {
         return imageOut;
       }
 
-      await this.generateImageAssets(imageOut);
-      if (!hasAssets(imageOut)) {
-        throw new Error(
-          `Gondolin assets missing after conversion: ${imageOut}`,
-        );
-      }
-
-      return imageOut;
+      throw new Error(
+        `Gondolin assets missing: ${imageOut}. Build them with server/sandboxes/gondolin/scripts/setup-custom-assets.sh and set GONDOLIN_IMAGE_OUT if needed.`,
+      );
     })();
 
     return this.resolvedImagePathPromise;
-  }
-
-  private async generateImageAssets(imageOut: string): Promise<void> {
-    const docker2vmDir = getDocker2VmDir();
-    const sourceImage =
-      process.env.GONDOLIN_SOURCE_IMAGE ?? DEFAULT_SOURCE_IMAGE;
-
-    mkdirSync(getCacheRoot(), { recursive: true });
-    mkdirSync(imageOut, { recursive: true });
-
-    try {
-      await runCommand("bun", ["--version"], process.cwd());
-    } catch {
-      throw new Error(
-        "Gondolin asset generation requires bun. Install bun or set config.imagePath to prebuilt assets.",
-      );
-    }
-
-    if (!existsSync(docker2vmDir)) {
-      const clone = await runCommand(
-        "git",
-        [
-          "clone",
-          "--depth",
-          "1",
-          "https://github.com/vmg-dev/docker2vm.git",
-          docker2vmDir,
-        ],
-        process.cwd(),
-      );
-      if (clone.exitCode !== 0) {
-        const detail = clone.stderr || clone.stdout;
-        throw new Error(
-          `Failed to clone docker2vm: ${detail || "unknown error"}`,
-        );
-      }
-    }
-
-    const install = await runCommand("bun", ["install"], docker2vmDir);
-    if (install.exitCode !== 0) {
-      const detail = install.stderr || install.stdout;
-      throw new Error(
-        `docker2vm bun install failed: ${detail || "unknown error"}`,
-      );
-    }
-
-    const convert = await runCommand(
-      "bun",
-      [
-        "run",
-        "oci2gondolin",
-        "--",
-        "--image",
-        sourceImage,
-        "--platform",
-        "linux/arm64",
-        "--mode",
-        "assets",
-        "--out",
-        imageOut,
-      ],
-      docker2vmDir,
-    );
-
-    if (convert.exitCode !== 0) {
-      const detail = convert.stderr || convert.stdout;
-      throw new Error(
-        `docker2vm conversion failed for ${sourceImage}: ${detail || "unknown error"}`,
-      );
-    }
   }
 
   private async createVm(options: {
@@ -513,6 +583,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
     const env: Record<string, string> = {
       PI_SESSION_ID: options.sessionId,
       PI_CODING_AGENT_DIR: "/agent",
+      npm_config_prefix: "/agent/npm",
       GIT_CONFIG_GLOBAL: "/git/gitconfig",
       XDG_DATA_HOME: "/agent/data",
       XDG_CONFIG_HOME: "/agent/config",
@@ -540,6 +611,8 @@ export class GondolinSandboxProvider implements SandboxProvider {
       },
       env,
     });
+
+    await this.ensureWorkingNpm(vm);
 
     const probe = await vm.exec("pi --version", {
       signal: AbortSignal.timeout(20_000),
@@ -673,6 +746,7 @@ class GondolinSandboxHandle implements SandboxHandle {
     const env: Record<string, string> = {
       PI_SESSION_ID: this.sessionId,
       PI_CODING_AGENT_DIR: "/agent",
+      npm_config_prefix: "/agent/npm",
       GIT_CONFIG_GLOBAL: "/git/gitconfig",
       XDG_DATA_HOME: "/agent/data",
       XDG_CONFIG_HOME: "/agent/config",
@@ -692,6 +766,8 @@ class GondolinSandboxHandle implements SandboxHandle {
       cwd: "/workspace",
       stdin: true,
       env,
+      stdout: "pipe",
+      stderr: "pipe",
       buffer: false,
     });
 
@@ -767,8 +843,14 @@ class GondolinSandboxChannel implements SandboxChannel {
     private sessionId?: string,
     private logStore?: SandboxLogStore,
   ) {
-    this.stdoutRl = readline.createInterface({ input: this.proc.stdout });
-    this.stderrRl = readline.createInterface({ input: this.proc.stderr });
+    const stdout = this.proc.stdout;
+    const stderr = this.proc.stderr;
+    if (!stdout || !stderr) {
+      throw new Error("Gondolin exec streams are not available");
+    }
+
+    this.stdoutRl = readline.createInterface({ input: stdout });
+    this.stderrRl = readline.createInterface({ input: stderr });
 
     this.stdoutRl.on("line", (line) => {
       if (this.closed) return;
