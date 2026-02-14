@@ -111,7 +111,7 @@
               export PATH="${xcodeWrapper}/bin:$PATH"
               export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
               export DYLD_FRAMEWORK_PATH="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib"
-              export LD=/usr/bin/clang
+              unset CC LD
               ${config.pre-commit.installationScript}
 
               # Local dev directories (isolated from system XDG)
