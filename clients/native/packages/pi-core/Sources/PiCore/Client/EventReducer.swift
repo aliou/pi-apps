@@ -1,5 +1,6 @@
 import Foundation
 
+// swiftlint:disable file_length
 extension Client {
     /// Reduces live WebSocket events into conversation item mutations.
     /// Port of `clients/dashboard/app/lib/conversation.ts` `parseEventsToConversation`.
@@ -15,27 +16,44 @@ extension Client {
 
         public init() {}
 
+        // swiftlint:disable cyclomatic_complexity function_body_length
         /// Process a single server event. Mutates the items array in place.
+        ///
+        /// Intentionally exhaustive: every known event type must be handled
+        /// (rendered, ignored, or warned) explicitly.
         public mutating func handle(
             _ event: Relay.ServerEvent,
             items: inout [ConversationItem],
             seq: Int
         ) {
-            if handleMessageEvent(event, items: &items, seq: seq) { return }
-            if handleToolEvent(event, items: &items) { return }
-            EventReducerHelpers.handleSystemEvent(event, items: &items, seq: seq)
-        }
-
-        /// Returns true if the event was handled as a message event.
-        private mutating func handleMessageEvent(
-            _ event: Relay.ServerEvent,
-            items: inout [ConversationItem],
-            seq: Int
-        ) -> Bool {
             switch event {
+            // Relay lifecycle
+            case .connected, .replayStart, .replayEnd, .sandboxStatus:
+                // Intentionally hidden from conversation transcript.
+                break
+
+            case .error(_, let message):
+                EventReducerHelpers.appendSystem("Error: \(message)", items: &items, seq: seq)
+
+            // Agent lifecycle
+            case .agentStart:
+                // Intentionally hidden from transcript.
+                break
+
             case .agentEnd:
                 flushAssistant(items: &items, streaming: false)
                 flushReasoning(items: &items, streaming: false)
+
+            // Turn lifecycle
+            case .turnStart:
+                // Intentionally hidden from transcript.
+                break
+
+            case .turnEnd:
+                // Intentionally hidden from transcript.
+                break
+
+            // Message streaming
             case .messageStart:
                 flushAssistant(items: &items, streaming: false)
                 flushReasoning(items: &items, streaming: false)
@@ -43,6 +61,7 @@ extension Client {
                 activeAssistantText = ""
                 activeReasoningId = "reasoning-\(seq)"
                 activeReasoningText = ""
+
             case .messageUpdate(let message, let assistantMessageEvent):
                 handleMessageUpdate(
                     message: message,
@@ -50,39 +69,87 @@ extension Client {
                     items: &items,
                     seq: seq
                 )
+
             case .messageEnd:
                 flushAssistant(items: &items, streaming: false)
                 flushReasoning(items: &items, streaming: false)
-            default:
-                return false
-            }
-            return true
-        }
 
-        /// Returns true if the event was handled as a tool event.
-        private mutating func handleToolEvent(
-            _ event: Relay.ServerEvent,
-            items: inout [ConversationItem]
-        ) -> Bool {
-            switch event {
+            // Tool execution
             case .toolExecutionStart(let toolCallId, let toolName, let args):
                 handleToolStart(
-                    toolCallId: toolCallId, toolName: toolName,
-                    args: args, items: &items
+                    toolCallId: toolCallId,
+                    toolName: toolName,
+                    args: args,
+                    items: &items
                 )
+
             case .toolExecutionUpdate(let id, _, _, let partialResult):
                 EventReducerHelpers.applyToolUpdate(
-                    toolCallId: id, partialResult: partialResult, items: &items
+                    toolCallId: id,
+                    partialResult: partialResult,
+                    items: &items
                 )
+
             case .toolExecutionEnd(let id, _, let result, let isError):
                 EventReducerHelpers.applyToolEnd(
-                    toolCallId: id, result: result, isError: isError, items: &items
+                    toolCallId: id,
+                    result: result,
+                    isError: isError,
+                    items: &items
                 )
-            default:
-                return false
+
+            // Compaction + retry
+            case .autoCompactionStart(let reason):
+                EventReducerHelpers.appendSystem("Compacting: \(reason)", items: &items, seq: seq)
+
+            case .autoCompactionEnd:
+                // Intentionally hidden from transcript.
+                break
+
+            case .autoRetryStart(let attempt, let maxAttempts, _, let errorMessage):
+                EventReducerHelpers.appendSystem(
+                    "Retrying (\(attempt)/\(maxAttempts)): \(errorMessage)",
+                    items: &items,
+                    seq: seq
+                )
+
+            case .autoRetryEnd:
+                // Intentionally hidden from transcript.
+                break
+
+            // Extensions
+            case .extensionError(let extensionPath, let event, let error):
+                EventReducerHelpers.appendSystem(
+                    "Extension error (\(extensionPath), \(event)): \(error)",
+                    items: &items,
+                    seq: seq
+                )
+
+            case .extensionUIRequest:
+                // Intentionally hidden from transcript.
+                break
+
+            // RPC responses
+            case .response(let command, let success, _, let error, _):
+                if command == "prompt" && !success {
+                    let suffix = error.map { " - \($0)" } ?? ""
+                    EventReducerHelpers.appendSystem(
+                        "Error: \(command) failed\(suffix)",
+                        items: &items,
+                        seq: seq
+                    )
+                }
+
+            // Forward compatibility (+ journal-only events like `prompt`).
+            case .unknown(let type, let payload):
+                if type == "prompt" {
+                    EventReducerHelpers.appendUserPromptIfPresent(payload, items: &items, seq: seq)
+                } else {
+                    EventReducerHelpers.warnUnhandledEventType(type)
+                }
             }
-            return true
         }
+        // swiftlint:enable cyclomatic_complexity function_body_length
 
         // MARK: - Message handling
 
@@ -220,46 +287,28 @@ extension Client {
 // MARK: - Stateless helpers (outside struct to reduce type_body_length)
 
 private enum EventReducerHelpers {
-    static func handleSystemEvent(
-        _ event: Relay.ServerEvent,
-        items: inout [Client.ConversationItem],
-        seq: Int
-    ) {
-        switch event {
-        case .error(_, let message):
-            appendSystem("Error: \(message)", items: &items, seq: seq)
-        case .autoRetryStart(let attempt, let maxAttempts, _, let errorMessage):
-            appendSystem(
-                "Retrying (\(attempt)/\(maxAttempts)): \(errorMessage)",
-                items: &items, seq: seq
-            )
-        case .autoCompactionStart(let reason):
-            appendSystem("Compacting: \(reason)", items: &items, seq: seq)
-        case .response(let command, let success, _, let error, _):
-            if command == "prompt" && !success {
-                let suffix = error.map { " - \($0)" } ?? ""
-                appendSystem(
-                    "Error: \(command) failed\(suffix)",
-                    items: &items, seq: seq
-                )
-            }
-        default:
-            break
-        }
-    }
-
     static func extractMessageContent(from message: Relay.AnyCodable) -> (text: String?, reasoning: String?) {
         guard let content = message["content"] else { return (nil, nil) }
         if let str = content.stringValue { return (str, nil) }
         if let blocks = content.arrayValue {
             let text = blocks
-                .filter { $0["type"]?.stringValue == "text" }
+                .filter {
+                    let type = $0["type"]?.stringValue
+                    return type == "text" || type == "output_text"
+                }
                 .compactMap { $0["text"]?.stringValue }
                 .joined(separator: "\n")
 
             let reasoning = blocks
-                .filter { $0["type"]?.stringValue == "thinking" }
-                .compactMap { $0["thinking"]?.stringValue ?? $0["text"]?.stringValue }
+                .filter {
+                    let type = $0["type"]?.stringValue
+                    return type == "thinking" || type == "reasoning"
+                }
+                .compactMap {
+                    $0["thinking"]?.stringValue
+                        ?? $0["text"]?.stringValue
+                        ?? $0["summary"]?.arrayValue?.compactMap({ $0["text"]?.stringValue }).joined(separator: "\n")
+                }
                 .joined(separator: "\n")
 
             return (
@@ -322,6 +371,30 @@ private enum EventReducerHelpers {
         )))
     }
 
+    static func appendUserPromptIfPresent(
+        _ payload: Relay.AnyCodable,
+        items: inout [Client.ConversationItem],
+        seq: Int
+    ) {
+        guard let text = payload["message"]?.stringValue,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        let id = payload["id"]?.stringValue ?? "user-\(seq)"
+        items.append(.user(Client.UserMessageItem(
+            id: id,
+            text: text,
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            sendStatus: .sent
+        )))
+    }
+
+    static func warnUnhandledEventType(_ type: String) {
+        #if DEBUG
+        assertionFailure("Unhandled Relay.ServerEvent type: \(type)")
+        #endif
+        print("[EventReducer] Unhandled Relay.ServerEvent type: \(type)")
+    }
+
     static func anyCodableToJSON(_ value: Relay.AnyCodable) -> String {
         guard let data = try? JSONEncoder().encode(value),
               let obj = try? JSONSerialization.jsonObject(with: data),
@@ -334,3 +407,4 @@ private enum EventReducerHelpers {
         return str
     }
 }
+// swiftlint:enable file_length

@@ -10,7 +10,9 @@ struct SettingsView: View {
                 TextField("Relay URL", text: $urlText)
                     .textContentType(.URL)
                     .autocorrectionDisabled()
+                    #if os(iOS)
                     .textInputAutocapitalization(.never)
+                    #endif
                     .onSubmit { saveURL() }
                     .onAppear { urlText = appState.relayURL.absoluteString }
 

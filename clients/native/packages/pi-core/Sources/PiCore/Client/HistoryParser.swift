@@ -32,9 +32,12 @@ extension Client {
             case "branch_summary":
                 parseBranchSummaryEntry(entry, id: id, timestamp: timestamp, items: &items)
 
+            case "":
+                warnUnhandledHistoryEntryType("<empty>")
+
             default:
-                // Unknown entry type -- skip
-                break
+                // Unknown entry type -- intentionally hidden, but warned.
+                warnUnhandledHistoryEntryType(entryType)
             }
         }
 
@@ -71,8 +74,12 @@ extension Client {
         case "tool", "toolResult":
             parseToolMessage(msg, items: &items)
 
+        case "":
+            warnUnhandledMessageRole("<empty>")
+
         default:
-            break
+            // Intentionally hidden, but warned for visibility.
+            warnUnhandledMessageRole(role)
         }
     }
 
@@ -140,7 +147,7 @@ extension Client {
             let type = block["type"]?.stringValue
 
             switch type {
-            case "text":
+            case "text", "output_text":
                 if !reasoningParts.isEmpty {
                     flushReasoningParts(index: index)
                 }
@@ -148,11 +155,13 @@ extension Client {
                     assistantParts.append(text)
                 }
 
-            case "thinking":
+            case "thinking", "reasoning":
                 if !assistantParts.isEmpty {
                     flushAssistantParts(index: index)
                 }
-                if let reasoning = block["thinking"]?.stringValue ?? block["text"]?.stringValue {
+                if let reasoning = block["thinking"]?.stringValue
+                    ?? block["text"]?.stringValue
+                    ?? block["summary"]?.arrayValue?.compactMap({ $0["text"]?.stringValue }).joined(separator: "\n") {
                     reasoningParts.append(reasoning)
                 }
 
@@ -178,6 +187,11 @@ extension Client {
                 )))
 
             default:
+                if let type {
+                    warnUnhandledAssistantBlockType(type)
+                } else {
+                    warnUnhandledAssistantBlockType("<nil>")
+                }
                 continue
             }
         }
@@ -295,20 +309,55 @@ extension Client {
 
     // MARK: - Helpers
 
+    private static func warnUnhandledHistoryEntryType(_ type: String) {
+        #if DEBUG
+        assertionFailure("Unhandled session history entry type: \(type)")
+        #endif
+        print("[HistoryParser] Unhandled session history entry type: \(type)")
+    }
+
+    private static func warnUnhandledMessageRole(_ role: String) {
+        #if DEBUG
+        assertionFailure("Unhandled session message role: \(role)")
+        #endif
+        print("[HistoryParser] Unhandled session message role: \(role)")
+    }
+
+    private static func warnUnhandledAssistantBlockType(_ type: String) {
+        #if DEBUG
+        assertionFailure("Unhandled assistant content block type: \(type)")
+        #endif
+        print("[HistoryParser] Unhandled assistant content block type: \(type)")
+    }
+
     /// Extract text from a message's content field (string or array of blocks).
     private static func extractText(from content: Relay.AnyCodable?) -> String {
         guard let content else { return "" }
         if let str = content.stringValue { return str }
         if let blocks = content.arrayValue {
             let text = blocks
-                .filter { $0["type"]?.stringValue == "text" }
+                .filter {
+                    guard let type = $0["type"]?.stringValue else { return false }
+                    return type == "text" || type == "input_text" || type == "output_text"
+                }
                 .compactMap { $0["text"]?.stringValue }
                 .joined(separator: "\n")
             if !text.isEmpty {
                 return text
             }
 
-            let hasThinking = blocks.contains { $0["type"]?.stringValue == "thinking" }
+            let refusal = blocks
+                .filter { $0["type"]?.stringValue == "refusal" }
+                .compactMap { $0["refusal"]?.stringValue }
+                .joined(separator: "\n")
+            if !refusal.isEmpty {
+                return refusal
+            }
+
+            let hasThinking = blocks.contains {
+                let type = $0["type"]?.stringValue
+                return type == "thinking" || type == "reasoning"
+            }
             if hasThinking {
                 return "Thinking…"
             }

@@ -3,6 +3,9 @@ import PiCore
 
 struct RootView: View {
     var body: some View {
+        #if os(macOS)
+        MacRootView()
+        #else
         TabView {
             Tab("Chats", systemImage: "bubble.left.and.bubble.right") {
                 NavigationStack {
@@ -22,6 +25,7 @@ struct RootView: View {
                 }
             }
         }
+        #endif
     }
 }
 

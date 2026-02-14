@@ -1,6 +1,7 @@
 import SwiftUI
 import PiUI
 
+#if os(iOS)
 @main
 struct PiNativeApp: App {
     @State private var appState: AppState?
@@ -24,3 +25,4 @@ struct PiNativeApp: App {
         }
     }
 }
+#endif

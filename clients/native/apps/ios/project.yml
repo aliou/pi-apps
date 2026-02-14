@@ -49,6 +49,7 @@ targets:
     platform: macOS
     supportedDestinations: [macOS]
     sources:
+      - Sources
       - SourcesMac
     settings:
       base:

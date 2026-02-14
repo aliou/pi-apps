@@ -40,10 +40,12 @@ struct ServerSetupCard: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(.quaternary, in: .rect(cornerRadius: 10))
+            #if os(iOS)
             .keyboardType(.URL)
             .textContentType(.URL)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
+            #endif
             .focused($isURLFieldFocused)
             .onSubmit { onConnect() }
     }

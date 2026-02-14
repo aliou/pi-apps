@@ -68,6 +68,20 @@ extension Relay {
             return data
         }
 
+        public func getSessionEvents(
+            id: String,
+            afterSeq: Int = 0,
+            limit: Int = 1000
+        ) async throws -> SessionEventsResponse {
+            let response: APIResponse<SessionEventsResponse> = try await get(
+                "/api/sessions/\(id)/events?afterSeq=\(afterSeq)&limit=\(limit)"
+            )
+            guard let data = response.data else {
+                throw RelayError.apiError(message: response.error ?? "No data")
+            }
+            return data
+        }
+
         // MARK: - Models
 
         public func listModels() async throws -> [ModelInfo] {

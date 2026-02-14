@@ -42,7 +42,9 @@ struct NewSessionSheet: View {
                 }
             }
             .navigationTitle("New Code Session")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

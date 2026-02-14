@@ -66,7 +66,7 @@ struct ToolCallRow: View {
             }
         }
         .padding(.horizontal, 4)
-        .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 10))
+        .background(Color.secondary.opacity(0.12), in: .rect(cornerRadius: 10))
     }
 
     private var isNativeTool: Bool {
@@ -212,7 +212,7 @@ struct ReasoningRowView: View {
             }
         }
         .padding(.horizontal, 4)
-        .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 10))
+        .background(Color.secondary.opacity(0.12), in: .rect(cornerRadius: 10))
     }
 }
 

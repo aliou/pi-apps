@@ -6,7 +6,7 @@ import SwiftTreeSitter
 import CodeEditLanguages
 
 // Helper struct for storing syntax capture information
-private struct SyntaxCapture {
+struct SyntaxCapture {
     let startUtf16: Int
     let endUtf16: Int
     let category: String
@@ -14,7 +14,7 @@ private struct SyntaxCapture {
 }
 
 // Helper struct for line coloring parameters
-private struct LineCaptureContext {
+struct LineCaptureContext {
     let lineIdx: Int
     let lines: [String]
     let lineUtf16Starts: [Int]
@@ -85,7 +85,7 @@ extension SyntaxHighlighter {
         return loaded
     }
 
-    func parseTree(text: String, treeSitterLanguage: Language) -> Tree? {
+    func parseTree(text: String, treeSitterLanguage: Language) -> MutableTree? {
         do { try parser.setLanguage(treeSitterLanguage) } catch { return nil }
         return parser.parse(text)
     }
@@ -102,7 +102,7 @@ extension SyntaxHighlighter {
         return lineUtf16Starts
     }
 
-    func extractCaptures(from query: Query, in tree: Tree) -> [SyntaxCapture] {
+    func extractCaptures(from query: Query, in tree: MutableTree) -> [SyntaxCapture] {
         let cursor = query.execute(in: tree)
         var captures: [SyntaxCapture] = []
 

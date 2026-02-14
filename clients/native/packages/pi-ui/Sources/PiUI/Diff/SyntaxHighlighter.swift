@@ -16,9 +16,9 @@ struct SyntaxToken: Equatable {
 @MainActor
 final class SyntaxHighlighter {
     #if os(macOS)
-    private let parser = Parser()
-    private var queryCache: [String: Query] = [:]
-    private var languageCache: [String: CodeLanguage] = [:]
+    let parser = Parser()
+    var queryCache: [String: Query] = [:]
+    var languageCache: [String: CodeLanguage] = [:]
     #endif
 
     // Syntax theme colors using DiffColors

@@ -39,33 +39,50 @@ final class ConversationStore {
 
     // MARK: - Lifecycle
 
-    /// Load history from REST, then connect WebSocket for live events.
+    /// Activate, replay relay events, then connect WebSocket for live events.
+    ///
+    /// This matches dashboard behavior and avoids depending on a single JSONL
+    /// file when a relay session spans multiple agent runtimes.
     func connect() async {
         if connectionState == .connecting || connectionState == .connected { return }
 
         connectionState = .connecting
 
-        // 1. Load history via REST
-        do {
-            let historyResponse = try await client.getSessionHistory(id: sessionId)
-            items = Client.parseHistory(historyResponse.entries)
-        } catch {
-            // History load failure is non-fatal; start with empty
-            items = []
-        }
+        let activatedLastSeq: Int
 
-        // 2. Activate session (ensures sandbox is running)
+        // 1. Activate session (ensures sandbox is running) and get replay bound.
         do {
-            _ = try await client.activateSession(id: sessionId)
-            eventSeq = 0
+            let activation = try await client.activateSession(id: sessionId)
+            activatedLastSeq = activation.lastSeq
         } catch {
             connectionState = .error(error.localizedDescription)
             return
         }
 
-        // 3. Connect WebSocket for live events
+        // 2. Reset local transcript state and replay journal events up to activate seq.
+        items = []
+        reducer = Client.EventReducer()
+        eventSeq = 0
+
+        do {
+            try await replayJournalEvents(upTo: activatedLastSeq)
+        } catch {
+            // Fallback: best-effort history parse if events endpoint fails.
+            do {
+                let historyResponse = try await client.getSessionHistory(id: sessionId)
+                items = Client.parseHistory(historyResponse.entries)
+            } catch {
+                items = []
+            }
+        }
+
+        // 3. Connect WebSocket from the activate checkpoint.
         let baseURL = await client.baseURL
-        let webSocketConnection = Relay.RelayWebSocket(sessionId: sessionId, baseURL: baseURL, lastSeq: 0)
+        let webSocketConnection = Relay.RelayWebSocket(
+            sessionId: sessionId,
+            baseURL: baseURL,
+            lastSeq: activatedLastSeq
+        )
         self.webSocket = webSocketConnection
         connectionState = .connected
 
@@ -158,6 +175,32 @@ final class ConversationStore {
         }
 
         reducer.handle(event, items: &items, seq: eventSeq)
+    }
+
+    private func replayJournalEvents(upTo targetSeq: Int) async throws {
+        guard targetSeq > 0 else { return }
+
+        var afterSeq = 0
+        while afterSeq < targetSeq {
+            let limit = min(1000, targetSeq - afterSeq)
+            let response = try await client.getSessionEvents(id: sessionId, afterSeq: afterSeq, limit: limit)
+            if response.events.isEmpty { break }
+
+            for entry in response.events {
+                applyEvent(decodeJournalEvent(entry))
+            }
+
+            afterSeq = response.lastSeq
+        }
+    }
+
+    private func decodeJournalEvent(_ entry: Relay.SessionEvent) -> Relay.ServerEvent {
+        do {
+            let data = try JSONEncoder().encode(entry.payload)
+            return try JSONDecoder().decode(Relay.ServerEvent.self, from: data)
+        } catch {
+            return .unknown(type: entry.type, payload: entry.payload)
+        }
     }
 
     private func scheduleMessageUpdateFlushIfNeeded() {

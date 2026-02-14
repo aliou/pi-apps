@@ -138,7 +138,7 @@ struct ToolCallContentViews_Previews: PreviewProvider {
                     )
                     .frame(height: 220)
                     .padding(10)
-                    .background(Color(.tertiarySystemBackground), in: .rect(cornerRadius: 8))
+                    .background(Color.secondary.opacity(0.15), in: .rect(cornerRadius: 8))
                 }
 
                 Divider()
