@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -9,15 +8,9 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import readline from "node:readline";
-import {
-  type ExecProcess,
-  VM as GondolinVM,
-  RealFSProvider,
-  type VM,
-} from "@earendil-works/gondolin";
-import type { SandboxLogStore } from "./log-store";
-import type { SandboxResourceTier } from "./provider-types";
+import { VM as GondolinVM, RealFSProvider, type VM } from "@earendil-works/gondolin";
+import type { SandboxLogStore } from "../log-store";
+import type { SandboxResourceTier } from "../provider-types";
 import type {
   CleanupResult,
   CreateSandboxOptions,
@@ -27,7 +20,12 @@ import type {
   SandboxProvider,
   SandboxProviderCapabilities,
   SandboxStatus,
-} from "./types";
+} from "../types";
+import { GondolinSandboxChannel } from "./channel";
+import { buildSandboxEnv, buildValidationEnv } from "./env";
+import { runCommand } from "./host-command";
+import { ensureAgentDirs, getSessionPaths, hasAssets } from "./paths";
+import { buildValidationInstallCommand } from "./validation-command";
 
 const DEFAULT_TIER: SandboxResourceTier = "medium";
 
@@ -40,35 +38,7 @@ const RESOURCE_TIER_SPECS: Record<
   large: { memory: "4096M", cpus: 4 },
 };
 
-const MODEL_KEY_ENV_VARS = [
-  "ANTHROPIC_API_KEY",
-  "OPENAI_API_KEY",
-  "OPENROUTER_API_KEY",
-  "GEMINI_API_KEY",
-  "XAI_API_KEY",
-  "MISTRAL_API_KEY",
-  "GROQ_API_KEY",
-  "TOGETHER_API_KEY",
-] as const;
-
 const VALIDATION_TIMEOUT_MS = 300_000;
-
-function hasAssets(dir: string): boolean {
-  return ["manifest.json", "vmlinuz-virt", "initramfs.cpio.lz4", "rootfs.ext4"]
-    .map((name) => join(dir, name))
-    .every((path) => existsSync(path));
-}
-
-function ensureModelEnvFallback(env: Record<string, string>): void {
-  const hasModelKey = MODEL_KEY_ENV_VARS.some((key) => {
-    const value = env[key];
-    return typeof value === "string" && value.trim().length > 0;
-  });
-
-  if (!hasModelKey) {
-    env.ANTHROPIC_API_KEY = "test-key";
-  }
-}
 
 function getCacheRoot(): string {
   if (process.env.PI_RELAY_CACHE_DIR) {
@@ -143,21 +113,21 @@ export class GondolinSandboxProvider implements SandboxProvider {
     source: string,
     options?: { signal?: AbortSignal },
   ): Promise<{ valid: boolean; error?: string }> {
+    const packageSource = source.trim();
+    if (!packageSource) {
+      return { valid: false, error: "package source is required" };
+    }
+
     let vm: VM | null = null;
     let validateDir: string | null = null;
 
-    // console.log(`[gondolin:validate] start source=${source}`);
     try {
       const imagePath = await this.resolveImagePath();
-      // console.log(`[gondolin:validate] imagePath=${imagePath}`);
 
       const validateRoot = join(getCacheRoot(), "gondolin-validate");
       mkdirSync(validateRoot, { recursive: true });
       validateDir = mkdtempSync(join(validateRoot, "pkg-"));
-      mkdirSync(join(validateDir, "data"), { recursive: true });
-      mkdirSync(join(validateDir, "config"), { recursive: true });
-      mkdirSync(join(validateDir, "cache"), { recursive: true });
-      mkdirSync(join(validateDir, "state"), { recursive: true });
+      ensureAgentDirs(validateDir);
 
       vm = await GondolinVM.create({
         sandbox: { imagePath, netEnabled: true },
@@ -166,15 +136,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
             "/agent": new RealFSProvider(validateDir),
           },
         },
-        env: {
-          ANTHROPIC_API_KEY: "validation-only",
-          PI_CODING_AGENT_DIR: "/agent",
-          npm_config_prefix: "/agent/npm",
-          npm_config_maxsockets: "1",
-          npm_config_fetch_retries: "3",
-          npm_config_fetch_retry_mintimeout: "10000",
-          npm_config_fetch_retry_maxtimeout: "60000",
-        },
+        env: buildValidationEnv(),
       });
 
       if (options?.signal) {
@@ -188,14 +150,13 @@ export class GondolinSandboxProvider implements SandboxProvider {
       }
 
       await this.ensureWorkingNpm(vm);
-      // console.log("[gondolin:validate] npm ready");
 
       const timeoutSignal = AbortSignal.timeout(VALIDATION_TIMEOUT_MS);
       const combinedSignal = options?.signal
         ? AbortSignal.any([timeoutSignal, options.signal])
         : timeoutSignal;
 
-      const proc = vm.exec(`pi install ${source}`, {
+      const proc = vm.exec(buildValidationInstallCommand(packageSource), {
         signal: combinedSignal,
         stdout: "pipe",
         stderr: "pipe",
@@ -207,21 +168,14 @@ export class GondolinSandboxProvider implements SandboxProvider {
       for await (const chunk of proc.output()) {
         if (chunk.stream === "stdout") {
           stdoutChunks.push(chunk.text);
-          // process.stdout.write(`[gondolin:validate:stdout] ${chunk.text}`);
         } else {
           stderrChunks.push(chunk.text);
-          // process.stderr.write(`[gondolin:validate:stderr] ${chunk.text}`);
         }
       }
 
       const result = await proc;
 
-      // console.log(
-      //   `[gondolin:validate] pi install exitCode=${result.exitCode} stdoutChunks=${stdoutChunks.length} stderrChunks=${stderrChunks.length}`,
-      // );
-
       if (result.exitCode === 0) {
-        // console.log("[gondolin:validate] success");
         return { valid: true };
       }
 
@@ -231,7 +185,6 @@ export class GondolinSandboxProvider implements SandboxProvider {
         result.stdout?.trim() ||
         stdoutChunks.join("").trim() ||
         "unknown error";
-      // console.log(`[gondolin:validate] failed detail=${detail.slice(0, 500)}`);
       return { valid: false, error: detail };
     } catch (err) {
       const message = err instanceof Error ? err.message : "validation failed";
@@ -240,7 +193,6 @@ export class GondolinSandboxProvider implements SandboxProvider {
         message.includes("aborted") ||
         message.includes("AbortError");
       if (canceled) {
-        // console.log("[gondolin:validate] canceled");
         return { valid: false, error: "validation canceled" };
       }
       return {
@@ -559,15 +511,10 @@ export class GondolinSandboxProvider implements SandboxProvider {
   }): Promise<VM> {
     const sessionDir =
       options.sessionDir ?? this.getSessionDataPath(options.sessionId);
-    const workspaceDir = join(sessionDir, "workspace");
-    const agentDir = join(sessionDir, "agent");
-    const gitDir = join(sessionDir, "git");
+    const { workspaceDir, agentDir, gitDir } = getSessionPaths(sessionDir);
 
     mkdirSync(workspaceDir, { recursive: true });
-    mkdirSync(join(agentDir, "data"), { recursive: true });
-    mkdirSync(join(agentDir, "config"), { recursive: true });
-    mkdirSync(join(agentDir, "cache"), { recursive: true });
-    mkdirSync(join(agentDir, "state"), { recursive: true });
+    ensureAgentDirs(agentDir);
     mkdirSync(gitDir, { recursive: true });
 
     const tier = options.tier ?? DEFAULT_TIER;
@@ -580,21 +527,10 @@ export class GondolinSandboxProvider implements SandboxProvider {
       throw new Error(`Gondolin image assets not found: ${imagePath}`);
     }
 
-    const env: Record<string, string> = {
-      PI_SESSION_ID: options.sessionId,
-      PI_CODING_AGENT_DIR: "/agent",
-      npm_config_prefix: "/agent/npm",
-      GIT_CONFIG_GLOBAL: "/git/gitconfig",
-      XDG_DATA_HOME: "/agent/data",
-      XDG_CONFIG_HOME: "/agent/config",
-      XDG_CACHE_HOME: "/agent/cache",
-      XDG_STATE_HOME: "/agent/state",
-    };
-
-    for (const [key, value] of Object.entries(options.secrets ?? {})) {
-      env[key] = value;
-    }
-    ensureModelEnvFallback(env);
+    const env = buildSandboxEnv({
+      sessionId: options.sessionId,
+      secrets: options.secrets,
+    });
 
     const vm = await GondolinVM.create({
       sandbox: {
@@ -743,20 +679,10 @@ class GondolinSandboxHandle implements SandboxHandle {
       }
     }
 
-    const env: Record<string, string> = {
-      PI_SESSION_ID: this.sessionId,
-      PI_CODING_AGENT_DIR: "/agent",
-      npm_config_prefix: "/agent/npm",
-      GIT_CONFIG_GLOBAL: "/git/gitconfig",
-      XDG_DATA_HOME: "/agent/data",
-      XDG_CONFIG_HOME: "/agent/config",
-      XDG_CACHE_HOME: "/agent/cache",
-      XDG_STATE_HOME: "/agent/state",
-    };
-    for (const [key, value] of Object.entries(this.secrets)) {
-      env[key] = value;
-    }
-    ensureModelEnvFallback(env);
+    const env = buildSandboxEnv({
+      sessionId: this.sessionId,
+      secrets: this.secrets,
+    });
 
     const cmd = this.config.nativeToolsEnabled
       ? "pi --mode rpc -e /run/extensions/native-bridge.ts"
@@ -831,128 +757,3 @@ class GondolinSandboxHandle implements SandboxHandle {
   }
 }
 
-class GondolinSandboxChannel implements SandboxChannel {
-  private closed = false;
-  private messageHandlers = new Set<(message: string) => void>();
-  private closeHandlers = new Set<(reason?: string) => void>();
-  private stdoutRl: readline.Interface;
-  private stderrRl: readline.Interface;
-
-  constructor(
-    private proc: ExecProcess,
-    private sessionId?: string,
-    private logStore?: SandboxLogStore,
-  ) {
-    const stdout = this.proc.stdout;
-    const stderr = this.proc.stderr;
-    if (!stdout || !stderr) {
-      throw new Error("Gondolin exec streams are not available");
-    }
-
-    this.stdoutRl = readline.createInterface({ input: stdout });
-    this.stderrRl = readline.createInterface({ input: stderr });
-
-    this.stdoutRl.on("line", (line) => {
-      if (this.closed) return;
-      for (const handler of this.messageHandlers) {
-        handler(line);
-      }
-    });
-
-    this.stderrRl.on("line", (line) => {
-      if (this.closed || !line.trim()) return;
-      console.error(`[sandbox:gondolin:stderr] ${line}`);
-      if (this.sessionId && this.logStore) {
-        this.logStore.append(this.sessionId, line);
-      }
-    });
-
-    this.proc.result
-      .then(() => {
-        if (this.closed) return;
-        this.notifyClose("pi process exited");
-      })
-      .catch((err) => {
-        if (this.closed) return;
-        const reason = err instanceof Error ? err.message : "pi process failed";
-        this.notifyClose(reason);
-      });
-  }
-
-  send(message: string): void {
-    if (this.closed) return;
-    this.proc.write(`${message}\n`);
-  }
-
-  onMessage(handler: (message: string) => void): () => void {
-    this.messageHandlers.add(handler);
-    return () => this.messageHandlers.delete(handler);
-  }
-
-  onClose(handler: (reason?: string) => void): () => void {
-    this.closeHandlers.add(handler);
-    return () => this.closeHandlers.delete(handler);
-  }
-
-  close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    try {
-      this.proc.end();
-    } catch {
-      // noop
-    }
-    this.stdoutRl.close();
-    this.stderrRl.close();
-    this.messageHandlers.clear();
-    this.closeHandlers.clear();
-  }
-
-  private notifyClose(reason?: string): void {
-    this.closed = true;
-    this.stdoutRl.close();
-    this.stderrRl.close();
-    for (const handler of this.closeHandlers) {
-      handler(reason);
-    }
-    this.messageHandlers.clear();
-    this.closeHandlers.clear();
-  }
-}
-
-async function runCommand(
-  command: string,
-  args: string[],
-  cwd: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  return new Promise((resolveResult, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (err) => {
-      reject(err);
-    });
-
-    child.on("close", (code) => {
-      resolveResult({
-        exitCode: code ?? 1,
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-      });
-    });
-  });
-}

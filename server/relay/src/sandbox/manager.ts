@@ -171,7 +171,6 @@ export class SandboxManager {
   async validateExtensionPackage(
     source: string,
   ): Promise<{ valid: boolean; error?: string } | null> {
-    // console.log(`[sandbox-manager] validateExtensionPackage source=${source}`);
     if (this.activeValidationAbort) {
       return { valid: false, error: "validation already in progress" };
     }
@@ -179,11 +178,9 @@ export class SandboxManager {
     try {
       const provider = this.getGondolinProvider();
       if (!provider) {
-        // console.log("[sandbox-manager] gondolin provider missing, skip");
         return null;
       }
       const available = await provider.isAvailable();
-      // console.log(`[sandbox-manager] gondolin available=${available}`);
       if (!available) return null;
 
       const abortController = new AbortController();
@@ -191,12 +188,8 @@ export class SandboxManager {
       const result = await provider.validatePackage(source, {
         signal: abortController.signal,
       });
-      // console.log(`[sandbox-manager] validation result=${JSON.stringify(result)}`);
       return result;
-    } catch (error) {
-      // console.error(
-      //   `[sandbox-manager] validation exception=${error instanceof Error ? error.message : String(error)}`,
-      // );
+    } catch {
       return null;
     } finally {
       this.activeValidationAbort = null;

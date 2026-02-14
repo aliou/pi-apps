@@ -119,20 +119,11 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
     // If Gondolin is unavailable, skip validation (result is null).
     const pkg = body.package.trim();
     const shouldValidate = body.validate !== false;
-    // console.log(
-    //   `[ext-configs] package=${pkg} scope=${body.scope} sessionId=${body.sessionId ?? "-"} validate=${shouldValidate}`,
-    // );
 
     let validation: { valid: boolean; error?: string } | null = null;
     if (shouldValidate) {
       validation = await sandboxManager.validateExtensionPackage(pkg);
-      // console.log(
-      //   `[ext-configs] validation result=${JSON.stringify(validation)} elapsedMs=${Date.now() - startedAt}`,
-      // );
       if (validation && !validation.valid) {
-        // console.log(
-        //   `[ext-configs] reject package=${pkg} reason=${validation.error ?? "unknown error"}`,
-        // );
         return c.json(
           {
             data: null,
@@ -141,8 +132,6 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
           400,
         );
       }
-    } else {
-      // console.log(`[ext-configs] validation skipped by request package=${pkg}`);
     }
 
     const config = extensionConfigService.add({
