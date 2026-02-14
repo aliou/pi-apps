@@ -576,22 +576,6 @@ export class GondolinSandboxProvider implements SandboxProvider {
       `createVm npm-check done session=${options.sessionId} elapsedMs=${Date.now() - npmStartedAt}`,
     );
 
-    const piProbeStartedAt = Date.now();
-    const probe = await vm.exec("pi --version", {
-      signal: AbortSignal.timeout(PI_PROBE_TIMEOUT_MS),
-    });
-
-    logger.debug(
-      `createVm pi-probe done session=${options.sessionId} elapsedMs=${Date.now() - piProbeStartedAt} exitCode=${probe.exitCode}`,
-    );
-
-    if (probe.exitCode !== 0) {
-      await vm.close().catch(() => undefined);
-      throw new Error(
-        `Gondolin VM pi probe failed: ${probe.stderr || probe.stdout || `exit ${probe.exitCode}`}`,
-      );
-    }
-
     logger.debug(
       `createVm done session=${options.sessionId} elapsedMs=${Date.now() - startedAt}`,
     );
