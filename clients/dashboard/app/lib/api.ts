@@ -71,6 +71,7 @@ export interface Session {
   firstUserMessage?: string;
   currentModelProvider?: string;
   currentModelId?: string;
+  extensionsStale?: boolean;
   createdAt: string;
   lastActivityAt: string;
 }
@@ -194,4 +195,15 @@ export interface ProbeResult {
   available: boolean;
   sandboxType?: string;
   error?: string;
+}
+
+// Extension configs
+export type ExtensionScope = "global" | "chat" | "code" | "session";
+
+export interface ExtensionConfig {
+  id: string;
+  scope: ExtensionScope;
+  sessionId: string | null;
+  package: string;
+  createdAt: string;
 }

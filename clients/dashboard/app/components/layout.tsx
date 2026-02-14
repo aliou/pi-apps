@@ -9,6 +9,7 @@ import {
   GithubLogoIcon,
   KeyIcon,
   ListIcon,
+  PackageIcon,
   SidebarSimpleIcon,
   XIcon,
 } from "@phosphor-icons/react";
@@ -90,6 +91,8 @@ export default function AppLayout() {
       if (location.pathname === "/settings/environments")
         return "Settings: Environments";
       if (location.pathname === "/settings/models") return "Settings: Models";
+      if (location.pathname === "/settings/extensions")
+        return "Settings: Extensions";
       return "Settings";
     }
     return "Pi Relay";
@@ -305,6 +308,19 @@ export default function AppLayout() {
                     <CodeIcon className="size-[18px]" weight="regular" />
                     Models
                   </NavLink>
+                  <NavLink
+                    to="/settings/extensions"
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+                      location.pathname === "/settings/extensions"
+                        ? "bg-surface text-fg"
+                        : "text-muted hover:bg-surface/50 hover:text-fg",
+                    )}
+                  >
+                    <PackageIcon className="size-[18px]" weight="regular" />
+                    Extensions
+                  </NavLink>
                 </div>
               </Collapsible.Content>
             </Collapsible.Root>
@@ -392,7 +408,10 @@ export default function AppLayout() {
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <StatusDot status={session.status} className="shrink-0" />
+                            <StatusDot
+                              status={session.status}
+                              className="shrink-0"
+                            />
                             {session.mode === "chat" ? (
                               <ChatCircleIcon className="size-3.5 shrink-0" />
                             ) : (
@@ -409,9 +428,7 @@ export default function AppLayout() {
                         {session.mode !== "chat" && repoLabel && (
                           <div className="mt-0.5 flex min-w-0 items-center gap-1 pl-3.5 text-xs text-muted">
                             <GitBranchIcon className="size-3.5 shrink-0" />
-                            <span className="truncate">
-                              {repoLabel}
-                            </span>
+                            <span className="truncate">{repoLabel}</span>
                           </div>
                         )}
                       </div>

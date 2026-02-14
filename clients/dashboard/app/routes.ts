@@ -15,6 +15,7 @@ export default [
       route("settings/github", "routes/github-setup.tsx"),
       route("settings/environments", "routes/environments.tsx"),
       route("settings/models", "routes/settings-models.tsx"),
+      route("settings/extensions", "routes/settings-extensions.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

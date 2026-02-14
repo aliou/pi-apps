@@ -5,6 +5,7 @@ import {
   ChatCircleIcon,
   PaperPlaneTiltIcon,
   TrashIcon,
+  WarningIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -510,6 +511,15 @@ export default function SessionPage() {
           </div>
         </div>
       </header>
+
+      {session?.extensionsStale && (
+        <div className="flex-shrink-0 border-b border-amber-500/30 bg-amber-500/5 px-6 md:px-10">
+          <div className="max-w-4xl mx-auto flex items-center gap-2 py-2 text-xs text-amber-500">
+            <WarningIcon className="size-4 shrink-0" weight="fill" />
+            Extension configuration changed. Restart the session to apply.
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto bg-bg px-6 md:px-10">
         <div className="max-w-4xl mx-auto">
