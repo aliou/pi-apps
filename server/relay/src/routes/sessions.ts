@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
+import { createLogger } from "../lib/logger";
 import {
   type EnvironmentSandboxConfig,
   resolveEnvConfig,
@@ -29,6 +30,7 @@ interface CreateSessionRequest {
 
 export function sessionsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const logger = createLogger("sessions");
 
   // List all sessions
   app.get("/", (c) => {
@@ -290,6 +292,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
   // Activate session: ensure sandbox is running, block until ready.
   // Client calls this before opening WebSocket.
   app.post("/:id/activate", async (c) => {
+    const activateStartedAt = Date.now();
     const db = c.get("db");
     const sessionService = c.get("sessionService");
     const eventJournal = c.get("eventJournal");
@@ -298,6 +301,9 @@ export function sessionsRoutes(): Hono<AppEnv> {
     const id = c.req.param("id");
 
     const session = sessionService.get(id);
+    logger.debug(
+      `activate start session=${id} status=${session?.status ?? "missing"} provider=${session?.sandboxProvider ?? "-"} providerId=${session?.sandboxProviderId ?? "-"}`,
+    );
     if (!session) {
       return c.json({ data: null, error: "Session not found" }, 404);
     }
@@ -339,6 +345,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
           );
 
           // Regenerate settings.json (picks up extension config changes)
+          const settingsStartedAt = Date.now();
           const extensionConfigService = c.get("extensionConfigService");
           const sessionDataDir = c.get("sessionDataDir");
           const extPackages = extensionConfigService.getResolvedPackages(
@@ -346,8 +353,15 @@ export function sessionsRoutes(): Hono<AppEnv> {
             current.mode as "chat" | "code",
           );
           writeSessionSettings(sessionDataDir, id, extPackages);
+          logger.debug(
+            `activate settings-written session=${id} elapsedMs=${Date.now() - settingsStartedAt} packages=${extPackages.length}`,
+          );
 
+          const secretsStartedAt = Date.now();
           const secrets = await secretsService.getAllAsEnv();
+          logger.debug(
+            `activate secrets-loaded session=${id} elapsedMs=${Date.now() - secretsStartedAt} keys=${Object.keys(secrets).length}`,
+          );
           // Read GitHub token for git credential refresh
           const tokenSetting = db
             .select()
@@ -361,6 +375,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
             `[activate] session=${id} secrets=${Object.keys(secrets).length} keys=[${Object.keys(secrets).join(",")}]`,
           );
           // Resolve environment config for the provider
+          const envResolveStartedAt = Date.now();
           let envConfig: EnvironmentSandboxConfig | undefined;
           if (current.environmentId) {
             const environmentService = c.get("environmentService");
@@ -369,12 +384,20 @@ export function sessionsRoutes(): Hono<AppEnv> {
               envConfig = await resolveEnvConfig(env, secretsService);
             }
           }
+          logger.debug(
+            `activate env-resolved session=${id} elapsedMs=${Date.now() - envResolveStartedAt} hasEnvConfig=${Boolean(envConfig)}`,
+          );
+
+          const resumeStartedAt = Date.now();
           const handle = await sandboxManager.resumeSession(
             current.sandboxProvider as SandboxProviderType,
             current.sandboxProviderId,
             envConfig,
             secrets,
             ghToken,
+          );
+          logger.debug(
+            `activate resume-done session=${id} elapsedMs=${Date.now() - resumeStartedAt} sandboxStatus=${handle.status}`,
           );
           console.log(
             `[activate] session=${id} resumed, sandboxStatus=${handle.status}`,
@@ -402,6 +425,9 @@ export function sessionsRoutes(): Hono<AppEnv> {
           }
 
           const lastSeq = eventJournal.getMaxSeq(id);
+          logger.debug(
+            `activate done session=${id} totalElapsedMs=${Date.now() - activateStartedAt}`,
+          );
 
           return c.json({
             data: {
@@ -425,6 +451,11 @@ export function sessionsRoutes(): Hono<AppEnv> {
       }
 
       // Still creating — wait and retry
+      if (waited === 0 || waited % 5_000 === 0) {
+        logger.debug(
+          `activate waiting session=${id} waitedMs=${waited} status=${current.status} providerId=${current.sandboxProviderId ?? "-"}`,
+        );
+      }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       waited += pollIntervalMs;
     }
