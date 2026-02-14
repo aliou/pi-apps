@@ -9,8 +9,8 @@ import {
   WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState } from "react";
-import { Button, Dialog } from "../components/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button, Dialog, Select } from "../components/ui";
 import {
   type AvailableImage,
   api,
@@ -71,6 +71,27 @@ function EnvironmentDialog({
   >(null);
   const [probeError, setProbeError] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<SecretInfo[]>([]);
+  const dialogLayerRef = useRef<HTMLDivElement | null>(null);
+
+  const imageOptions = useMemo(
+    () =>
+      images.map((img) => ({
+        value: img.image,
+        label: img.name,
+        description: img.description,
+      })),
+    [images],
+  );
+
+  const secretOptions = useMemo(
+    () =>
+      secrets.map((secret) => ({
+        value: secret.id,
+        label: secret.name,
+        description: secret.envVar,
+      })),
+    [secrets],
+  );
 
   // Fetch secrets on mount
   useEffect(() => {
@@ -174,9 +195,10 @@ function EnvironmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={(e) => !e.open && onClose()}>
-      <Dialog.Backdrop />
-      <Dialog.Positioner>
-        <Dialog.Content>
+      <Dialog.Portal>
+        <Dialog.Backdrop />
+        <Dialog.Positioner ref={dialogLayerRef}>
+          <Dialog.Content>
           <div className="mb-5 flex items-center justify-between">
             <Dialog.Title>
               {isEdit ? "Edit Environment" : "Create Environment"}
@@ -271,12 +293,9 @@ function EnvironmentDialog({
               <>
                 <div>
                   <div className="mb-1.5 flex h-4 items-center gap-2">
-                    <label
-                      htmlFor="env-image"
-                      className="text-xs font-medium leading-4 text-muted"
-                    >
+                    <span className="text-xs font-medium leading-4 text-muted">
                       Docker Image
-                    </label>
+                    </span>
                     {probeStatus === "probing" && (
                       <span className="text-xs leading-4 text-muted">
                         Checking...
@@ -295,18 +314,20 @@ function EnvironmentDialog({
                       </span>
                     )}
                   </div>
-                  <select
-                    id="env-image"
+                  <Select
                     value={image}
-                    onChange={(e) => setImage(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
-                  >
-                    {images.map((img) => (
-                      <option key={img.id} value={img.image}>
-                        {img.name}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setImage}
+                    portalContainer={dialogLayerRef}
+                    items={imageOptions}
+                    renderItem={(item) => (
+                      <div>
+                        <p className="truncate">{item.label}</p>
+                        {item.description && (
+                          <p className="truncate text-xs text-muted">{item.description}</p>
+                        )}
+                      </div>
+                    )}
+                  />
                   {images.find((img) => img.image === image)?.description && (
                     <p className="mt-1 text-xs text-muted">
                       {images.find((img) => img.image === image)?.description}
@@ -428,31 +449,27 @@ function EnvironmentDialog({
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="env-secret-id"
-                    className="mb-1.5 block text-xs font-medium text-muted"
-                  >
+                  <span className="mb-1.5 block text-xs font-medium text-muted">
                     Shared Secret
-                  </label>
+                  </span>
                   {secrets.length === 0 ? (
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-500">
                       No secrets configured. Add one in Settings first.
                     </div>
                   ) : (
-                    <select
-                      id="env-secret-id"
+                    <Select
                       value={secretId}
-                      onChange={(e) => setSecretId(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
-                      required
-                    >
-                      <option value="">Select a secret...</option>
-                      {secrets.map((secret) => (
-                        <option key={secret.id} value={secret.id}>
-                          {secret.name} ({secret.envVar})
-                        </option>
-                      ))}
-                    </select>
+                      onValueChange={setSecretId}
+                      portalContainer={dialogLayerRef}
+                      placeholder="Select a secret..."
+                      items={secretOptions}
+                      renderItem={(item) => (
+                        <div>
+                          <p className="truncate">{item.label}</p>
+                          <p className="truncate text-xs text-muted">{item.description}</p>
+                        </div>
+                      )}
+                    />
                   )}
                 </div>
 
@@ -516,8 +533,9 @@ function EnvironmentDialog({
               </Button>
             </div>
           </form>
-        </Dialog.Content>
-      </Dialog.Positioner>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Dialog.Portal>
     </Dialog>
   );
 }

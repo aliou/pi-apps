@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "../components/ui";
+import { Button, Select } from "../components/ui";
 import { api, type ModelInfo } from "../lib/api";
 
 interface SessionDefaults {
@@ -8,20 +8,13 @@ interface SessionDefaults {
 }
 
 interface ModeModelFormProps {
-  mode: "chat" | "code";
   title: string;
   models: ModelInfo[];
   value: { modelProvider: string; modelId: string };
   onChange: (value: { modelProvider: string; modelId: string }) => void;
 }
 
-function ModeModelForm({
-  mode,
-  title,
-  models,
-  value,
-  onChange,
-}: ModeModelFormProps) {
+function ModeModelForm({ title, models, value, onChange }: ModeModelFormProps) {
   const providers = useMemo(
     () => Array.from(new Set(models.map((m) => m.provider))).sort(),
     [models],
@@ -37,45 +30,49 @@ function ModeModelForm({
       <h3 className="mb-3 text-sm font-semibold text-fg">{title}</h3>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <label className="block">
+        <div>
           <span className="mb-1 block text-xs text-muted">Provider</span>
-          <select
+          <Select
             value={value.modelProvider}
-            onChange={(e) =>
-              onChange({ modelProvider: e.target.value, modelId: "" })
-            }
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
-          >
-            <option value="">Select provider</option>
-            {providers.map((provider) => (
-              <option key={`${mode}-${provider}`} value={provider}>
-                {provider}
-              </option>
-            ))}
-          </select>
-        </label>
+            onValueChange={(modelProvider) => onChange({ modelProvider, modelId: "" })}
+            placeholder="Select provider"
+            items={providers.map((provider) => ({
+              value: provider,
+              label: provider,
+            }))}
+            renderItem={(item) => (
+              <div>
+                <p className="truncate">{item.label}</p>
+              </div>
+            )}
+          />
+        </div>
 
-        <label className="block">
+        <div>
           <span className="mb-1 block text-xs text-muted">Model</span>
-          <select
+          <Select
             value={value.modelId}
-            onChange={(e) =>
-              onChange({ modelProvider: value.modelProvider, modelId: e.target.value })
+            onValueChange={(modelId) =>
+              onChange({ modelProvider: value.modelProvider, modelId })
             }
             disabled={!value.modelProvider}
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none disabled:opacity-50"
-          >
-            <option value="">Select model</option>
-            {modelsForProvider.map((model) => (
-              <option
-                key={`${mode}-${model.provider}-${model.modelId}`}
-                value={model.modelId}
-              >
-                {model.name ?? model.modelId}
-              </option>
-            ))}
-          </select>
-        </label>
+            placeholder="Select model"
+            items={modelsForProvider.map((model) => ({
+              value: model.modelId,
+              label: model.name ?? model.modelId,
+              description:
+                model.name && model.name !== model.modelId ? model.modelId : undefined,
+            }))}
+            renderItem={(item) => (
+              <div>
+                <p className="truncate">{item.label}</p>
+                {item.description && (
+                  <p className="truncate text-xs text-muted">{item.description}</p>
+                )}
+              </div>
+            )}
+          />
+        </div>
       </div>
     </div>
   );
@@ -183,14 +180,12 @@ export default function SettingsModelsPage() {
       ) : (
         <div className="space-y-3">
           <ModeModelForm
-            mode="chat"
             title="Chat default"
             models={models}
             value={chatDefault}
             onChange={setChatDefault}
           />
           <ModeModelForm
-            mode="code"
             title="Code default"
             models={models}
             value={codeDefault}

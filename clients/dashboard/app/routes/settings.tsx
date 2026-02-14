@@ -14,7 +14,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import { Button, Tabs } from "../components/ui";
+import { Button, Select, Tabs } from "../components/ui";
 import { api } from "../lib/api";
 
 // --- Types matching Phase 1 backend ---
@@ -51,6 +51,24 @@ interface UpdateSecretBody {
 // --- Filter tabs ---
 
 type KindFilter = "all" | "ai_provider" | "env_var" | "sandbox_provider";
+
+const secretKindOptions = [
+  {
+    value: "ai_provider",
+    label: "AI Provider",
+    description: "Model provider credentials",
+  },
+  {
+    value: "env_var",
+    label: "Env Var",
+    description: "General environment variable",
+  },
+  {
+    value: "sandbox_provider",
+    label: "Sandbox",
+    description: "Sandbox provider credentials",
+  },
+] as const;
 
 // --- Add Secret Form ---
 
@@ -167,18 +185,20 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <label className="block">
+        <div>
           <span className="mb-1 block text-xs text-muted">Kind</span>
-          <select
+          <Select
             value={kind}
-            onChange={(e) => setKind(e.target.value as SecretKind)}
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
-          >
-            <option value="ai_provider">AI Provider</option>
-            <option value="env_var">Env Var</option>
-            <option value="sandbox_provider">Sandbox</option>
-          </select>
-        </label>
+            onValueChange={(next) => setKind(next as SecretKind)}
+            items={secretKindOptions.map((option) => ({ ...option }))}
+            renderItem={(item) => (
+              <div>
+                <p className="truncate">{item.label}</p>
+                <p className="truncate text-xs text-muted">{item.description}</p>
+              </div>
+            )}
+          />
+        </div>
         <div className="flex items-end">
           <label className="flex items-center gap-2 pb-2 text-sm text-fg">
             <input
