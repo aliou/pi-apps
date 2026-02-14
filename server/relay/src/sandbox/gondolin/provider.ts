@@ -9,6 +9,7 @@ import {
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { VM as GondolinVM, RealFSProvider, type VM } from "@earendil-works/gondolin";
+import { createLogger } from "../../lib/logger";
 import type { SandboxLogStore } from "../log-store";
 import type { SandboxResourceTier } from "../provider-types";
 import type {
@@ -41,7 +42,8 @@ const RESOURCE_TIER_SPECS: Record<
 const VALIDATION_TIMEOUT_MS = 300_000;
 const PI_PROBE_TIMEOUT_MS = 60_000;
 const NPM_PROBE_TIMEOUT_MS = 30_000;
-const NPM_FIX_TIMEOUT_MS = 120_000;
+
+const logger = createLogger("gondolin");
 
 function getCacheRoot(): string {
   if (process.env.PI_RELAY_CACHE_DIR) {
@@ -213,22 +215,32 @@ export class GondolinSandboxProvider implements SandboxProvider {
   }
 
   private async ensureWorkingNpm(vm: VM): Promise<void> {
+    const startedAt = Date.now();
     const probe = await vm.exec(
       "test -f /usr/lib/node_modules/npm/node_modules/@sigstore/protobuf-specs/dist/__generated__/google/protobuf/timestamp.js",
       { signal: AbortSignal.timeout(NPM_PROBE_TIMEOUT_MS) },
+    );
+    logger.debug(
+      `ensureWorkingNpm probe elapsedMs=${Date.now() - startedAt} exitCode=${probe.exitCode}`,
     );
     if (probe.exitCode === 0) {
       return;
     }
 
-    const fix = await vm.exec("apk add --no-cache npm", {
-      signal: AbortSignal.timeout(NPM_FIX_TIMEOUT_MS),
-    });
-    if (fix.exitCode !== 0) {
-      throw new Error(
-        fix.stderr?.trim() || fix.stdout?.trim() || "failed to install npm",
-      );
-    }
+    // temporary disabled: custom Gondolin image should already include working npm
+    // const fix = await vm.exec("apk add --no-cache npm", {
+    //   signal: AbortSignal.timeout(120_000),
+    // });
+    // if (fix.exitCode !== 0) {
+    //   throw new Error(
+    //     fix.stderr?.trim() || fix.stdout?.trim() || "failed to install npm",
+    //   );
+    // }
+
+    logger.debug("ensureWorkingNpm failed (auto-fix disabled)");
+    throw new Error(
+      "npm is missing or broken in Gondolin image (auto-fix disabled)",
+    );
   }
 
   getSessionDataPath(sessionId: string): string {
@@ -512,6 +524,9 @@ export class GondolinSandboxProvider implements SandboxProvider {
     tier?: SandboxResourceTier;
     imagePath?: string;
   }): Promise<VM> {
+    const startedAt = Date.now();
+    logger.debug(`createVm start session=${options.sessionId}`);
+
     const sessionDir =
       options.sessionDir ?? this.getSessionDataPath(options.sessionId);
     const { workspaceDir, agentDir, gitDir } = getSessionPaths(sessionDir);
@@ -535,6 +550,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
       secrets: options.secrets,
     });
 
+    const createStartedAt = Date.now();
     const vm = await GondolinVM.create({
       sandbox: {
         imagePath,
@@ -550,12 +566,24 @@ export class GondolinSandboxProvider implements SandboxProvider {
       },
       env,
     });
+    logger.debug(
+      `createVm vm.create done session=${options.sessionId} elapsedMs=${Date.now() - createStartedAt}`,
+    );
 
+    const npmStartedAt = Date.now();
     await this.ensureWorkingNpm(vm);
+    logger.debug(
+      `createVm npm-check done session=${options.sessionId} elapsedMs=${Date.now() - npmStartedAt}`,
+    );
 
+    const piProbeStartedAt = Date.now();
     const probe = await vm.exec("pi --version", {
       signal: AbortSignal.timeout(PI_PROBE_TIMEOUT_MS),
     });
+
+    logger.debug(
+      `createVm pi-probe done session=${options.sessionId} elapsedMs=${Date.now() - piProbeStartedAt} exitCode=${probe.exitCode}`,
+    );
 
     if (probe.exitCode !== 0) {
       await vm.close().catch(() => undefined);
@@ -564,6 +592,9 @@ export class GondolinSandboxProvider implements SandboxProvider {
       );
     }
 
+    logger.debug(
+      `createVm done session=${options.sessionId} elapsedMs=${Date.now() - startedAt}`,
+    );
     return vm;
   }
 }
