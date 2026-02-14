@@ -1,4 +1,5 @@
 import type { WSContext } from "hono/ws";
+import { createLogger } from "../lib/logger";
 import type { SandboxChannel } from "../sandbox/types";
 import type { EventJournal } from "../services/event-journal";
 import type { EventHookRegistry } from "./hooks/registry";
@@ -12,6 +13,8 @@ import type { ClientCommand, PiEvent, ServerEvent } from "./types";
  * - Event replay on reconnection
  * - Journaling events for durability
  */
+const logger = createLogger("ws");
+
 export class WebSocketConnection {
   private lastSeq: number;
   private closed = false;
@@ -112,15 +115,26 @@ export class WebSocketConnection {
   private setupChannelListener(): void {
     // Subscribe to messages from the sandbox (already-split JSON lines)
     this.unsubMessage = this.channel.onMessage((message) => {
+      const trimmed = message.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      // Pi RPC protocol is JSON lines. Ignore non-JSON stdout noise
+      // (e.g. npm/git output emitted by subprocesses in the guest).
+      if (!trimmed.startsWith("{")) {
+        logger.debug(
+          `session=${this.sessionId} ignoring non-json sandbox line: ${trimmed.slice(0, 200)}`,
+        );
+        return;
+      }
+
       try {
-        const event = JSON.parse(message) as PiEvent;
+        const event = JSON.parse(trimmed) as PiEvent;
         this.handleSandboxEvent(event);
       } catch (err) {
-        console.error(
-          `[ws] session=${this.sessionId} failed to parse sandbox message: ${err instanceof Error ? err.message : err}`,
-        );
-        console.error(
-          `[ws] session=${this.sessionId} raw message: ${message.slice(0, 500)}`,
+        logger.warn(
+          `session=${this.sessionId} failed to parse sandbox JSON line: ${err instanceof Error ? err.message : String(err)} raw=${trimmed.slice(0, 500)}`,
         );
       }
     });
