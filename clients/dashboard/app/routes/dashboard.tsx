@@ -1,6 +1,6 @@
 import { ChatCircleIcon, CodeIcon, CloudIcon, GithubLogoIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { SearchableSelect, Tabs } from "../components/ui";
 import type { SearchableSelectItem } from "../components/ui";
 import {
@@ -130,8 +130,10 @@ function randomFrom(items: readonly string[]): string {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [mode, setMode] = useState<Mode>("chat");
+  const requestedMode = searchParams.get("mode") === "code" ? "code" : "chat";
+  const [mode, setMode] = useState<Mode>(requestedMode);
   const [greeting, setGreeting] = useState(randomFrom(CHAT_GREETINGS));
 
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
@@ -146,6 +148,10 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMode(requestedMode);
+  }, [requestedMode]);
 
   useEffect(() => {
     setGreeting(

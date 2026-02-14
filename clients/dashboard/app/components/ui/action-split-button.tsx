@@ -35,7 +35,12 @@ function ActionSplitButtonMenu({
   size = "md",
 }: ActionSplitButtonMenuProps) {
   return (
-    <Menu.Root composite={false}>
+    <Menu.Root
+      composite={false}
+      positioning={{
+        placement: "bottom-end",
+      }}
+    >
       <Menu.Trigger asChild>
         <Button
           type="button"
@@ -47,13 +52,11 @@ function ActionSplitButtonMenu({
           <CaretDownIcon className="size-3.5" />
         </Button>
       </Menu.Trigger>
-      <Portal>
-        <Menu.Positioner className="z-50">
-          <Menu.Content className="min-w-64 rounded-lg border border-border bg-bg p-1 shadow-xl">
-            {children}
-          </Menu.Content>
-        </Menu.Positioner>
-      </Portal>
+      <Menu.Positioner className="z-[120]">
+        <Menu.Content className="min-w-64 rounded-lg border border-border bg-bg p-1 shadow-xl">
+          {children}
+        </Menu.Content>
+      </Menu.Positioner>
     </Menu.Root>
   );
 }

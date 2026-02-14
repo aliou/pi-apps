@@ -2,6 +2,7 @@ import {
   ArrowSquareOutIcon,
   CheckCircleIcon,
   CircleNotchIcon,
+  GithubLogoIcon,
   LockKeyIcon,
   TrashIcon,
   WarningCircleIcon,
@@ -88,6 +89,16 @@ export default function GitHubSetupPage() {
 
   return (
     <div>
+      <div className="mb-6">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-fg">
+          <GithubLogoIcon className="size-5" weight="bold" />
+          GitHub
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Configure your GitHub token and verify repository access.
+        </p>
+      </div>
+
       {tokenInfo?.configured ? (
         <div className="space-y-8">
           {/* Token status */}

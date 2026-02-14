@@ -391,7 +391,7 @@ export default function SessionPage() {
       return;
     }
 
-    navigate("/");
+    navigate("/sessions");
   };
 
   const handleDelete = async () => {
@@ -407,7 +407,7 @@ export default function SessionPage() {
       return;
     }
 
-    navigate("/");
+    navigate("/sessions");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -434,7 +434,7 @@ export default function SessionPage() {
         <div className="rounded-lg border border-status-err/20 bg-status-err/10 p-6 text-center">
           <p className="text-status-err">{error}</p>
           <Link
-            to="/"
+            to="/sessions"
             className="mt-4 inline-flex items-center gap-2 text-sm text-muted hover:text-fg"
           >
             <ArrowLeftIcon className="w-4 h-4" />
@@ -454,7 +454,7 @@ export default function SessionPage() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link
-              to="/"
+              to="/sessions"
               className="text-muted hover:text-fg transition-colors p-1 -ml-1"
             >
               <ArrowLeftIcon className="w-5 h-5" />

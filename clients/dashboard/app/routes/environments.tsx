@@ -747,7 +747,16 @@ export default function EnvironmentsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-end">
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-fg">
+            <CubeIcon className="size-5" weight="bold" />
+            Environments
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Configure sandbox environments used by new code sessions.
+          </p>
+        </div>
         <Button onClick={openCreate}>
           <PlusIcon className="size-4" weight="bold" />
           New Environment

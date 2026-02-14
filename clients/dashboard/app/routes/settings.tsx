@@ -463,17 +463,15 @@ export default function SettingsPage() {
 
   return (
     <div>
-      {/* Secrets Section */}
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
-          <KeyIcon className="size-[18px]" weight="bold" />
+      <div className="mb-6">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-fg">
+          <KeyIcon className="size-5" weight="bold" />
           Secrets
         </h2>
+        <p className="mt-1 text-sm text-muted">
+          Keys are encrypted at rest (AES-256-GCM) and injected into sandbox containers.
+        </p>
       </div>
-      <p className="mb-4 text-xs text-muted">
-        Keys are encrypted at rest (AES-256-GCM) and injected into sandbox
-        containers.
-      </p>
 
       {/* Kind filter tabs */}
       <Tabs

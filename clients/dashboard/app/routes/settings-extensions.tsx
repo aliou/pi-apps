@@ -238,16 +238,15 @@ export default function ExtensionsPage() {
 
   return (
     <div>
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
-          <PackageIcon className="size-[18px]" weight="bold" />
+      <div className="mb-6">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-fg">
+          <PackageIcon className="size-5" weight="bold" />
           Extensions
         </h2>
+        <p className="mt-1 text-sm text-muted">
+          Configure Pi extension packages. Packages are auto-installed when a session starts. Active sessions need a restart to pick up changes.
+        </p>
       </div>
-      <p className="mb-4 text-xs text-muted">
-        Configure Pi extension packages. Packages are auto-installed when a
-        session starts. Active sessions need a restart to pick up changes.
-      </p>
 
       <Tabs
         value={scope}

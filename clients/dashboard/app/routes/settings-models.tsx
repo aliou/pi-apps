@@ -168,9 +168,9 @@ export default function SettingsModelsPage() {
 
   return (
     <div>
-      <div className="mb-5">
-        <h2 className="text-sm font-semibold text-fg">Default models</h2>
-        <p className="mt-1 text-xs text-muted">
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-fg">Models</h2>
+        <p className="mt-1 text-sm text-muted">
           Set default model per mode for new sessions.
         </p>
       </div>
