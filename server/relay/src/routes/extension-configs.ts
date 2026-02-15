@@ -150,7 +150,8 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
       sessionService.update(sid, { extensionsStale: true });
     }
 
-    const meta: { staleSessionCount?: number; validationSkipped?: boolean } = {};
+    const meta: { staleSessionCount?: number; validationSkipped?: boolean } =
+      {};
     if (staleSessionIds.length > 0) {
       meta.staleSessionCount = staleSessionIds.length;
     }

@@ -8,7 +8,11 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { VM as GondolinVM, RealFSProvider, type VM } from "@earendil-works/gondolin";
+import {
+  VM as GondolinVM,
+  RealFSProvider,
+  type VM,
+} from "@earendil-works/gondolin";
 import { createLogger } from "../../lib/logger";
 import type { SandboxLogStore } from "../log-store";
 import type { SandboxResourceTier } from "../provider-types";
@@ -774,4 +778,3 @@ class GondolinSandboxHandle implements SandboxHandle {
     }
   }
 }
-

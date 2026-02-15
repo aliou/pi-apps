@@ -3,15 +3,17 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Build Gondolin custom assets from a local gondolin main checkout.
+Build Gondolin custom assets using the released Gondolin host package and guest
+source cloned into a temporary directory.
 
 Usage:
   ./server/sandboxes/gondolin/scripts/setup-custom-assets.sh \
-    --gondolin-src /abs/path/to/gondolin-src \
+    [--gondolin-ref v0.3.0] \
     [--config /abs/path/to/build-config.json] \
     [--output /abs/path/to/assets-dir]
 
 Defaults:
+  gondolin-ref: v0.3.0
   config: <repo>/server/sandboxes/gondolin/custom-assets.build-config.json
   output: <repo>/.dev/relay/cache/gondolin-custom/pi-runtime-main
 
@@ -22,15 +24,17 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+RELAY_DIR="$REPO_ROOT/server/relay"
 
-GONDOLIN_SRC=""
+GONDOLIN_REF="v0.3.0"
+GONDOLIN_REPO_URL="https://github.com/earendil-works/gondolin.git"
 CONFIG_PATH="$REPO_ROOT/server/sandboxes/gondolin/custom-assets.build-config.json"
 OUTPUT_PATH="$REPO_ROOT/.dev/relay/cache/gondolin-custom/pi-runtime-main"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --gondolin-src)
-      GONDOLIN_SRC="$2"
+    --gondolin-ref)
+      GONDOLIN_REF="$2"
       shift 2
       ;;
     --config)
@@ -53,17 +57,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$GONDOLIN_SRC" ]]; then
-  echo "Missing --gondolin-src" >&2
-  usage
-  exit 1
-fi
-
-if [[ ! -d "$GONDOLIN_SRC/host" || ! -d "$GONDOLIN_SRC/guest" ]]; then
-  echo "Invalid --gondolin-src: expected host/ and guest/ under $GONDOLIN_SRC" >&2
-  exit 1
-fi
-
 if [[ ! -f "$CONFIG_PATH" ]]; then
   echo "Config not found: $CONFIG_PATH" >&2
   exit 1
@@ -74,30 +67,54 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v git >/dev/null 2>&1; then
+  echo "git not found in PATH" >&2
+  exit 1
+fi
+
+if [[ ! -d "$RELAY_DIR" ]]; then
+  echo "Relay dir not found: $RELAY_DIR" >&2
+  exit 1
+fi
+
+TMP_DIR="$(mktemp -d "$REPO_ROOT/.tmp-gondolin-src-XXXXXX")"
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
 mkdir -p "$OUTPUT_PATH"
 
-echo "[setup-custom-assets] gondolin src: $GONDOLIN_SRC"
+echo "[setup-custom-assets] gondolin repo: $GONDOLIN_REPO_URL"
+echo "[setup-custom-assets] gondolin ref: $GONDOLIN_REF"
+echo "[setup-custom-assets] tmp dir: $TMP_DIR"
 echo "[setup-custom-assets] config: $CONFIG_PATH"
 echo "[setup-custom-assets] output: $OUTPUT_PATH"
 
-cd "$GONDOLIN_SRC/host"
+echo "[setup-custom-assets] cloning gondolin guest source..."
+git clone --depth 1 --branch "$GONDOLIN_REF" "$GONDOLIN_REPO_URL" "$TMP_DIR/gondolin"
 
-if [[ ! -d node_modules ]]; then
-  echo "[setup-custom-assets] installing host deps..."
-  pnpm install
+if [[ ! -d "$TMP_DIR/gondolin/guest" ]]; then
+  echo "Cloned gondolin ref does not contain guest/: $GONDOLIN_REF" >&2
+  exit 1
 fi
 
+cd "$RELAY_DIR"
+
+echo "[setup-custom-assets] ensuring relay deps..."
+pnpm install --frozen-lockfile
+
 echo "[setup-custom-assets] building assets..."
-GONDOLIN_GUEST_SRC="$GONDOLIN_SRC/guest" \
-  pnpm exec tsx bin/gondolin.ts build --config "$CONFIG_PATH" --output "$OUTPUT_PATH"
+GONDOLIN_GUEST_SRC="$TMP_DIR/gondolin/guest" \
+  pnpm exec gondolin build --config "$CONFIG_PATH" --output "$OUTPUT_PATH"
 
 echo "[setup-custom-assets] verifying assets..."
 GONDOLIN_GUEST_DIR="$OUTPUT_PATH" \
-  pnpm exec tsx bin/gondolin.ts build --verify "$OUTPUT_PATH"
+  pnpm exec gondolin build --verify "$OUTPUT_PATH"
 
 echo "[setup-custom-assets] smoke check (pi + npm + extension install)..."
 GONDOLIN_GUEST_DIR="$OUTPUT_PATH" \
-  pnpm exec tsx bin/gondolin.ts exec -- /bin/bash -lc "pi --version && npm --version && npm_config_prefix=/tmp/npm-ext npm install -g --no-audit --no-fund @aliou/pi-linkup"
+  pnpm exec gondolin exec -- /bin/bash -lc "pi --version && npm --version && npm_config_prefix=/tmp/npm-ext npm install -g --no-audit --no-fund @aliou/pi-linkup"
 
 echo "[setup-custom-assets] done"
 echo "export GONDOLIN_IMAGE_OUT=$OUTPUT_PATH"

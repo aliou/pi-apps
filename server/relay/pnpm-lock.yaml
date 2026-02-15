@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@earendil-works/gondolin':
-        specifier: workspace:*
-        version: link:vendor/gondolin
+        specifier: 0.3.0
+        version: 0.3.0
       '@hono/node-server':
         specifier: ^1.14.1
         version: 1.19.9(hono@4.11.9)
@@ -63,37 +63,6 @@ importers:
       vitest:
         specifier: ^3.1.1
         version: 3.2.4(@types/node@22.19.10)(tsx@4.21.0)
-
-  vendor/gondolin:
-    dependencies:
-      cbor:
-        specifier: ^10.0.4
-        version: 10.0.11
-      node-forge:
-        specifier: ^1.3.3
-        version: 1.3.3
-      ssh2:
-        specifier: ^1.17.0
-        version: 1.17.0
-      undici:
-        specifier: ^6.21.0
-        version: 6.23.0
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.7
-        version: 22.19.10
-      '@types/node-forge':
-        specifier: ^1.3.14
-        version: 1.3.14
-      '@types/ssh2':
-        specifier: ^1.15.5
-        version: 1.15.5
-      tsx:
-        specifier: ^4.19.2
-        version: 4.21.0
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
 
 packages:
 
@@ -305,6 +274,11 @@ packages:
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
+
+  '@earendil-works/gondolin@0.3.0':
+    resolution: {integrity: sha512-eoZaI0Fkx08RQrGZTmBJ6cUbdabPpcHpn+nkUc4oi1gSNrWUXYpyJlsFc0tJNDnEJMzkZQ4me+u8C/2Z1e9jDQ==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
@@ -1327,9 +1301,6 @@ packages:
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
-
-  '@types/node-forge@1.3.14':
-    resolution: {integrity: sha512-mhVF2BnD4BO+jtOp7z1CdzaK4mbuK0LLQYAvdOLqHTavxFNq4zA1EmYkpnFjP8HOUzedfQkRnp0E2ulSAYSzAw==}
 
   '@types/node@18.19.130':
     resolution: {integrity: sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==}
@@ -2815,6 +2786,13 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
+  '@earendil-works/gondolin@0.3.0':
+    dependencies:
+      cbor: 10.0.11
+      node-forge: 1.3.3
+      ssh2: 1.17.0
+      undici: 6.23.0
+
   '@esbuild-kit/core-utils@3.3.2':
     dependencies:
       esbuild: 0.18.20
@@ -3633,10 +3611,6 @@ snapshots:
       '@types/ssh2': 1.15.5
 
   '@types/estree@1.0.8': {}
-
-  '@types/node-forge@1.3.14':
-    dependencies:
-      '@types/node': 22.19.10
 
   '@types/node@18.19.130':
     dependencies:
