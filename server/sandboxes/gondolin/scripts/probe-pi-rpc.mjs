@@ -26,6 +26,8 @@ const imageOut = process.env.GONDOLIN_IMAGE_OUT
   : join(cacheRoot, "gondolin-custom", "pi-runtime-docker2vm");
 const sourceImage = process.env.GONDOLIN_SOURCE_IMAGE ?? "ghcr.io/aliou/pi-sandbox-alpine-arm64:latest";
 const rpcTimeoutMs = Number.parseInt(process.env.GONDOLIN_RPC_TIMEOUT_MS ?? "45000", 10);
+const piProbeTimeoutMs = Number.parseInt(process.env.GONDOLIN_PI_PROBE_TIMEOUT_MS ?? "60000", 10);
+const gondolinAccel = process.env.GONDOLIN_ACCEL;
 
 const require = createRequire(import.meta.url);
 const gondolinEntry = require.resolve("@earendil-works/gondolin", {
@@ -112,14 +114,19 @@ async function main() {
   try {
     log("vm", `creating VM from ${imageOut}`);
     vm = await VM.create({
-      sandbox: { imagePath: imageOut },
+      sandbox: {
+        imagePath: imageOut,
+        ...(gondolinAccel ? { accel: gondolinAccel } : {}),
+      },
       env: {
         // no LLM call in this probe, key is only to keep model list non-empty
         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "test-key",
       },
     });
 
-    const version = await vm.exec("pi --version", { signal: AbortSignal.timeout(20_000) });
+    const version = await vm.exec("pi --version", {
+      signal: AbortSignal.timeout(piProbeTimeoutMs),
+    });
     if (version.exitCode !== 0) {
       throw new Error(`pi --version failed: ${version.stderr || version.stdout}`);
     }

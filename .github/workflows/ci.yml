@@ -80,3 +80,89 @@ jobs:
       - name: Build
         working-directory: clients/dashboard
         run: pnpm build
+
+  relay-gondolin-assets:
+    name: Relay - Gondolin Assets Build & Probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: server/relay/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: server/relay/pnpm-lock.yaml
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-system-arm \
+            qemu-system-x86 \
+            qemu-utils \
+            lz4 \
+            curl \
+            python3 \
+            e2fsprogs
+
+      - name: Install relay dependencies
+        working-directory: server/relay
+        run: pnpm install --frozen-lockfile
+
+      - name: Create CI Gondolin build config
+        env:
+          GONDOLIN_CI_CONFIG: ${{ runner.temp }}/gondolin-ci-build-config.json
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          src = Path("server/sandboxes/gondolin/custom-assets.build-config.json")
+          dst = Path(os.environ["GONDOLIN_CI_CONFIG"])
+
+          cfg = json.loads(src.read_text())
+          cfg["arch"] = "x86_64"
+          container = cfg.get("container", {})
+          container["force"] = True
+          cfg["container"] = container
+
+          dst.write_text(json.dumps(cfg, indent=2) + "\n")
+          print(f"wrote {dst}")
+          PY
+
+      - name: Build Gondolin assets
+        env:
+          GONDOLIN_ASSETS_OUT: ${{ runner.temp }}/gondolin-assets
+          GONDOLIN_CI_CONFIG: ${{ runner.temp }}/gondolin-ci-build-config.json
+        run: |
+          ./server/sandboxes/gondolin/scripts/setup-custom-assets.sh \
+            --gondolin-ref v0.3.0 \
+            --config "$GONDOLIN_CI_CONFIG" \
+            --output "$GONDOLIN_ASSETS_OUT"
+
+      - name: Probe Gondolin assets
+        working-directory: server/relay
+        env:
+          GONDOLIN_GUEST_DIR: ${{ runner.temp }}/gondolin-assets
+        run: |
+          pnpm exec gondolin exec -- /bin/bash -lc "pi --version && npm --version && pi --help >/dev/null"
+
+      - name: Upload Gondolin assets artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gondolin-assets-${{ github.sha }}
+          path: ${{ runner.temp }}/gondolin-assets
+          retention-days: 7

@@ -79,7 +79,7 @@ fi
 
 TMP_DIR="$(mktemp -d "$REPO_ROOT/.tmp-gondolin-src-XXXXXX")"
 cleanup() {
-  rm -rf "$TMP_DIR"
+  rm -rf "$TMP_DIR" 2>/dev/null || sudo rm -rf "$TMP_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
