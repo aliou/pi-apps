@@ -27,6 +27,9 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build
 
+# Prune to production dependencies (keeps native addons already compiled)
+RUN pnpm prune --prod
+
 # -- runtime stage --
 FROM node:22-slim
 
@@ -34,13 +37,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install production dependencies (includes native addons like better-sqlite3
-# and externalized packages like @aws-sdk/* from pi-ai).
+# Copy production node_modules from builder (native addons already compiled)
 WORKDIR /app
-COPY --from=builder /build/package.json /build/pnpm-lock.yaml ./
-RUN corepack enable && corepack prepare pnpm@10.26.1 --activate \
-    && pnpm install --prod --frozen-lockfile \
-    && pnpm store prune
+COPY --from=builder /build/package.json ./
+COPY --from=builder /build/node_modules ./node_modules
 
 # Copy built output
 COPY --from=builder /build/dist ./dist
