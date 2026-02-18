@@ -15,7 +15,7 @@ Node.js server that wraps pi sessions and exposes REST API + WebSocket for remot
 │  - Secrets management        │                              │
 ├─────────────────────────────────────────────────────────────┤
 │                    Sandbox Manager                          │
-│  - Provider abstraction (mock, docker, cloudflare)          │
+│  - Provider abstraction (mock, docker, cloudflare, gondolin)│
 │  - Manages sandbox lifecycle                                │
 │  - Routes RPC messages via SandboxChannel                   │
 └─────────────────────────────────────────────────────────────┘
@@ -71,6 +71,8 @@ The REST API is our custom infrastructure for managing resources. Add new endpoi
 - `/api/environments` - Environment configuration
 - `/api/github/*` - GitHub integration
 - `/api/secrets` - Provider API keys
+- `/api/settings` - Server settings
+- `/api/extension-configs` - Extension config management
 - `/api/models` - Available AI models
 
 **Adding a new endpoint:**
@@ -126,19 +128,33 @@ src/
 │   ├── github.service.ts
 │   ├── repo.service.ts
 │   ├── secrets.service.ts
-│   └── crypto.service.ts
+│   ├── crypto.service.ts
+│   ├── idle-reaper.ts     # Auto-suspend idle sandboxes
+│   ├── extension-config.service.ts # Extension config management
+│   ├── settings-generator.ts # Settings file generation for sandboxes
+│   └── models-introspection.service.ts # Model availability detection
 ├── sandbox/          # Sandbox providers
 │   ├── types.ts      # SandboxHandle, SandboxChannel interfaces
 │   ├── provider-types.ts # Provider type enum and config
 │   ├── manager.ts    # Stateless provider orchestration (DB is source of truth)
 │   ├── docker.ts     # Docker provider (local containers)
 │   ├── cloudflare.ts # Cloudflare Containers provider (remote, via CF Worker)
+│   ├── gondolin/     # Gondolin microVM provider
+│   │   ├── provider.ts  # Main provider implementation
+│   │   ├── channel.ts   # RPC channel over SSH
+│   │   ├── env.ts       # Environment variable handling
+│   │   ├── paths.ts     # Host path resolution
+│   │   ├── host-command.ts # Host command execution
+│   │   └── validation-command.ts
 │   ├── mock.ts       # Mock provider for testing
-│   └── state-store.ts # Sandbox state persistence interface
+│   ├── log-store.ts  # Sandbox log persistence
+│   └── state-store.ts # Sandbox state persistence
 ├── ws/               # WebSocket handling
 │   ├── handler.ts    # RPC proxy (DO NOT ADD PROTOCOL)
 │   ├── connection.ts # Per-session WS connection + event forwarding
 │   └── types.ts      # Client commands and server events
+├── lib/
+│   └── logger.ts     # Structured logger
 ├── db/               # Database
 │   ├── schema.ts     # Drizzle schema
 │   ├── connection.ts

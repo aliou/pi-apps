@@ -41,6 +41,7 @@ See `server/relay/AGENTS.md` for package-specific guidance.
 - **Relay** wraps Pi sessions, manages repos (cloned from GitHub), and exposes REST API + WebSocket protocol for remote clients.
 - **Dashboard** is the web admin UI for managing secrets, GitHub token, and viewing sessions.
 - **Native** apps (iOS/macOS) are built with Swift/SwiftUI, using XcodeGen for project generation.
+- **Gondolin** is a microVM sandbox provider using `@earendil-works/gondolin` for lightweight ARM64 VMs (no Docker dependency).
 
 ## Xcode Workspace
 
@@ -89,12 +90,16 @@ Published to GitHub Container Registry on pushes to `main`. Each has a workflow 
 | `ghcr.io/aliou/pi-sandbox-alpine-arm64` | `server/sandboxes/docker/sandbox-alpine-arm64/` | - |
 | `ghcr.io/aliou/pi-sandbox-codex-universal` | `server/sandboxes/docker/sandbox-codex-universal/` | - |
 | `ghcr.io/aliou/pi-sandbox-cloudflare` | `server/sandboxes/cloudflare/` | - |
+| `ghcr.io/aliou/pi-sandbox-gondolin` | `server/sandboxes/gondolin/` | - |
+
+**CI Jobs:** Gondolin assets are built and probed in the `relay-gondolin-assets` job in `ci.yml`, not via a separate workflow.
 
 ## Structure
 
 - `server/relay/` - Relay API server (Node.js/Hono/SQLite)
 - `server/sandboxes/cloudflare/` - Cloudflare Containers sandbox (Worker, bridge, Dockerfile)
 - `server/sandboxes/docker/` - Docker sandbox images for local/self-hosted relay
+- `server/sandboxes/gondolin/` - Gondolin microVM sandbox assets and build config
 - `server/scripts/` - Utility scripts (nuke-sessions, list-containers)
 - `clients/dashboard/` - Relay admin UI (React Router v7 SPA/Vite/Tailwind)
 - `clients/native/` - Native Swift apps and packages (iOS, macOS)
@@ -121,6 +126,21 @@ The relay server exposes REST endpoints and WebSocket for session communication.
 - `GET /api/secrets` - List configured secrets (metadata only)
 - `PUT /api/secrets/:id` - Set a secret
 - `DELETE /api/secrets/:id` - Delete a secret
+- `GET /api/environments` - List environments
+- `GET /api/environments/images` - List available sandbox images
+- `POST /api/environments/probe` - Probe a sandbox image for validation
+- `POST /api/environments` - Create environment
+- `GET /api/environments/:id` - Get environment
+- `PUT /api/environments/:id` - Update environment
+- `DELETE /api/environments/:id` - Delete environment
+- `GET /api/extension-configs` - List extension configs
+- `GET /api/extension-configs/resolved/:sessionId` - Get resolved configs for session
+- `POST /api/extension-configs/validation/cancel` - Cancel pending validation
+- `POST /api/extension-configs` - Create extension config
+- `DELETE /api/extension-configs/:id` - Delete extension config
+- `GET /api/settings` - Get settings
+- `GET /api/settings/sandbox-providers` - List available sandbox providers
+- `PUT /api/settings` - Update settings
 
 **WebSocket:** `ws://host/ws/sessions/:id?lastSeq=N`
 

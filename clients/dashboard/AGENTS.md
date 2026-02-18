@@ -28,11 +28,16 @@ Or use `make dev` from the repo root to start both the relay server and dashboar
 ```
 app/
 ├── routes/          # Page routes
-│   ├── dashboard.tsx
-│   ├── environments.tsx
-│   ├── github-setup.tsx
-│   ├── session.tsx
-│   └── settings.tsx
+│   ├── dashboard.tsx           # Index route (/)
+│   ├── sessions.tsx            # /sessions
+│   ├── session.tsx             # /sessions/:id
+│   ├── settings-layout.tsx     # /settings layout wrapper
+│   ├── settings-index.tsx      # /settings (index redirect)
+│   ├── settings.tsx            # /settings/secrets
+│   ├── github-setup.tsx        # /settings/github
+│   ├── environments.tsx        # /settings/environments
+│   ├── settings-models.tsx     # /settings/models
+│   └── settings-extensions.tsx # /settings/extensions
 ├── components/      # Reusable UI components
 ├── lib/             # Utilities, API client, theme
 │   ├── api.ts       # Typed fetch wrapper for relay REST API
