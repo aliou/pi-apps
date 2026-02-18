@@ -51,9 +51,9 @@ export class WebSocketConnection {
         const payload = JSON.parse(event.payload) as PiEvent;
         this.send(payload);
       } catch (err) {
-        console.error(
-          `[ws] session=${this.sessionId} skipping malformed replay event:`,
-          err,
+        logger.error(
+          { err, sessionId: this.sessionId },
+          "skipping malformed replay event",
         );
       }
     }
@@ -92,7 +92,7 @@ export class WebSocketConnection {
         this.ws.send(JSON.stringify(data));
       }
     } catch (err) {
-      console.error(`[ws] session=${this.sessionId} send error:`, err);
+      logger.error({ err, sessionId: this.sessionId }, "send error");
     }
   }
 
@@ -124,7 +124,8 @@ export class WebSocketConnection {
       // (e.g. npm/git output emitted by subprocesses in the guest).
       if (!trimmed.startsWith("{")) {
         logger.debug(
-          `session=${this.sessionId} ignoring non-json sandbox line: ${trimmed.slice(0, 200)}`,
+          { sessionId: this.sessionId, line: trimmed.slice(0, 200) },
+          "ignoring non-json sandbox line",
         );
         return;
       }
@@ -134,7 +135,8 @@ export class WebSocketConnection {
         this.handleSandboxEvent(event);
       } catch (err) {
         logger.warn(
-          `session=${this.sessionId} failed to parse sandbox JSON line: ${err instanceof Error ? err.message : String(err)} raw=${trimmed.slice(0, 500)}`,
+          { sessionId: this.sessionId, err, raw: trimmed.slice(0, 500) },
+          "failed to parse sandbox JSON line",
         );
       }
     });

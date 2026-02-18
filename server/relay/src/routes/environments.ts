@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
+import { createLogger } from "../lib/logger";
 import type { EnvironmentSandboxConfig } from "../sandbox/manager";
 import {
   AVAILABLE_DOCKER_IMAGES,
@@ -96,6 +97,7 @@ function validateConfig(
 
 export function environmentsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const logger = createLogger("environments");
 
   // List available Docker images (hardcoded)
   app.get("/images", (c) => {
@@ -235,7 +237,7 @@ export function environmentsRoutes(): Hono<AppEnv> {
         error: null,
       });
     } catch (err) {
-      console.error("Failed to create environment:", err);
+      logger.error({ err }, "failed to create environment");
       const message =
         err instanceof Error ? err.message : "Failed to create environment";
       return c.json({ data: null, error: message }, 500);
@@ -308,7 +310,7 @@ export function environmentsRoutes(): Hono<AppEnv> {
         error: null,
       });
     } catch (err) {
-      console.error(`Failed to update environment ${id}:`, err);
+      logger.error({ err, environmentId: id }, "failed to update environment");
       const message =
         err instanceof Error ? err.message : "Failed to update environment";
       return c.json({ data: null, error: message }, 500);

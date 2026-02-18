@@ -1,4 +1,5 @@
 import { setInterval } from "node:timers/promises";
+import { createLogger } from "../lib/logger";
 import type { resolveEnvConfig, SandboxManager } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { ConnectionManager } from "../ws/connection";
@@ -18,6 +19,8 @@ export interface IdleReaperDeps {
   resolveEnvConfig: typeof resolveEnvConfig;
   checkIntervalMs: number;
 }
+
+const log = createLogger("idle-reaper");
 
 export class IdleReaper {
   private controller: AbortController | null = null;
@@ -43,7 +46,7 @@ export class IdleReaper {
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
-      console.error("[idle-reaper] unexpected error in run loop:", err);
+      log.error({ err }, "unexpected error in run loop");
     }
   }
 
@@ -78,10 +81,7 @@ export class IdleReaper {
 
         await this.idleSession(session, idleMs);
       } catch (err) {
-        console.error(
-          `[idle-reaper] failed to idle session=${session.id}:`,
-          err,
-        );
+        log.error({ err, sessionId: session.id }, "failed to idle session");
       }
     }
   }
@@ -91,9 +91,7 @@ export class IdleReaper {
     idleMs: number,
   ): Promise<void> {
     const idleMinutes = Math.round(idleMs / 60_000);
-    console.log(
-      `[idle-reaper] idling session=${session.id} idle=${idleMinutes}m`,
-    );
+    log.info({ sessionId: session.id, idleMinutes }, "idling session");
 
     // 1. Notify connected clients
     this.deps.connectionManager.broadcast(session.id, {
@@ -132,8 +130,9 @@ export class IdleReaper {
           throw err;
         }
 
-        console.warn(
-          `[idle-reaper] sandbox already gone for session=${session.id} providerId=${session.sandboxProviderId}`,
+        log.warn(
+          { sessionId: session.id, providerId: session.sandboxProviderId },
+          "sandbox already gone",
         );
       }
     }

@@ -1,3 +1,4 @@
+import { createLogger } from "../lib/logger";
 import type {
   CleanupResult,
   CreateSandboxOptions,
@@ -8,6 +9,8 @@ import type {
   SandboxProviderCapabilities,
   SandboxStatus,
 } from "./types";
+
+const log = createLogger("cloudflare");
 
 // ─── Channel ────────────────────────────────────────────────────────────────
 
@@ -340,9 +343,9 @@ class CloudflareSandboxHandle implements SandboxHandle {
         this.setStatus("error");
       }
     } catch (err) {
-      console.error(
-        `[cloudflare] status poll failed for sandbox ${this.config.sessionId}:`,
-        err,
+      log.error(
+        { err, sessionId: this.config.sessionId },
+        "status poll failed",
       );
       this.setStatus("error");
     }

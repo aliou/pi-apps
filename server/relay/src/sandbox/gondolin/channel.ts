@@ -1,7 +1,10 @@
 import readline from "node:readline";
 import type { ExecProcess } from "@earendil-works/gondolin";
+import { createLogger } from "../../lib/logger";
 import type { SandboxLogStore } from "../log-store";
 import type { SandboxChannel } from "../types";
+
+const log = createLogger("gondolin");
 
 export class GondolinSandboxChannel implements SandboxChannel {
   private closed = false;
@@ -33,7 +36,7 @@ export class GondolinSandboxChannel implements SandboxChannel {
 
     this.stderrRl.on("line", (line) => {
       if (this.closed || !line.trim()) return;
-      console.error(`[sandbox:gondolin:stderr] ${line}`);
+      log.debug({ sessionId: this.sessionId, line }, "sandbox stderr");
       if (this.sessionId && this.logStore) {
         this.logStore.append(this.sessionId, line);
       }

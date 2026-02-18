@@ -1,6 +1,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "dotenv";
+import { createLogger } from "./lib/logger";
+
+const log = createLogger("env");
 
 /**
  * Load .env file from config directory if it exists.
@@ -10,7 +13,7 @@ export function loadEnv(configDir: string): void {
 
   if (existsSync(envPath)) {
     config({ path: envPath });
-    console.log(`Loaded .env from ${envPath}`);
+    log.info({ path: envPath }, "loaded .env");
   }
 }
 

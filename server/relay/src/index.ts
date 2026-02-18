@@ -11,6 +11,7 @@ import {
   getRelayEncryptionKeyVersion,
   loadEnv,
 } from "./env";
+import { createLogger } from "./lib/logger";
 import { SandboxLogStore } from "./sandbox/log-store";
 import { SandboxManager } from "./sandbox/manager";
 import { CryptoService } from "./services/crypto.service";
@@ -25,15 +26,22 @@ import { SessionService } from "./services/session.service";
 
 const VERSION = "0.1.0";
 
+const log = createLogger("server");
+
 async function main() {
   // Parse CLI args
   const config = parseConfig(process.argv.slice(2));
 
-  console.log(`pi-relay v${VERSION}`);
-  console.log(`Data directory: ${config.dataDir}`);
-  console.log(`Config directory: ${config.configDir}`);
-  console.log(`Cache directory: ${config.cacheDir}`);
-  console.log(`State directory: ${config.stateDir}`);
+  log.info({ version: VERSION }, "pi-relay starting");
+  log.info(
+    {
+      dataDir: config.dataDir,
+      configDir: config.configDir,
+      cacheDir: config.cacheDir,
+      stateDir: config.stateDir,
+    },
+    "directories",
+  );
 
   // Ensure all directories exist
   const paths = ensureDataDirs(config);
@@ -42,11 +50,11 @@ async function main() {
   loadEnv(paths.configDir);
 
   // Initialize database
-  console.log(`Database: ${paths.dbPath}`);
+  log.info({ dbPath: paths.dbPath }, "database");
   const { db, sqlite } = createDatabase(paths.dbPath);
 
   // Run migrations
-  console.log("Running migrations...");
+  log.info("running migrations");
   runMigrations(sqlite, paths.migrationsDir);
 
   // Initialize services
@@ -58,9 +66,8 @@ async function main() {
   // Initialize secrets service (required)
   const encryptionKey = getRelayEncryptionKey();
   if (!encryptionKey) {
-    console.error("RELAY_ENCRYPTION_KEY is required");
-    console.error(
-      "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+    log.fatal(
+      "RELAY_ENCRYPTION_KEY is required. Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
     );
     process.exit(1);
   }
@@ -70,9 +77,9 @@ async function main() {
     getRelayEncryptionKeyVersion(),
   );
   const secretsService = new SecretsService(db, cryptoService);
-  console.log("Secrets service initialized");
+  log.info("secrets service initialized");
 
-  // Initialize sandbox manager — providers are built on-demand from
+  // Initialize sandbox manager -- providers are built on-demand from
   // per-environment config. CF API token is fetched from secrets table.
   const sessionDataDir = join(paths.stateDir, "sessions");
 
@@ -87,22 +94,20 @@ async function main() {
     },
     logStore: sandboxLogStore,
   });
-  console.log("Sandbox manager initialized (on-demand providers)");
+  log.info("sandbox manager initialized (on-demand providers)");
 
   // Load initial secrets snapshot for new sandbox creations
   const initialSecrets = await secretsService.getAllAsEnv();
   sandboxManager.setSecrets(initialSecrets);
-  console.log(
-    `Secrets loaded: ${Object.keys(initialSecrets).length} enabled secret(s)`,
-  );
+  log.info({ count: Object.keys(initialSecrets).length }, "secrets loaded");
 
   // Initialize environment service
   const environmentService = new EnvironmentService(db);
-  console.log("Environment service initialized");
+  log.info("environment service initialized");
 
   // Initialize extension config service
   const extensionConfigService = new ExtensionConfigService(db);
-  console.log("Extension config service initialized");
+  log.info("extension config service initialized");
 
   // Prune old events on startup (7 days)
   const cutoffDate = new Date(
@@ -110,7 +115,7 @@ async function main() {
   ).toISOString();
   const pruned = eventJournal.pruneOlderThan(cutoffDate);
   if (pruned > 0) {
-    console.log(`Pruned ${pruned} old events`);
+    log.info({ pruned }, "pruned old events");
   }
 
   // Create app first (without WebSocket initially)
@@ -163,8 +168,9 @@ async function main() {
     checkIntervalMs: getIdleCheckIntervalMs(),
   });
   reaper.start();
-  console.log(
-    `Idle reaper started (check interval: ${getIdleCheckIntervalMs()}ms)`,
+  log.info(
+    { checkIntervalMs: getIdleCheckIntervalMs() },
+    "idle reaper started",
   );
 
   // Start server with WebSocket support
@@ -177,15 +183,14 @@ async function main() {
   // Inject WebSocket into server
   injectWebSocket(server);
 
-  console.log(`Server listening on http://${config.host}:${config.port}`);
-  console.log("Press Ctrl+C to stop");
+  log.info({ host: config.host, port: config.port }, "server listening");
 
   // Graceful shutdown
   const shutdown = (code = 0, err?: unknown) => {
     if (err) {
-      console.error("Fatal error:", err);
+      log.fatal({ err }, "fatal error");
     } else {
-      console.log("\nShutting down...");
+      log.info("shutting down");
     }
 
     try {
@@ -206,6 +211,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Failed to start:", err);
+  log.fatal({ err }, "failed to start");
   process.exit(1);
 });

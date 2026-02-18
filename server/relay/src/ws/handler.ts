@@ -1,4 +1,5 @@
 import type { UpgradeWebSocket } from "hono/ws";
+import { createLogger } from "../lib/logger";
 import type { SandboxManager } from "../sandbox/manager";
 import { resolveEnvConfig } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
@@ -12,21 +13,7 @@ import { EventHookRegistry } from "./hooks/registry";
 import { registerSessionNameHooks } from "./hooks/session-name";
 import { isClientCommand } from "./types";
 
-function wsLog(
-  event: string,
-  sessionId: string | undefined,
-  fields?: Record<string, unknown>,
-) {
-  console.log(
-    `[ws] ${event} session=${sessionId ?? "unknown"}${
-      fields
-        ? ` ${Object.entries(fields)
-            .map(([k, v]) => `${k}=${v}`)
-            .join(" ")}`
-        : ""
-    }`,
-  );
-}
+const logger = createLogger("ws");
 
 export interface WebSocketHandlerDeps {
   sandboxManager: SandboxManager;
@@ -72,24 +59,33 @@ export function createWebSocketHandler(
 
     return {
       async onOpen(_evt, ws) {
-        wsLog("open", sessionId, { lastSeq });
+        logger.info({ sessionId, lastSeq }, "ws open");
 
         // Validate session exists and is active
         const session = sessionId ? sessionService.get(sessionId) : null;
         if (!session || session.status === "archived") {
-          wsLog("rejected", sessionId, { reason: "session_not_found" });
+          logger.warn(
+            { sessionId, reason: "session_not_found" },
+            "ws rejected",
+          );
           ws.close(4004, "Session not found");
           return;
         }
 
         if (session.status !== "active") {
-          wsLog("rejected", sessionId, { reason: "session_not_active" });
+          logger.warn(
+            { sessionId, reason: "session_not_active" },
+            "ws rejected",
+          );
           ws.close(4003, "Session not active — call activate first");
           return;
         }
 
         if (!session.sandboxProvider || !session.sandboxProviderId) {
-          wsLog("rejected", sessionId, { reason: "sandbox_not_provisioned" });
+          logger.warn(
+            { sessionId, reason: "sandbox_not_provisioned" },
+            "ws rejected",
+          );
           ws.close(4003, "Sandbox not provisioned");
           return;
         }
@@ -112,7 +108,7 @@ export function createWebSocketHandler(
         sandboxManager
           .attachSession(providerType, providerId, envConfig)
           .then(({ channel }) => {
-            wsLog("attached", sessionId);
+            logger.info({ sessionId }, "ws attached");
             connection = new WebSocketConnection(
               ws,
               sessionId,
@@ -136,11 +132,7 @@ export function createWebSocketHandler(
             }
           })
           .catch((err) => {
-            wsLog("attach_failed", sessionId, { error: String(err) });
-            console.error(
-              `Failed to attach channel for session ${sessionId}:`,
-              err,
-            );
+            logger.error({ err, sessionId }, "ws attach failed");
             ws.close(4003, "Failed to attach to sandbox");
           });
       },
@@ -161,7 +153,7 @@ export function createWebSocketHandler(
           const parsed = JSON.parse(data);
 
           if (isClientCommand(parsed)) {
-            wsLog("cmd", sessionId, { type: parsed.type });
+            logger.debug({ sessionId, cmdType: parsed.type }, "ws cmd");
             connection.handleCommand(parsed);
             // Touch session activity
             sessionService.touch(sessionId);
@@ -179,11 +171,9 @@ export function createWebSocketHandler(
               : evt.data instanceof Buffer
                 ? evt.data.toString()
                 : String(evt.data);
-          console.error(
-            `[ws] session=${sessionId} failed to parse client message: ${err instanceof Error ? err.message : err}`,
-          );
-          console.error(
-            `[ws] session=${sessionId} raw client message: ${raw.slice(0, 500)}`,
+          logger.error(
+            { err, sessionId, raw: raw.slice(0, 500) },
+            "failed to parse client message",
           );
           connection.send({
             type: "error",
@@ -194,7 +184,7 @@ export function createWebSocketHandler(
       },
 
       onClose(_evt, _ws) {
-        wsLog("closed", sessionId);
+        logger.info({ sessionId }, "ws closed");
         if (connection && sessionId) {
           // Remove from connection manager
           connectionManager.remove(sessionId, connection);
@@ -206,8 +196,7 @@ export function createWebSocketHandler(
       },
 
       onError(evt, _ws) {
-        wsLog("error", sessionId, { error: String(evt) });
-        console.error(`WebSocket error for session ${sessionId}:`, evt);
+        logger.error({ sessionId, error: String(evt) }, "ws error");
         if (connection && sessionId) {
           connectionManager.remove(sessionId, connection);
           connection.close();

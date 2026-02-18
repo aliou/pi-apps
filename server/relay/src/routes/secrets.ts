@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
+import { createLogger } from "../lib/logger";
 import type { SandboxManager } from "../sandbox/manager";
 import type { SecretKind, SecretsService } from "../services/secrets.service";
 
@@ -8,6 +9,7 @@ export function secretsRoutes(
   sandboxManager: SandboxManager,
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const logger = createLogger("secrets");
 
   /**
    * Refresh the sandbox manager's secrets snapshot after a mutation.
@@ -73,7 +75,7 @@ export function secretsRoutes(
       await refreshSecrets();
       return c.json({ data: secret, error: null }, 201);
     } catch (err) {
-      console.error("Failed to create secret:", err);
+      logger.error({ err }, "failed to create secret");
       const msg = err instanceof Error ? err.message : "Unknown error";
       // SQLite unique constraint on env_var
       if (msg.includes("UNIQUE constraint")) {
@@ -137,7 +139,7 @@ export function secretsRoutes(
       await refreshSecrets();
       return c.json({ data: { ok: true }, error: null });
     } catch (err) {
-      console.error(`Failed to update secret ${id}:`, err);
+      logger.error({ err, secretId: id }, "failed to update secret");
       const msg = err instanceof Error ? err.message : "Unknown error";
       if (msg.includes("UNIQUE constraint")) {
         return c.json(

@@ -6,7 +6,10 @@
  * specific event/command shape matching the registered type.
  */
 
+import { createLogger } from "../../lib/logger";
 import type { ClientCommand, PiEvent } from "../types";
+
+const log = createLogger("event-hooks");
 
 /** Union of all messages that flow through a connection. */
 type AllMessages = PiEvent | ClientCommand;
@@ -56,10 +59,7 @@ export class EventHookRegistry {
       try {
         hook(sessionId, data as never);
       } catch (err) {
-        console.error(
-          `[event-hook] error for type=${type} session=${sessionId}:`,
-          err,
-        );
+        log.error({ err, type, sessionId }, "hook error");
       }
     }
   }

@@ -1,6 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
+import { createLogger } from "../lib/logger";
+
+const log = createLogger("db:migrate");
 
 /**
  * Run SQL migrations from the migrations directory.
@@ -21,7 +24,7 @@ export function runMigrations(
   `);
 
   if (!existsSync(migrationsDir)) {
-    console.log("No migrations directory found, skipping migrations");
+    log.info("no migrations directory found, skipping");
     return;
   }
 
@@ -31,7 +34,7 @@ export function runMigrations(
     .sort();
 
   if (files.length === 0) {
-    console.log("No migration files found");
+    log.info("no migration files found");
     return;
   }
 
@@ -49,7 +52,7 @@ export function runMigrations(
       continue;
     }
 
-    console.log(`Applying migration: ${file}`);
+    log.info({ file }, "applying migration");
     const sql = readFileSync(join(migrationsDir, file), "utf-8");
 
     // Split by statement breakpoint marker and execute each statement
@@ -70,6 +73,6 @@ export function runMigrations(
         .run(file, new Date().toISOString());
     })();
 
-    console.log(`Applied migration: ${file}`);
+    log.info({ file }, "applied migration");
   }
 }

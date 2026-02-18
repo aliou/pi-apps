@@ -1,3 +1,4 @@
+import { createLogger } from "../lib/logger";
 import type { EnvironmentRecord } from "../services/environment.service";
 import type { SecretsService } from "../services/secrets.service";
 import { CloudflareSandboxProvider } from "./cloudflare";
@@ -14,6 +15,8 @@ import type {
   SandboxInfo,
   SandboxProvider,
 } from "./types";
+
+const log = createLogger("sandbox");
 
 /**
  * Per-environment sandbox config as stored in the environments table.
@@ -350,10 +353,7 @@ export class SandboxManager {
       );
       await handle.terminate();
     } catch (err) {
-      console.error(
-        `[sandbox] terminate failed for ${providerId} (may already be gone):`,
-        err,
-      );
+      log.error({ err, providerId }, "terminate failed (may already be gone)");
     }
   }
 

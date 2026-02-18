@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
+import { createLogger } from "../lib/logger";
 
 /**
  * Settings key for GitHub token used for repo listing/cloning.
@@ -11,6 +12,7 @@ const GITHUB_TOKEN_KEY = "github_repos_access_token";
 
 export function githubRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const logger = createLogger("github");
 
   // Get token status
   app.get("/token", async (c) => {
@@ -132,7 +134,7 @@ export function githubRoutes(): Hono<AppEnv> {
       const repos = await githubService.listRepos(token);
       return c.json({ data: repos, error: null });
     } catch (err) {
-      console.error("Failed to list repos:", err);
+      logger.error({ err }, "failed to list repos");
       const message =
         err instanceof Error ? err.message : "Failed to list repos";
       return c.json({ data: null, error: message }, 500);

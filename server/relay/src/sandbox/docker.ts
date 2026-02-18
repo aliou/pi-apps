@@ -5,6 +5,7 @@ import process from "node:process";
 import readline from "node:readline";
 import { type Duplex, PassThrough } from "node:stream";
 import Docker from "dockerode";
+import { createLogger } from "../lib/logger";
 import type { SandboxLogStore } from "./log-store";
 import type { SandboxResourceTier } from "./provider-types";
 import type {
@@ -17,6 +18,8 @@ import type {
   SandboxProviderCapabilities,
   SandboxStatus,
 } from "./types";
+
+const log = createLogger("docker");
 
 /** Docker resource limits per tier. */
 const RESOURCE_TIER_LIMITS: Record<
@@ -378,9 +381,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         this.handleCache.delete(sessionId);
         this.cleanupSecretsDir(sessionId);
       } catch (err) {
-        console.error(
-          `[docker] cleanup: failed to remove container ${c.Id}:`,
-          err,
+        log.error(
+          { err, containerId: c.Id },
+          "cleanup: failed to remove container",
         );
       }
     }
@@ -397,20 +400,24 @@ export class DockerSandboxProvider implements SandboxProvider {
    */
   private async pullImage(image: string): Promise<void> {
     try {
-      console.log(`Pulling image ${image}...`);
+      log.info({ image }, "pulling image");
       const stream = await this.docker.pull(image);
       await new Promise<void>((resolve, reject) => {
         this.docker.modem.followProgress(stream, (err: Error | null) =>
           err ? reject(err) : resolve(),
         );
       });
-      console.log(`Image ${image} pulled successfully`);
+      log.info({ image }, "image pulled");
     } catch (err) {
       // If pull fails, check if image exists locally
       try {
         await this.docker.getImage(image).inspect();
-        console.log(
-          `Pull failed for ${image}, using local image: ${err instanceof Error ? err.message : err}`,
+        log.warn(
+          {
+            image,
+            pullError: err instanceof Error ? err.message : String(err),
+          },
+          "pull failed, using local image",
         );
       } catch {
         throw new Error(
@@ -507,12 +514,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         const logs = await container.logs({ stdout: true, stderr: true });
         output = logs.toString().trim();
       } catch (err) {
-        console.error("[docker] clone: failed to capture container logs:", err);
+        log.error({ err }, "clone: failed to capture container logs");
       }
       try {
         await container.remove();
       } catch (err) {
-        console.error("[docker] clone: failed to remove container:", err);
+        log.error({ err }, "clone: failed to remove container");
       }
       const detail = output ? `\n${output}` : "";
       throw new Error(
@@ -524,7 +531,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     try {
       await container.remove();
     } catch (err) {
-      console.error("[docker] clone: failed to remove container:", err);
+      log.error({ err }, "clone: failed to remove container");
     }
   }
 
@@ -605,10 +612,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       try {
         rmSync(secretsDir, { recursive: true, force: true });
       } catch (err) {
-        console.error(
-          `[docker] failed to clean up secrets dir for session ${sessionId}:`,
-          err,
-        );
+        log.error({ err, sessionId }, "failed to clean up secrets dir");
       }
       this.secretsDirs.delete(sessionId);
     }
@@ -710,8 +714,9 @@ class DockerSandboxHandle implements SandboxHandle {
     if (!info.State.Running) {
       const state = info.State.Status;
       if (state === "exited" || state === "created") {
-        console.log(
-          `[docker] container ${this.container.id} is ${state}, starting before attach`,
+        log.info(
+          { containerId: this.container.id, state },
+          "starting container before attach",
         );
         await this.container.start();
         this.setStatus("running");
@@ -771,17 +776,17 @@ class DockerSandboxHandle implements SandboxHandle {
     try {
       await this.container.stop({ t: 10 });
     } catch (err) {
-      console.error(
-        `[docker] terminate: failed to stop container ${this.container.id}:`,
-        err,
+      log.error(
+        { err, containerId: this.container.id },
+        "terminate: failed to stop container",
       );
     }
     try {
       await this.container.remove({ force: true });
     } catch (err) {
-      console.error(
-        `[docker] terminate: failed to remove container ${this.container.id}:`,
-        err,
+      log.error(
+        { err, containerId: this.container.id },
+        "terminate: failed to remove container",
       );
     }
     this.setStatus("stopped");
@@ -806,9 +811,9 @@ class DockerSandboxHandle implements SandboxHandle {
       await this.container.wait();
       this.setStatus("stopped");
     } catch (err) {
-      console.error(
-        `[docker] container ${this.container.id} monitor error:`,
-        err,
+      log.error(
+        { err, containerId: this.container.id },
+        "container monitor error",
       );
       this.setStatus("error");
     }
@@ -856,7 +861,7 @@ class DockerSandboxChannel implements SandboxChannel {
     const stderrRl = readline.createInterface({ input: stderr });
     stderrRl.on("line", (line) => {
       if (line.trim()) {
-        console.error(`[sandbox:stderr] ${line}`);
+        log.debug({ sessionId, line }, "sandbox stderr");
         if (sessionId && logStore) {
           logStore.append(sessionId, line);
         }

@@ -148,9 +148,9 @@ export function sessionsRoutes(): Hono<AppEnv> {
             });
             repo = repoService.get(body.repoId);
           } catch (err) {
-            console.error(
-              `Failed to fetch repo ${body.repoId} from GitHub:`,
-              err,
+            logger.error(
+              { err, repoId: body.repoId },
+              "failed to fetch repo from GitHub",
             );
           }
         }
@@ -243,16 +243,16 @@ export function sessionsRoutes(): Hono<AppEnv> {
               sandboxImageDigest: handle.imageDigest,
             });
           } catch (err) {
-            console.error(
-              `[sessions] failed to update session ${session.id} after sandbox creation:`,
-              err,
+            logger.error(
+              { err, sessionId: session.id },
+              "failed to update session after sandbox creation",
             );
           }
         })
         .catch((err) => {
-          console.error(
-            `Failed to create sandbox for session ${session.id}:`,
-            err,
+          logger.error(
+            { err, sessionId: session.id },
+            "failed to create sandbox",
           );
           try {
             sessionService.update(session.id, { status: "error" });
@@ -269,7 +269,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
         error: null,
       });
     } catch (err) {
-      console.error("Failed to create session:", err);
+      logger.error({ err }, "failed to create session");
       const message =
         err instanceof Error ? err.message : "Failed to create session";
       return c.json({ data: null, error: message }, 500);
@@ -302,7 +302,13 @@ export function sessionsRoutes(): Hono<AppEnv> {
 
     const session = sessionService.get(id);
     logger.debug(
-      `activate start session=${id} status=${session?.status ?? "missing"} provider=${session?.sandboxProvider ?? "-"} providerId=${session?.sandboxProviderId ?? "-"}`,
+      {
+        sessionId: id,
+        status: session?.status,
+        provider: session?.sandboxProvider,
+        providerId: session?.sandboxProviderId,
+      },
+      "activate start",
     );
     if (!session) {
       return c.json({ data: null, error: "Session not found" }, 404);
@@ -313,8 +319,13 @@ export function sessionsRoutes(): Hono<AppEnv> {
     }
 
     if (session.status === "error") {
-      console.error(
-        `[activate] session=${id} rejected: status=error provider=${session.sandboxProvider} providerId=${session.sandboxProviderId}`,
+      logger.error(
+        {
+          sessionId: id,
+          provider: session.sandboxProvider,
+          providerId: session.sandboxProviderId,
+        },
+        "activate rejected: session in error state",
       );
       return c.json({ data: null, error: "Session is in error state" }, 409);
     }
@@ -340,8 +351,14 @@ export function sessionsRoutes(): Hono<AppEnv> {
       if (current.sandboxProviderId && current.sandboxProvider) {
         // Sandbox provisioned — resume it with fresh secrets
         try {
-          console.log(
-            `[activate] session=${id} provider=${current.sandboxProvider} providerId=${current.sandboxProviderId} status=${current.status}`,
+          logger.info(
+            {
+              sessionId: id,
+              provider: current.sandboxProvider,
+              providerId: current.sandboxProviderId,
+              status: current.status,
+            },
+            "activate: resuming sandbox",
           );
 
           // Regenerate settings.json (picks up extension config changes)
@@ -354,13 +371,23 @@ export function sessionsRoutes(): Hono<AppEnv> {
           );
           writeSessionSettings(sessionDataDir, id, extPackages);
           logger.debug(
-            `activate settings-written session=${id} elapsedMs=${Date.now() - settingsStartedAt} packages=${extPackages.length}`,
+            {
+              sessionId: id,
+              elapsedMs: Date.now() - settingsStartedAt,
+              packages: extPackages.length,
+            },
+            "activate settings-written",
           );
 
           const secretsStartedAt = Date.now();
           const secrets = await secretsService.getAllAsEnv();
           logger.debug(
-            `activate secrets-loaded session=${id} elapsedMs=${Date.now() - secretsStartedAt} keys=${Object.keys(secrets).length}`,
+            {
+              sessionId: id,
+              elapsedMs: Date.now() - secretsStartedAt,
+              keys: Object.keys(secrets).length,
+            },
+            "activate secrets-loaded",
           );
           // Read GitHub token for git credential refresh
           const tokenSetting = db
@@ -371,8 +398,13 @@ export function sessionsRoutes(): Hono<AppEnv> {
           const ghToken = tokenSetting
             ? (JSON.parse(tokenSetting.value) as string)
             : undefined;
-          console.log(
-            `[activate] session=${id} secrets=${Object.keys(secrets).length} keys=[${Object.keys(secrets).join(",")}]`,
+          logger.info(
+            {
+              sessionId: id,
+              secretCount: Object.keys(secrets).length,
+              keys: Object.keys(secrets),
+            },
+            "activate: secrets loaded",
           );
           // Resolve environment config for the provider
           const envResolveStartedAt = Date.now();
@@ -385,7 +417,12 @@ export function sessionsRoutes(): Hono<AppEnv> {
             }
           }
           logger.debug(
-            `activate env-resolved session=${id} elapsedMs=${Date.now() - envResolveStartedAt} hasEnvConfig=${Boolean(envConfig)}`,
+            {
+              sessionId: id,
+              elapsedMs: Date.now() - envResolveStartedAt,
+              hasEnvConfig: Boolean(envConfig),
+            },
+            "activate env-resolved",
           );
 
           const resumeStartedAt = Date.now();
@@ -397,10 +434,16 @@ export function sessionsRoutes(): Hono<AppEnv> {
             ghToken,
           );
           logger.debug(
-            `activate resume-done session=${id} elapsedMs=${Date.now() - resumeStartedAt} sandboxStatus=${handle.status}`,
+            {
+              sessionId: id,
+              elapsedMs: Date.now() - resumeStartedAt,
+              sandboxStatus: handle.status,
+            },
+            "activate resume-done",
           );
-          console.log(
-            `[activate] session=${id} resumed, sandboxStatus=${handle.status}`,
+          logger.info(
+            { sessionId: id, sandboxStatus: handle.status },
+            "activate: sandbox resumed",
           );
 
           // For Cloudflare, write settings.json via exec after resume
@@ -426,7 +469,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
 
           const lastSeq = eventJournal.getMaxSeq(id);
           logger.debug(
-            `activate done session=${id} totalElapsedMs=${Date.now() - activateStartedAt}`,
+            { sessionId: id, totalElapsedMs: Date.now() - activateStartedAt },
+            "activate done",
           );
 
           return c.json({
@@ -440,7 +484,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
             error: null,
           });
         } catch (err) {
-          console.error(`[activate] session=${id} error:`, err);
+          logger.error({ err, sessionId: id }, "activate error");
           const message =
             err instanceof Error ? err.message : "Sandbox unavailable";
           return c.json(
@@ -453,7 +497,13 @@ export function sessionsRoutes(): Hono<AppEnv> {
       // Still creating — wait and retry
       if (waited === 0 || waited % 5_000 === 0) {
         logger.debug(
-          `activate waiting session=${id} waitedMs=${waited} status=${current.status} providerId=${current.sandboxProviderId ?? "-"}`,
+          {
+            sessionId: id,
+            waitedMs: waited,
+            status: current.status,
+            providerId: current.sandboxProviderId,
+          },
+          "activate waiting",
         );
       }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));

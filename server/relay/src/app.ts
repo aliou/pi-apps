@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { logger } from "hono/logger";
+import { requestId } from "hono/request-id";
+import { type Env as PinoEnv, pinoLogger } from "hono-pino";
 import type { AppDatabase } from "./db/connection";
+import { rootLogger } from "./lib/logger";
 import { environmentsRoutes } from "./routes/environments";
 import { extensionConfigsRoutes } from "./routes/extension-configs";
 import { githubRoutes } from "./routes/github";
@@ -20,7 +22,7 @@ import type { RepoService } from "./services/repo.service";
 import type { SecretsService } from "./services/secrets.service";
 import type { SessionService } from "./services/session.service";
 
-export type AppEnv = {
+export type AppEnv = PinoEnv & {
   Variables: {
     db: AppDatabase;
     sessionService: SessionService;
@@ -74,12 +76,22 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     await next();
   });
 
-  app.use("*", logger());
+  app.use("*", requestId());
+  app.use(
+    "*",
+    pinoLogger({
+      pino: rootLogger,
+    }),
+  );
   app.use("*", cors());
 
   // Error handler
   app.onError((err, c) => {
-    console.error("Unhandled error:", err);
+    const logger = c.get("logger");
+    logger.error(
+      { err, path: c.req.path, method: c.req.method },
+      "unhandled error",
+    );
     return c.json({ data: null, error: "Internal server error" }, 500);
   });
 

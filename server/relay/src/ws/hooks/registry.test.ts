@@ -52,31 +52,18 @@ describe("EventHookRegistry", () => {
     const successHook1 = vi.fn();
     const successHook2 = vi.fn();
 
-    // Spy on console.error to verify error is logged
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
     registry.on("extension_ui_request", successHook1);
     registry.on("extension_ui_request", errorHook);
     registry.on("extension_ui_request", successHook2);
 
+    // Should not throw despite the error hook
     registry.handle("session-789", "extension_ui_request", {
       method: "setTitle",
     });
 
-    // All hooks should have been called
+    // All hooks should have been called (error in one doesn't stop others)
     expect(successHook1).toHaveBeenCalledOnce();
     expect(errorHook).toHaveBeenCalledOnce();
     expect(successHook2).toHaveBeenCalledOnce();
-
-    // Error should have been logged
-    expect(consoleErrorSpy).toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[event-hook]"),
-      expect.any(Error),
-    );
-
-    consoleErrorSpy.mockRestore();
   });
 });
