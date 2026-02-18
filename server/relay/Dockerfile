@@ -28,7 +28,7 @@ COPY . .
 RUN pnpm run build
 
 # Prune to production dependencies (keeps native addons already compiled)
-RUN pnpm prune --prod
+RUN CI=true pnpm prune --prod
 
 # -- runtime stage --
 FROM node:22-slim
