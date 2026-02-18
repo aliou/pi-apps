@@ -62,6 +62,21 @@ targets:
       - package: PiUI
         product: PiUI
 
+  PiNative UITests:
+    type: bundle.ui-testing
+    platform: iOS
+    supportedDestinations: [iOS]
+    sources:
+      - UITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(PI_BUNDLE_ID_IOS).uitests
+        IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: true
+    dependencies:
+      - target: "PiNative iOS"
+
 schemes:
   PiNative iOS:
     build:
@@ -84,3 +99,19 @@ schemes:
       config: Release
     archive:
       config: Release
+
+  PiNative UITests:
+    build:
+      targets:
+        PiNative iOS: all
+        PiNative UITests: [testing]
+    test:
+      config: Debug
+      targets:
+        - PiNative UITests
+      environmentVariables:
+        # These are populated from xcodebuild build-setting overrides, e.g.:
+        #   xcodebuild test ... UI_AUTOMATION_PAYLOAD_PATH=/tmp/payload.json
+        UI_AUTOMATION_PAYLOAD_PATH: $(UI_AUTOMATION_PAYLOAD_PATH)
+        UI_AUTOMATION_RESULT_PATH: $(UI_AUTOMATION_RESULT_PATH)
+        UI_AUTOMATION_PAYLOAD_JSON: $(UI_AUTOMATION_PAYLOAD_JSON)

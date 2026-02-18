@@ -1,2 +1,3 @@
 excluded:
   - packages/pi-ui/Sources/PiUI/Diff
+  - clients/native/apps/ios/UITests
