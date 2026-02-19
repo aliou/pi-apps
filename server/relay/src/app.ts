@@ -85,6 +85,12 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     "*",
     pinoLogger({
       pino: rootLogger,
+      http: {
+        referRequestIdKey: "requestId",
+        onReqMessage: () => "request start",
+        onResMessage: () => "request end",
+        responseTime: true,
+      },
     }),
   );
   app.use("*", cors());
