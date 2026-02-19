@@ -11,6 +11,7 @@ struct ChatInputBar: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField("Message...", text: $text)
+                .accessibilityIdentifier("chat-input")
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -37,6 +38,7 @@ struct ChatInputBar: View {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
                 }
+                .accessibilityIdentifier("send-button")
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }

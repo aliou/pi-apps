@@ -32,6 +32,7 @@ public struct EmptyStateView: View {
         } actions: {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
+                    .accessibilityIdentifier("empty-state-action")
             }
         }
     }

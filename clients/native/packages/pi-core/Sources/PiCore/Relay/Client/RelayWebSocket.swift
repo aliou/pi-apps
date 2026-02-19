@@ -73,14 +73,18 @@ private actor RelayWebSocketState {
     }
 
     func startConnection(sessionId: String, baseURL: URL) {
+        // Use http/https scheme with URLRequest-based webSocketTask.
+        // webSocketTask(with: URL) requires ws/wss, but that causes
+        // URLSession to send the full absolute URI in the HTTP request
+        // line (e.g. "GET ws://host/path"), which many servers can't route.
+        // webSocketTask(with: URLRequest) accepts http/https and sends
+        // only the path in the request line.
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
-        components.scheme = baseURL.scheme == "https" ? "wss" : "ws"
         components.path = "/ws/sessions/\(sessionId)"
         components.queryItems = [URLQueryItem(name: "lastSeq", value: "\(lastSeq)")]
 
         guard let url = components.url else { return }
-        let request = URLRequest(url: url)
-        let wsTask = URLSession.shared.webSocketTask(with: request)
+        let wsTask = URLSession.shared.webSocketTask(with: URLRequest(url: url))
         self.task = wsTask
         wsTask.resume()
         reconnectAttempts = 0

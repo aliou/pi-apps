@@ -51,6 +51,7 @@ struct SessionsListView: View {
                         showNewSession = true
                     }
                 }
+                .accessibilityIdentifier("new-session-button")
                 .disabled(isCreatingChat)
             }
         }
