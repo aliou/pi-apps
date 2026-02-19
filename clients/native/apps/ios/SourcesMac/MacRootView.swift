@@ -129,6 +129,7 @@ struct MacRootView: View {
                     CodeSessionView(sessionId: selectedSessionId)
                 }
             }
+            .id(selectedSessionId)
         } else {
             ContentUnavailableView(
                 "Select a Session",
