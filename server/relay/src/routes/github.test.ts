@@ -21,6 +21,7 @@ import {
   createTestDatabase,
   createTestSandboxManager,
   createTestSecretsService,
+  createTestSessionHubManager,
 } from "../test-helpers";
 
 describe("GitHub Routes", () => {
@@ -46,6 +47,7 @@ describe("GitHub Routes", () => {
       extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
+      sessionHubManager: createTestSessionHubManager(db),
     };
   });
 

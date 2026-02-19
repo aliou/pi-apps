@@ -7,7 +7,12 @@ import type { AppDatabase } from "./db/connection";
 import * as schema from "./db/schema";
 import { SandboxManager } from "./sandbox/manager";
 import { CryptoService } from "./services/crypto.service";
+import { EnvironmentService } from "./services/environment.service";
+import { EventJournal } from "./services/event-journal";
 import { SecretsService } from "./services/secrets.service";
+import { SessionService } from "./services/session.service";
+import { buildEventHooks } from "./ws/hooks";
+import { SessionHubManager } from "./ws/session-hub";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -106,4 +111,27 @@ export function createTestSecretsService(db: AppDatabase): SecretsService {
   const testKey = CryptoService.generateKey();
   const crypto = new CryptoService(testKey);
   return new SecretsService(db, crypto);
+}
+
+/**
+ * Create a test session hub manager.
+ */
+export function createTestSessionHubManager(
+  db: AppDatabase,
+): SessionHubManager {
+  const sessionService = new SessionService(db);
+  const eventJournal = new EventJournal(db);
+  const environmentService = new EnvironmentService(db);
+  const secretsService = createTestSecretsService(db);
+  const sandboxManager = createTestSandboxManager();
+  const eventHooks = buildEventHooks(sessionService);
+
+  return new SessionHubManager({
+    sandboxManager,
+    sessionService,
+    eventJournal,
+    environmentService,
+    secretsService,
+    eventHooks,
+  });
 }

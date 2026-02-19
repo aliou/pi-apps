@@ -28,6 +28,17 @@ interface CreateSessionRequest {
   nativeToolsEnabled?: boolean;
 }
 
+interface ActivateSessionRequest {
+  clientId: string;
+}
+
+interface ClientCapabilitiesRequest {
+  clientKind?: "web" | "ios" | "macos" | "unknown";
+  capabilities: {
+    extensionUI: boolean;
+  };
+}
+
 export function sessionsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const logger = createLogger("sessions");
@@ -298,7 +309,20 @@ export function sessionsRoutes(): Hono<AppEnv> {
     const eventJournal = c.get("eventJournal");
     const sandboxManager = c.get("sandboxManager");
     const secretsService = c.get("secretsService");
+    const sessionHubManager = c.get("sessionHubManager");
     const id = c.req.param("id");
+
+    // Parse clientId from body (required)
+    let body: ActivateSessionRequest;
+    try {
+      body = await c.req.json<ActivateSessionRequest>();
+    } catch {
+      return c.json({ data: null, error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.clientId || typeof body.clientId !== "string") {
+      return c.json({ data: null, error: "clientId is required" }, 400);
+    }
 
     const session = sessionService.get(id);
     logger.debug(
@@ -307,11 +331,17 @@ export function sessionsRoutes(): Hono<AppEnv> {
         status: session?.status,
         provider: session?.sandboxProvider,
         providerId: session?.sandboxProviderId,
+        clientId: body.clientId,
       },
       "activate start",
     );
     if (!session) {
       return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    // Set activator client if provided
+    if (body.clientId) {
+      sessionHubManager.setActivatorClient(id, body.clientId);
     }
 
     if (session.status === "archived") {
@@ -581,6 +611,50 @@ export function sessionsRoutes(): Hono<AppEnv> {
     return c.json({
       data: {
         entries: entries ?? [],
+      },
+      error: null,
+    });
+  });
+
+  // Register client capabilities for a session
+  app.put("/:id/clients/:clientId/capabilities", async (c) => {
+    const sessionService = c.get("sessionService");
+    const sessionHubManager = c.get("sessionHubManager");
+    const id = c.req.param("id");
+    const clientId = c.req.param("clientId");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    let body: ClientCapabilitiesRequest;
+    try {
+      body = await c.req.json<ClientCapabilitiesRequest>();
+    } catch {
+      return c.json({ data: null, error: "Invalid JSON body" }, 400);
+    }
+
+    if (
+      !body.capabilities ||
+      typeof body.capabilities.extensionUI !== "boolean"
+    ) {
+      return c.json(
+        { data: null, error: "capabilities.extensionUI is required" },
+        400,
+      );
+    }
+
+    sessionHubManager.setClientCapabilities(id, clientId, {
+      extensionUI: body.capabilities.extensionUI,
+      clientKind: body.clientKind ?? "unknown",
+    });
+
+    return c.json({
+      data: {
+        sessionId: id,
+        clientId,
+        capabilities: body.capabilities,
       },
       error: null,
     });

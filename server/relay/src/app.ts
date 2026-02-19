@@ -21,6 +21,7 @@ import type { GitHubService } from "./services/github.service";
 import type { RepoService } from "./services/repo.service";
 import type { SecretsService } from "./services/secrets.service";
 import type { SessionService } from "./services/session.service";
+import type { SessionHubManager } from "./ws/session-hub";
 
 export type AppEnv = PinoEnv & {
   Variables: {
@@ -35,6 +36,7 @@ export type AppEnv = PinoEnv & {
     extensionConfigService: ExtensionConfigService;
     sandboxLogStore: SandboxLogStore;
     sessionDataDir: string;
+    sessionHubManager: SessionHubManager;
   };
 };
 
@@ -50,6 +52,7 @@ export interface AppServices {
   extensionConfigService: ExtensionConfigService;
   sandboxLogStore: SandboxLogStore;
   sessionDataDir: string;
+  sessionHubManager: SessionHubManager;
 }
 
 export interface CreateAppOptions {
@@ -73,6 +76,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     c.set("extensionConfigService", services.extensionConfigService);
     c.set("sandboxLogStore", services.sandboxLogStore);
     c.set("sessionDataDir", services.sessionDataDir);
+    c.set("sessionHubManager", services.sessionHubManager);
     await next();
   });
 

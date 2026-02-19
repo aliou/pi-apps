@@ -12,6 +12,7 @@ import {
   createTestDatabase,
   createTestSandboxManager,
   createTestSecretsService,
+  createTestSessionHubManager,
 } from "./test-helpers";
 
 /**
@@ -39,6 +40,7 @@ describe("Session Protocol Integration", () => {
       extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
+      sessionHubManager: createTestSessionHubManager(db),
     };
 
     // All session creation requires a default environment
@@ -105,7 +107,11 @@ describe("Session Protocol Integration", () => {
       // Activate session
       const activateRes = await app.request(
         `/api/sessions/${sessionId}/activate`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: "test-client-1" }),
+        },
       );
       expect(activateRes.status).toBe(200);
 
@@ -266,7 +272,11 @@ describe("Session Protocol Integration", () => {
       // Initial lastSeq should be 0
       const activate1 = await app.request(
         `/api/sessions/${sessionId}/activate`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: "test-client-1" }),
+        },
       );
       const activate1Json = (await activate1.json()) as {
         data: { lastSeq: number };
@@ -280,7 +290,11 @@ describe("Session Protocol Integration", () => {
       // lastSeq should now be 2
       const activate2 = await app.request(
         `/api/sessions/${sessionId}/activate`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: "test-client-2" }),
+        },
       );
       const activate2Json = (await activate2.json()) as {
         data: { lastSeq: number };

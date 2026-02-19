@@ -7,8 +7,8 @@ import {
   createTestDatabase,
   createTestSandboxManager,
   createTestSecretsService,
+  createTestSessionHubManager,
 } from "../test-helpers";
-import type { ConnectionManager } from "../ws/connection";
 import type { ServerEvent } from "../ws/types";
 import { EnvironmentService } from "./environment.service";
 import { IdleReaper, type IdleReaperDeps } from "./idle-reaper";
@@ -27,13 +27,15 @@ function createTestDeps(overrides?: Partial<IdleReaperDeps>): {
   const environmentService = new EnvironmentService(db);
   const secretsService = createTestSecretsService(db);
   const sandboxManager = createTestSandboxManager();
+  const sessionHubManager = createTestSessionHubManager(db);
   const broadcasts: { sessionId: string; event: ServerEvent }[] = [];
 
-  const connectionManager = {
-    broadcast: (sessionId: string, event: ServerEvent) => {
-      broadcasts.push({ sessionId, event });
-    },
-  } as unknown as ConnectionManager;
+  // Override broadcast to capture calls
+  const origBroadcast = sessionHubManager.broadcast.bind(sessionHubManager);
+  sessionHubManager.broadcast = (sessionId: string, event: ServerEvent) => {
+    broadcasts.push({ sessionId, event });
+    return origBroadcast(sessionId, event);
+  };
 
   const mockResolveEnvConfig = async (env: {
     config: string;
@@ -78,7 +80,7 @@ function createTestDeps(overrides?: Partial<IdleReaperDeps>): {
     environmentService,
     secretsService,
     sandboxManager,
-    connectionManager,
+    sessionHubManager,
     resolveEnvConfig:
       mockResolveEnvConfig as IdleReaperDeps["resolveEnvConfig"],
     checkIntervalMs: 60_000,

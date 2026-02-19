@@ -7,6 +7,9 @@ import { GondolinSandboxProvider } from "./gondolin";
 import type { SandboxLogStore } from "./log-store";
 import { MockSandboxProvider } from "./mock";
 import type { SandboxProviderType } from "./provider-types";
+
+export type { SandboxProviderType };
+
 import type {
   CleanupResult,
   CreateSandboxOptions,

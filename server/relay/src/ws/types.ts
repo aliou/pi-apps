@@ -10,6 +10,15 @@ import type {
 export type { RpcCommand, RpcExtensionUIRequest, RpcResponse };
 
 // ============================================================================
+// Client capabilities
+// ============================================================================
+
+export interface ClientCapabilities {
+  extensionUI: boolean;
+  clientKind?: "web" | "ios" | "macos" | "unknown";
+}
+
+// ============================================================================
 // Client -> Server (commands forwarded to pi)
 // ============================================================================
 

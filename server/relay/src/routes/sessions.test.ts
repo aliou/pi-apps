@@ -12,6 +12,7 @@ import {
   createTestDatabase,
   createTestSandboxManager,
   createTestSecretsService,
+  createTestSessionHubManager,
 } from "../test-helpers";
 
 describe("Sessions Routes", () => {
@@ -36,6 +37,7 @@ describe("Sessions Routes", () => {
       extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
+      sessionHubManager: createTestSessionHubManager(db),
     };
 
     // All session creation requires a default environment
@@ -243,6 +245,8 @@ describe("Sessions Routes", () => {
 
       const res = await app.request(`/api/sessions/${sessionId}/activate`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: "test-client-1" }),
       });
 
       expect(res.status).toBe(200);
@@ -255,10 +259,25 @@ describe("Sessions Routes", () => {
       expect(json.error).toBeNull();
     });
 
+    it("returns 400 for missing clientId", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions/nonexistent-id/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("clientId is required");
+    });
+
     it("returns 404 for nonexistent session", async () => {
       const app = createApp({ services });
       const res = await app.request("/api/sessions/nonexistent-id/activate", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: "test-client-1" }),
       });
 
       expect(res.status).toBe(404);
@@ -273,6 +292,8 @@ describe("Sessions Routes", () => {
       const app = createApp({ services });
       const res = await app.request(`/api/sessions/${session.id}/activate`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: "test-client-1" }),
       });
 
       expect(res.status).toBe(410);
@@ -287,6 +308,8 @@ describe("Sessions Routes", () => {
       const app = createApp({ services });
       const res = await app.request(`/api/sessions/${session.id}/activate`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: "test-client-1" }),
       });
 
       expect(res.status).toBe(409);

@@ -12,6 +12,7 @@ import {
   createTestDatabase,
   createTestSandboxManager,
   createTestSecretsService,
+  createTestSessionHubManager,
 } from "../test-helpers";
 
 describe("Health Routes", () => {
@@ -35,6 +36,7 @@ describe("Health Routes", () => {
       extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
+      sessionHubManager: createTestSessionHubManager(db),
     };
   });
 

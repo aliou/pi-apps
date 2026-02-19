@@ -2,7 +2,7 @@ import { setInterval } from "node:timers/promises";
 import { createLogger } from "../lib/logger";
 import type { resolveEnvConfig, SandboxManager } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
-import type { ConnectionManager } from "../ws/connection";
+import type { SessionHubManager } from "../ws/session-hub";
 import type {
   EnvironmentConfig,
   EnvironmentService,
@@ -15,7 +15,7 @@ export interface IdleReaperDeps {
   environmentService: EnvironmentService;
   secretsService: SecretsService;
   sandboxManager: SandboxManager;
-  connectionManager: ConnectionManager;
+  sessionHubManager: SessionHubManager;
   resolveEnvConfig: typeof resolveEnvConfig;
   checkIntervalMs: number;
 }
@@ -79,6 +79,18 @@ export class IdleReaper {
 
         if (idleMs < timeoutSeconds * 1000) continue;
 
+        // Skip if there are active connections
+        const connectionCount = this.deps.sessionHubManager.getConnectionCount(
+          session.id,
+        );
+        if (connectionCount > 0) {
+          log.debug(
+            { sessionId: session.id, connectionCount },
+            "skipping idle: active connections",
+          );
+          continue;
+        }
+
         await this.idleSession(session, idleMs);
       } catch (err) {
         log.error({ err, sessionId: session.id }, "failed to idle session");
@@ -93,14 +105,29 @@ export class IdleReaper {
     const idleMinutes = Math.round(idleMs / 60_000);
     log.info({ sessionId: session.id, idleMinutes }, "idling session");
 
-    // 1. Notify connected clients
-    this.deps.connectionManager.broadcast(session.id, {
+    // Double-check no clients connected (race condition guard)
+    const connectionCount = this.deps.sessionHubManager.getConnectionCount(
+      session.id,
+    );
+    if (connectionCount > 0) {
+      log.debug(
+        { sessionId: session.id, connectionCount },
+        "aborting idle: clients connected",
+      );
+      return;
+    }
+
+    // 1. Notify any connected clients (should be none, but for safety)
+    this.deps.sessionHubManager.broadcast(session.id, {
       type: "sandbox_status",
       status: "paused",
       message: "Session idled due to inactivity",
     });
 
-    // 2. Pause the sandbox
+    // 2. Clear client state (controller, capabilities, activator)
+    this.deps.sessionHubManager.clearSessionClientState(session.id);
+
+    // 3. Pause the sandbox
     if (session.sandboxProvider && session.sandboxProviderId) {
       let envConfig: Awaited<ReturnType<typeof resolveEnvConfig>> | undefined;
       if (session.environmentId) {

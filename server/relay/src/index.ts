@@ -23,6 +23,8 @@ import { IdleReaper } from "./services/idle-reaper";
 import { RepoService } from "./services/repo.service";
 import { SecretsService } from "./services/secrets.service";
 import { SessionService } from "./services/session.service";
+import { buildEventHooks } from "./ws/hooks";
+import { SessionHubManager } from "./ws/session-hub";
 
 const VERSION = "0.1.0";
 
@@ -109,6 +111,18 @@ async function main() {
   const extensionConfigService = new ExtensionConfigService(db);
   log.info("extension config service initialized");
 
+  // Initialize session hub manager for multi-client streaming
+  const eventHooks = buildEventHooks(sessionService);
+  const sessionHubManager = new SessionHubManager({
+    sandboxManager,
+    sessionService,
+    eventJournal,
+    environmentService,
+    secretsService,
+    eventHooks,
+  });
+  log.info("session hub manager initialized");
+
   // Prune old events on startup (7 days)
   const cutoffDate = new Date(
     Date.now() - 7 * 24 * 60 * 60 * 1000,
@@ -132,6 +146,7 @@ async function main() {
       extensionConfigService,
       sandboxLogStore,
       sessionDataDir,
+      sessionHubManager,
     },
   });
 
@@ -139,21 +154,16 @@ async function main() {
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
   // Now mount the WebSocket handler
-  const { ConnectionManager } = await import("./ws/connection");
   const { createWebSocketHandler } = await import("./ws/handler");
 
-  const connectionManager = new ConnectionManager();
-  const wsHandler = createWebSocketHandler(
-    upgradeWebSocket,
-    {
-      sandboxManager,
-      sessionService,
-      eventJournal,
-      environmentService,
-      secretsService,
-    },
-    connectionManager,
-  );
+  const wsHandler = createWebSocketHandler(upgradeWebSocket, {
+    sandboxManager,
+    sessionService,
+    eventJournal,
+    environmentService,
+    secretsService,
+    sessionHubManager,
+  });
   app.get("/ws/sessions/:id", wsHandler);
 
   // Start idle reaper
@@ -163,7 +173,7 @@ async function main() {
     environmentService,
     secretsService,
     sandboxManager,
-    connectionManager,
+    sessionHubManager,
     resolveEnvConfig,
     checkIntervalMs: getIdleCheckIntervalMs(),
   });
@@ -195,6 +205,7 @@ async function main() {
 
     try {
       reaper.stop();
+      sessionHubManager.closeAll();
       server.close();
       sqlite.close();
     } catch {
