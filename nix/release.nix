@@ -1,12 +1,7 @@
-# Release metadata. Update rev and hashes after each CI release.
-# To get the hash for a release asset:
-#   nix-prefetch-url <url>
-#   nix hash convert --hash-algo sha256 --to sri <hash>
+# Release metadata. Auto-updated by CI.
+# Do not edit manually.
 {
-  # Short commit SHA matching the GitHub release tag.
-  rev = "0000000"; # Update after first release
-
-  # Update after first release. Build will fail loudly with hash mismatch.
-  relay.aarch64-linux.hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  gondolin-assets.aarch64-linux.hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  rev = "0e5886b";
+  relay.aarch64-linux.hash = "sha256-8qwILOObizro8YFU0V7E598/yFj5peTxN/gp7KK/osw=";
+  gondolin-assets.aarch64-linux.hash = "sha256-a0T5E6fX2SdpfVYc7HQ7M0VQLZ6mOgi93suMWIaUJLE=";
 }
