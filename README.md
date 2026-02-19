@@ -26,7 +26,7 @@ pi-apps/
 
 ```bash
 nix develop       # enter nix shell
-make dev          # start relay server + dashboard (parallel, hot reload)
+just dev          # start relay server + dashboard (parallel, hot reload)
 ```
 
 ## Apps
@@ -57,20 +57,21 @@ pnpm dev          # run dev server (hot reload)
 Swift apps built with XcodeGen. Requires Xcode.
 
 ```bash
-make setup        # generate Xcode project
-make xcode        # open in Xcode
-make build        # build macOS (debug)
-make build-ios    # build iOS simulator (debug)
+just setup        # generate Xcode project
+just xcode        # open in Xcode
+just build        # build macOS (debug)
+just build-ios    # build iOS simulator (debug)
 ```
 
-## Makefile
+## Just
 
-Run `make help` for all targets. Key ones:
+Run `just` for all available tasks. Key ones:
 
-- `make dev` - start relay server and dashboard in parallel
-- `make build` / `make build-ios` - build native apps
-- `make test` - run native tests
-- `make clean` - remove generated projects and build artifacts
+- `just dev` - start relay server and dashboard in parallel
+- `just build` / `just build-ios` - build native apps
+- `just test` - run native tests
+- `just clean` - remove generated projects and build artifacts
+- `just sandboxes build-docker <name>` - build sandbox Docker images
 
 ## Docker Images
 

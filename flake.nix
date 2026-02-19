@@ -93,6 +93,7 @@
               swiftlintWrapper
               pkgs.xcodegen
               pkgs.gnumake
+              pkgs.just
               pkgs.nodejs_22
               pkgs.pnpm
               pkgs.pre-commit
@@ -136,26 +137,28 @@
               echo "Pi Apps Development Environment"
               echo "================================"
               echo ""
-              echo "Setup:"
-              echo "  make setup              - First-time Swift/Xcode setup"
-              echo "  cd server/relay && pnpm install"
-              echo "  cd clients/dashboard && pnpm install"
+              echo "Quickstart:"
+              echo "  just                    - Show all available tasks"
+              echo "  just setup              - First-time setup"
+              echo "  just dev                - Start relay + dashboard"
               echo ""
               echo "Native (Swift):"
-              echo "  make xcode              - Open in Xcode"
-              echo "  make build              - Build from command line"
+              echo "  just xcode              - Open in Xcode"
+              echo "  just build              - Build macOS (debug)"
+              echo "  just build-ios          - Build iOS simulator"
+              echo ""
+              echo "Sandboxes:"
+              echo "  just sandboxes build-docker sandbox-alpine-arm64"
+              echo "  just sandboxes build-all-docker"
+              echo "  just sandboxes build-gondolin"
               echo ""
               echo "Relay Server:"
-              echo "  cd server/relay"
-              echo "  pnpm dev                - Run dev server (hot reload)"
-              echo "  pnpm build              - Build"
-              echo "  pnpm lint               - Lint (biome)"
-              echo "  pnpm test               - Test (vitest)"
+              echo "  cd server/relay && pnpm install"
+              echo "  cd server/relay && pnpm dev"
               echo ""
               echo "Dashboard:"
-              echo "  cd clients/dashboard"
-              echo "  pnpm dev                - Run dev server (hot reload)"
-              echo "  pnpm build              - Build"
+              echo "  cd clients/dashboard && pnpm install"
+              echo "  cd clients/dashboard && pnpm dev"
               echo ""
             '';
           };

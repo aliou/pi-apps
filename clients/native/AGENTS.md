@@ -7,14 +7,14 @@ iOS and macOS apps for pi, built with Swift/SwiftUI. Uses XcodeGen for project g
 Run from the repo root:
 
 ```bash
-make setup         # generate Xcode project + first-time setup
-make generate      # regenerate Xcode project from project.yml
-make xcode         # generate and open in Xcode
-make build         # build macOS (debug)
-make build-ios     # build iOS simulator (debug)
-make build-release # build macOS (release)
-make test          # run tests
-make clean         # remove generated project + DerivedData
+just setup         # generate Xcode project + first-time setup
+just generate      # regenerate Xcode project from project.yml
+just xcode         # generate and open in Xcode
+just build         # build macOS (debug)
+just build-ios     # build iOS simulator (debug)
+just build-release # build macOS (release)
+just test          # run tests
+just clean         # remove generated project + DerivedData
 ```
 
 ## Structure
@@ -78,4 +78,4 @@ On macOS, SwiftUI `Button` does not expose `AXPress` to the accessibility API. U
 1. Create the package in `packages/`
 2. Add a `<FileRef>` entry to `PiApps.xcworkspace/contents.xcworkspacedata`
 3. Reference it in `apps/ios/project.yml` under `packages`
-4. Run `make generate`
+4. Run `just generate`

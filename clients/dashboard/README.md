@@ -15,7 +15,7 @@ pnpm build
 pnpm typecheck
 ```
 
-Or run `make dev` from repo root to start dashboard + relay together.
+Or run `just dev` from repo root to start dashboard + relay together.
 
 ## Environment
 

@@ -49,7 +49,7 @@ See `server/relay/AGENTS.md` for package-specific guidance.
 
 ## Build
 
-TypeScript apps are independent with their own dependencies and build commands. Use `make dev` from the repo root to start both the relay server and dashboard in parallel with hot reload.
+TypeScript apps are independent with their own dependencies and build commands. Use `just dev` from the repo root to start both the relay server and dashboard in parallel with hot reload.
 
 **Relay Server:**
 ```bash
@@ -73,10 +73,10 @@ pnpm typecheck     # typecheck (react-router + tsc)
 
 **Native (iOS/macOS):**
 ```bash
-make setup         # generate Xcode project
-make build         # build macOS (debug)
-make build-ios     # build iOS simulator (debug)
-make test          # run native tests
+just setup         # generate Xcode project
+just build         # build macOS (debug)
+just build-ios     # build iOS simulator (debug)
+just test          # run native tests
 ```
 
 ## Docker Images

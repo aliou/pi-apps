@@ -13,7 +13,7 @@ pnpm build         # production build
 pnpm typecheck     # react-router typegen + tsc
 ```
 
-Or use `make dev` from the repo root to start both the relay server and dashboard together.
+Or use `just dev` from the repo root to start both the relay server and dashboard together.
 
 ## Stack
 

@@ -1,0 +1,48 @@
+# Sandbox Images - Docker, Cloudflare, Gondolin
+
+# =============================================================================
+# Docker Images
+# =============================================================================
+
+# Build a specific sandbox Docker image (alpine-arm64, codex-universal)
+build-docker name:
+    docker build -t ghcr.io/aliou/pi-sandbox-{{name}}:latest docker/{{name}}/
+
+# Build all Docker sandbox images
+build-all-docker: (build-docker "sandbox-alpine-arm64") (build-docker "sandbox-codex-universal")
+
+# =============================================================================
+# Cloudflare
+# =============================================================================
+
+# Build Cloudflare worker
+build-worker:
+    @echo "==> Building Cloudflare worker..."
+    cd cloudflare/worker && pnpm install && pnpm build
+
+# Deploy Cloudflare worker
+[confirm]
+deploy-worker: build-worker
+    @echo "==> Deploying Cloudflare worker..."
+    cd cloudflare/worker && pnpm deploy
+
+# Build Cloudflare bridge image
+build-bridge:
+    docker build -t ghcr.io/aliou/pi-sandbox-cloudflare:latest cloudflare/
+
+# =============================================================================
+# Gondolin
+# =============================================================================
+
+# Build Gondolin custom assets
+build-gondolin:
+    @echo "==> Building Gondolin custom assets..."
+    cd gondolin && ./scripts/build.sh
+
+# =============================================================================
+# Build All
+# =============================================================================
+
+# Build all sandbox images
+build-all: build-all-docker build-bridge build-worker
+    @echo "All sandbox images built"
