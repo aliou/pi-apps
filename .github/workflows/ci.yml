@@ -166,6 +166,7 @@ jobs:
             --output "$GONDOLIN_ASSETS_OUT"
 
       - name: Probe Gondolin assets
+        if: matrix.arch == 'x86_64'
         working-directory: server/relay
         env:
           GONDOLIN_GUEST_DIR: ${{ runner.temp }}/gondolin-assets

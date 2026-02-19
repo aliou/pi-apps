@@ -67,7 +67,10 @@ export async function preInstallExtensions(
           "extension already installed; skipping clone",
         );
       } else {
-        logger.debug({ repoName, gitUrl, hostExtensionDir }, "cloning extension");
+        logger.debug(
+          { repoName, gitUrl, hostExtensionDir },
+          "cloning extension",
+        );
         execSync(`git clone --depth 1 ${gitUrl} ${hostExtensionDir}`, {
           stdio: "pipe",
         });
@@ -83,7 +86,10 @@ export async function preInstallExtensions(
 
       const guestPath = `${guestExtensionsDir}/${repoName}`;
       guestPaths.push(guestPath);
-      logger.debug({ repoName, guestPath }, "extension pre-installed successfully");
+      logger.debug(
+        { repoName, guestPath },
+        "extension pre-installed successfully",
+      );
     } catch (err) {
       logger.error(
         { package: pkg, repoName, hostExtensionDir, err },

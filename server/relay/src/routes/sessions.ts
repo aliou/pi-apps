@@ -10,9 +10,9 @@ import {
 } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EnvironmentConfig } from "../services/environment.service";
+import { preInstallExtensions } from "../services/extension-installer";
 import type { SessionMode } from "../services/session.service";
 import { readSessionHistory } from "../services/session-history";
-import { preInstallExtensions } from "../services/extension-installer";
 import {
   buildSettingsJson,
   writeSessionSettings,
