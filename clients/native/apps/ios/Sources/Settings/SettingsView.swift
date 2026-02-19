@@ -8,15 +8,18 @@ struct SettingsView: View {
         Form {
             Section("Server") {
                 TextField("Relay URL", text: $urlText)
+                    .accessibilityIdentifier("relay-url-field")
                     .textContentType(.URL)
                     .autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     #endif
+                    .submitLabel(.done)
                     .onSubmit { saveURL() }
                     .onAppear { urlText = appState.relayURL.absoluteString }
 
                 Button("Save") { saveURL() }
+                    .accessibilityIdentifier("save-button")
                     .disabled(URL(string: urlText) == nil)
             }
         }
