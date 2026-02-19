@@ -26,8 +26,8 @@
   },
   "postBuild": {
     "commands": [
-      "apk add --no-cache npm",
-      "npm install -g @mariozechner/pi-coding-agent@0.51.5"
+      "apk add --no-cache npm build-base cmake linux-headers",
+      "npm install -g @mariozechner/pi-coding-agent@0.53.0"
     ]
   }
 }

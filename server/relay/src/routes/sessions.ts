@@ -12,6 +12,7 @@ import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EnvironmentConfig } from "../services/environment.service";
 import type { SessionMode } from "../services/session.service";
 import { readSessionHistory } from "../services/session-history";
+import { preInstallExtensions } from "../services/extension-installer";
 import {
   buildSettingsJson,
   writeSessionSettings,
@@ -195,7 +196,21 @@ export function sessionsRoutes(): Hono<AppEnv> {
         session.id,
         body.mode as "chat" | "code",
       );
-      writeSessionSettings(sessionDataDir, session.id, packages);
+      if (sandboxProvider === "gondolin" && packages.length > 0) {
+        const agentDir = join(sessionDataDir, session.id, "agent");
+        const extensionPaths = await preInstallExtensions(
+          agentDir,
+          packages,
+          "/agent/extensions",
+        );
+        writeSessionSettings(sessionDataDir, session.id, {
+          extensions: extensionPaths,
+        });
+      } else {
+        writeSessionSettings(sessionDataDir, session.id, {
+          packages,
+        });
+      }
 
       // Read secrets fresh for sandbox injection
       const secrets = await secretsService.getAllAsEnv();
@@ -399,7 +414,24 @@ export function sessionsRoutes(): Hono<AppEnv> {
             id,
             current.mode as "chat" | "code",
           );
-          writeSessionSettings(sessionDataDir, id, extPackages);
+          if (
+            current.sandboxProvider === "gondolin" &&
+            extPackages.length > 0
+          ) {
+            const agentDir = join(sessionDataDir, id, "agent");
+            const extensionPaths = await preInstallExtensions(
+              agentDir,
+              extPackages,
+              "/agent/extensions",
+            );
+            writeSessionSettings(sessionDataDir, id, {
+              extensions: extensionPaths,
+            });
+          } else {
+            writeSessionSettings(sessionDataDir, id, {
+              packages: extPackages,
+            });
+          }
           logger.debug(
             {
               sessionId: id,

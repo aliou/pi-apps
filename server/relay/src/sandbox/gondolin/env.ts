@@ -3,6 +3,7 @@ export function buildSandboxEnv(options: {
   secrets?: Record<string, string>;
 }): Record<string, string> {
   const env: Record<string, string> = {
+    PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     PI_SESSION_ID: options.sessionId,
     PI_CODING_AGENT_DIR: "/agent",
     npm_config_prefix: "/agent/npm",

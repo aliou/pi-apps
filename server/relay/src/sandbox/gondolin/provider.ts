@@ -707,8 +707,10 @@ class GondolinSandboxHandle implements SandboxHandle {
     });
 
     const cmd = this.config.nativeToolsEnabled
-      ? "pi --mode rpc -e /run/extensions/native-bridge.ts"
-      : "pi --mode rpc";
+      ? "/usr/local/bin/pi --mode rpc -e /run/extensions/native-bridge.ts"
+      : "/usr/local/bin/pi --mode rpc";
+
+    logger.debug({ sessionId: this.sessionId, cmd, envKeys: Object.keys(env) }, "attach: launching pi");
 
     const proc = this.vm.exec(cmd, {
       cwd: "/workspace",
@@ -718,6 +720,8 @@ class GondolinSandboxHandle implements SandboxHandle {
       stderr: "pipe",
       buffer: false,
     });
+
+    logger.debug({ sessionId: this.sessionId, hasStdout: !!proc.stdout, hasStderr: !!proc.stderr }, "attach: proc created");
 
     const channel = new GondolinSandboxChannel(
       proc,

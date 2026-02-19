@@ -17,7 +17,7 @@ This directory contains Gondolin-specific validation scripts.
 
 - `scripts/setup-custom-assets.sh`
   - Builds custom Gondolin assets using released host package + temp clone of Gondolin guest source
-  - Defaults to cloning tag `v0.3.0` into a temporary directory and wiring `GONDOLIN_GUEST_SRC`
+  - Defaults to cloning tag `v0.4.0` into a temporary directory and wiring `GONDOLIN_GUEST_SRC`
   - Uses `custom-assets.build-config.json` (nodejs/npm/git + `apk add npm` + pi install in postBuild)
   - Verifies assets and runs smoke check (`pi --version`, `npm --version`, extension `npm install -g`)
 
@@ -27,12 +27,12 @@ This directory contains Gondolin-specific validation scripts.
 From repo root:
 
 ```bash
-# Build custom assets (defaults to gondolin v0.3.0 guest source)
+# Build custom assets (defaults to gondolin v0.4.0 guest source)
 ./server/sandboxes/gondolin/scripts/setup-custom-assets.sh
 
 # Optional: pin a different gondolin tag/ref
 ./server/sandboxes/gondolin/scripts/setup-custom-assets.sh \
-  --gondolin-ref v0.3.0
+  --gondolin-ref v0.4.0
 
 # Direct pi RPC probe (recommended before relay wiring)
 node server/sandboxes/gondolin/scripts/probe-pi-rpc.mjs
