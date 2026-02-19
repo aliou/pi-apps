@@ -1,0 +1,241 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build-relay:
+    name: Build Relay (aarch64-linux)
+    runs-on: ubuntu-24.04-arm
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: server/relay/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: server/relay/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: server/relay
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: server/relay
+        run: pnpm build
+
+      - name: Copy migrations into dist
+        working-directory: server/relay
+        run: |
+          mkdir -p dist/db/migrations
+          cp src/db/migrations/*.sql dist/db/migrations/
+
+      - name: Prune to production dependencies
+        working-directory: server/relay
+        run: |
+          # Remove devDependencies from node_modules
+          pnpm prune --prod
+
+      - name: Create tarball
+        working-directory: server/relay
+        run: |
+          tar czf "${{ runner.temp }}/pi-relay-aarch64-linux.tar.gz" \
+            dist/ node_modules/ package.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-relay-aarch64-linux
+          path: ${{ runner.temp }}/pi-relay-aarch64-linux.tar.gz
+
+  build-gondolin-assets:
+    name: Build Gondolin Assets (aarch64)
+    runs-on: ubuntu-24.04-arm
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: server/relay/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: server/relay/pnpm-lock.yaml
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-system-arm \
+            qemu-utils \
+            lz4 \
+            curl \
+            python3 \
+            e2fsprogs
+
+      - name: Install relay dependencies
+        working-directory: server/relay
+        run: pnpm install --frozen-lockfile
+
+      - name: Create CI Gondolin build config
+        env:
+          GONDOLIN_CI_CONFIG: ${{ runner.temp }}/gondolin-ci-build-config.json
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          src = Path("server/sandboxes/gondolin/custom-assets.build-config.json")
+          dst = Path(os.environ["GONDOLIN_CI_CONFIG"])
+
+          cfg = json.loads(src.read_text())
+          cfg["arch"] = "aarch64"
+          container = cfg.get("container", {})
+          container["force"] = True
+          cfg["container"] = container
+
+          dst.write_text(json.dumps(cfg, indent=2) + "\n")
+          print(f"wrote {dst} (arch=aarch64)")
+          PY
+
+      - name: Build Gondolin assets
+        env:
+          GONDOLIN_ASSETS_OUT: ${{ runner.temp }}/gondolin-assets
+          GONDOLIN_CI_CONFIG: ${{ runner.temp }}/gondolin-ci-build-config.json
+        run: |
+          ./server/sandboxes/gondolin/scripts/setup-custom-assets.sh \
+            --gondolin-ref v0.4.0 \
+            --config "$GONDOLIN_CI_CONFIG" \
+            --output "$GONDOLIN_ASSETS_OUT" \
+            --skip-smoke
+
+      - name: Validate Gondolin assets
+        run: |
+          cd "${{ runner.temp }}/gondolin-assets"
+          for f in manifest.json vmlinuz-virt initramfs.cpio.lz4 rootfs.ext4; do
+            [ -f "$f" ] || { echo "Missing required file: $f"; exit 1; }
+          done
+          echo "All required gondolin assets present"
+
+      - name: Create tarball
+        run: |
+          tar czf "${{ runner.temp }}/gondolin-assets-aarch64-linux.tar.gz" \
+            -C "${{ runner.temp }}/gondolin-assets" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gondolin-assets-aarch64-linux
+          path: ${{ runner.temp }}/gondolin-assets-aarch64-linux.tar.gz
+
+  release:
+    name: Create Release
+    needs: [build-relay, build-gondolin-assets]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve commit SHA
+        id: sha
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          SHORT="${SHA:0:7}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+
+      - name: Download relay artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pi-relay-aarch64-linux
+          path: artifacts/
+
+      - name: Download gondolin assets artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gondolin-assets-aarch64-linux
+          path: artifacts/
+
+      - name: Compute SRI hashes and update nix/release.nix
+        run: |
+          # Convert raw sha256 hex to SRI format (sha256-<base64>)
+          sri_hash() {
+            sha256sum "$1" | cut -d' ' -f1 | xxd -r -p | base64 -w0 | sed 's/^/sha256-/'
+          }
+
+          relay_hash=$(sri_hash artifacts/pi-relay-aarch64-linux.tar.gz)
+          gondolin_hash=$(sri_hash artifacts/gondolin-assets-aarch64-linux.tar.gz)
+          short="${{ steps.sha.outputs.short }}"
+
+          cat > nix/release.nix << EOF
+          # Release metadata. Auto-updated by CI.
+          # Do not edit manually.
+          {
+            rev = "$short";
+            relay.aarch64-linux.hash = "$relay_hash";
+            gondolin-assets.aarch64-linux.hash = "$gondolin_hash";
+          }
+          EOF
+
+          echo "Updated nix/release.nix:"
+          cat nix/release.nix
+
+      - name: Commit nix/release.nix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nix/release.nix
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "release: update nix hashes for ${{ steps.sha.outputs.short }}"
+          git push
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.sha.outputs.short }}
+          target_commitish: ${{ steps.sha.outputs.sha }}
+          name: ${{ steps.sha.outputs.short }}
+          body: "Built from ${{ steps.sha.outputs.sha }}"
+          files: |
+            artifacts/pi-relay-aarch64-linux.tar.gz
+            artifacts/gondolin-assets-aarch64-linux.tar.gz

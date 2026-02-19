@@ -16,6 +16,7 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
         "aarch64-darwin"
+        "aarch64-linux"
         "x86_64-darwin"
       ];
 
@@ -26,10 +27,13 @@
       perSystem =
         {
           config,
+          system,
           pkgs,
           ...
         }:
         let
+          piPackages = import ./nix/packages.nix {inherit pkgs system;};
+
           xcodeWrapper = pkgs.xcodeenv.composeXcodeWrapper {
             versions = [ ];
           };
@@ -87,6 +91,12 @@
               pass_filenames = false;
             };
           };
+
+          packages =
+            pkgs.lib.optionalAttrs (system == "aarch64-linux") {
+              relay = piPackages.relay;
+              gondolin-assets = piPackages.gondolin-assets;
+            };
 
           devShells.default = pkgs.mkShellNoCC {
             packages = [
