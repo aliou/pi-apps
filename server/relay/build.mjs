@@ -22,6 +22,7 @@ await esbuild.build({
   sourcemap: true,
   // Externalize native deps and packages with CJS __dirname usage
   external: [
+    "@earendil-works/gondolin",
     "better-sqlite3",
     "cpu-features",
     "dockerode",
