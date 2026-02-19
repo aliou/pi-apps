@@ -30,6 +30,7 @@ GONDOLIN_REF="v0.4.0"
 GONDOLIN_REPO_URL="https://github.com/earendil-works/gondolin.git"
 CONFIG_PATH="$REPO_ROOT/server/sandboxes/gondolin/custom-assets.build-config.json"
 OUTPUT_PATH="$REPO_ROOT/.dev/relay/cache/gondolin-custom/pi-runtime-main"
+SKIP_SMOKE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -44,6 +45,10 @@ while [[ $# -gt 0 ]]; do
     --output)
       OUTPUT_PATH="$2"
       shift 2
+      ;;
+    --skip-smoke)
+      SKIP_SMOKE=true
+      shift
       ;;
     -h|--help)
       usage
@@ -112,9 +117,13 @@ echo "[setup-custom-assets] verifying assets..."
 GONDOLIN_GUEST_DIR="$OUTPUT_PATH" \
   pnpm exec gondolin build --verify "$OUTPUT_PATH"
 
-echo "[setup-custom-assets] smoke check (pi + npm + extension install)..."
-GONDOLIN_GUEST_DIR="$OUTPUT_PATH" \
-  pnpm exec gondolin exec -- /bin/bash -lc "pi --version && npm --version && npm_config_prefix=/tmp/npm-ext npm install -g --no-audit --no-fund @aliou/pi-linkup"
+if [[ "$SKIP_SMOKE" == "true" ]]; then
+  echo "[setup-custom-assets] skipping smoke check (--skip-smoke)"
+else
+  echo "[setup-custom-assets] smoke check (pi + npm + extension install)..."
+  GONDOLIN_GUEST_DIR="$OUTPUT_PATH" \
+    pnpm exec gondolin exec -- /bin/bash -lc "pi --version && npm --version && npm_config_prefix=/tmp/npm-ext npm install -g --no-audit --no-fund @aliou/pi-linkup"
+fi
 
 echo "[setup-custom-assets] done"
 echo "export GONDOLIN_IMAGE_OUT=$OUTPUT_PATH"

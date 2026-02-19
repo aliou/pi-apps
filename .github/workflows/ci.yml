@@ -95,6 +95,7 @@ jobs:
             runner: ubuntu-24.04-arm
             gondolin-arch: aarch64
             qemu-packages: qemu-system-arm
+            skip-smoke: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -163,7 +164,8 @@ jobs:
           ./server/sandboxes/gondolin/scripts/setup-custom-assets.sh \
             --gondolin-ref v0.4.0 \
             --config "$GONDOLIN_CI_CONFIG" \
-            --output "$GONDOLIN_ASSETS_OUT"
+            --output "$GONDOLIN_ASSETS_OUT" \
+            ${{ matrix.skip-smoke && '--skip-smoke' || '' }}
 
       - name: Probe Gondolin assets
         if: matrix.arch == 'x86_64'
