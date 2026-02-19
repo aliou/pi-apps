@@ -60,6 +60,7 @@ struct CodeSessionView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("code-messages-scroll")
         }
         .safeAreaInset(edge: .bottom) {
             ChatInputBar(
@@ -78,6 +79,7 @@ struct CodeSessionView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 connectionStatus(store)
+                    .accessibilityIdentifier("connection-status")
             }
         }
     }

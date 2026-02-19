@@ -65,6 +65,14 @@ For views that require a live server connection (WebSocket, network calls), prev
 
 When creating or modifying a view, add or update its previews in the same commit.
 
+## UI Automation
+
+A UI test harness (`apps/ios/UITests/`) and runner script (`tools/ui-automation-runner.sh`) enable automated UI interaction via `xcode_ui` with `runnerCommand`.
+
+Every interactive element (buttons, text fields, toggles) must have a stable `.accessibilityIdentifier(...)`. Use kebab-case IDs (`"new-session-button"`, `"chat-input"`). Run `describe_ui` to verify identifiers are visible before writing automation calls.
+
+On macOS, SwiftUI `Button` does not expose `AXPress` to the accessibility API. Use `AccessibleButton` (in `SourcesMac/AccessibleButton.swift`) for toolbar/sidebar buttons that need to be tappable by AXorcist or other accessibility-based automation tools. It reads `@Environment(\.isEnabled)` so `.disabled()` works correctly.
+
 ## Adding a Package
 
 1. Create the package in `packages/`

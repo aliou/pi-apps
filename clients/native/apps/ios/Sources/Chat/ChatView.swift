@@ -61,6 +61,7 @@ struct ChatView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("chat-messages-scroll")
         }
         .safeAreaInset(edge: .bottom) {
             ChatInputBar(
@@ -79,6 +80,7 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 connectionStatus(store)
+                    .accessibilityIdentifier("connection-status")
             }
         }
     }

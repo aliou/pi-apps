@@ -18,6 +18,7 @@ struct WelcomeCard: View {
             Button("Connect to server", action: onContinue)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
+                .accessibilityIdentifier("welcome-continue-button")
         }
     }
 }

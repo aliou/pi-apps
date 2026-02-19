@@ -22,6 +22,23 @@ struct MacRootView: View {
                 } detail: {
                     detail(store)
                 }
+                .accessibilityIdentifier("main-split-view")
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        AccessibleButton(
+                            mode == .chat ? "New Chat" : "New Code Session",
+                            systemImage: "plus"
+                        ) {
+                            if mode == .chat {
+                                Task { await createChatSession(store) }
+                            } else {
+                                showNewSession = true
+                            }
+                        }
+                        .disabled(isCreatingChat)
+                        .accessibilityIdentifier("new-session-button")
+                    }
+                }
             } else {
                 ProgressView("Loading sessions…")
             }
@@ -46,18 +63,21 @@ struct MacRootView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Sessions")
                     .font(.headline)
+                    .accessibilityIdentifier("sessions-header")
 
                 Picker("Mode", selection: $mode) {
                     Text("Chat").tag(Relay.SessionMode.chat)
                     Text("Code").tag(Relay.SessionMode.code)
                 }
                 .pickerStyle(.segmented)
+                .accessibilityIdentifier("mode-picker")
 
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
                     TextField("Search…", text: $query)
                         .textFieldStyle(.plain)
+                        .accessibilityIdentifier("search-field")
 
                     Menu {
                         Toggle("Show archived", isOn: $showArchived)
@@ -66,22 +86,12 @@ struct MacRootView: View {
                             .foregroundStyle(.secondary)
                     }
                     .menuStyle(.borderlessButton)
+                    .accessibilityIdentifier("filter-menu")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(.quaternary, in: .rect(cornerRadius: 8))
 
-                Button {
-                    if mode == .chat {
-                        Task { await createChatSession(store) }
-                    } else {
-                        showNewSession = true
-                    }
-                } label: {
-                    Label(mode == .chat ? "New Chat" : "New Code Session", systemImage: "plus")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .disabled(isCreatingChat)
             }
 
             List(selection: $selectedSessionId) {
@@ -103,15 +113,20 @@ struct MacRootView: View {
                             Button("Archive") {
                                 Task { await store.archiveSession(id: session.id) }
                             }
+                            .accessibilityIdentifier("archive-session-button")
+                            .accessibilityAddTraits(.isButton)
                         }
 
                         Button("Delete", role: .destructive) {
                             Task { await store.deleteSession(id: session.id) }
                         }
+                        .accessibilityIdentifier("delete-session-button")
+                        .accessibilityAddTraits(.isButton)
                     }
                 }
             }
             .listStyle(.sidebar)
+            .accessibilityIdentifier("sessions-list")
         }
         .padding(12)
         .frame(minWidth: 300)
@@ -136,6 +151,7 @@ struct MacRootView: View {
                 systemImage: "bubble.left.and.bubble.right",
                 description: Text("Pick a chat or code session from the sidebar.")
             )
+            .accessibilityIdentifier("no-session-selected")
         }
     }
 

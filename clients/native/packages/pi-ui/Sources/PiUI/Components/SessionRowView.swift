@@ -55,6 +55,7 @@ public struct SessionRowView: View {
                     Text(displayTitle)
                         .font(.body)
                         .lineLimit(1)
+                        .accessibilityIdentifier("session-title-\(id)")
                     Spacer()
                     HStack(spacing: 6) {
                         Text(Self.relativeDate(lastActivityAt))
@@ -91,6 +92,7 @@ public struct SessionRowView: View {
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .accessibilityIdentifier("session-row-\(id)")
     }
 
     // MARK: - Date formatting

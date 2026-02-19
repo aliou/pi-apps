@@ -25,6 +25,7 @@ struct NewSessionSheet: View {
                                 Text(repo.fullName).tag(Optional(String(repo.id)))
                             }
                         }
+                        .accessibilityIdentifier("repo-picker")
                     }
 
                     Section("Environment") {
@@ -34,6 +35,7 @@ struct NewSessionSheet: View {
                                 Text(env.name).tag(Optional(env.id))
                             }
                         }
+                        .accessibilityIdentifier("environment-picker")
                     }
                 } else {
                     Section {
@@ -48,12 +50,16 @@ struct NewSessionSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("cancel-button")
+                        .accessibilityAddTraits(.isButton)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
                         Task { await createSession() }
                     }
                     .disabled(isCreating || selectedRepoId == nil)
+                    .accessibilityIdentifier("create-session-button")
+                    .accessibilityAddTraits(.isButton)
                 }
             }
             .task {

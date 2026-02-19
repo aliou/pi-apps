@@ -31,6 +31,8 @@ struct ChatInputBar: View {
                         .font(.title2)
                         .foregroundStyle(.red)
                 }
+                .accessibilityIdentifier("stop-button")
+                .accessibilityAddTraits(.isButton)
             } else {
                 Button {
                     onSend()
@@ -39,6 +41,7 @@ struct ChatInputBar: View {
                         .font(.title2)
                 }
                 .accessibilityIdentifier("send-button")
+                .accessibilityAddTraits(.isButton)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }

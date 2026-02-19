@@ -48,6 +48,7 @@ struct ServerSetupCard: View {
             #endif
             .focused($isURLFieldFocused)
             .onSubmit { onConnect() }
+            .accessibilityIdentifier("server-url-field")
     }
 
     private var connectButton: some View {
@@ -62,6 +63,8 @@ struct ServerSetupCard: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.regular)
         .disabled(serverURL.isEmpty || isConnecting)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("connect-button")
     }
 }
 
