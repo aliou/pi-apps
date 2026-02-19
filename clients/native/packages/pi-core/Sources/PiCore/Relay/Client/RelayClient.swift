@@ -6,10 +6,25 @@ extension Relay {
         private let session: URLSession
         private let decoder: JSONDecoder
 
+        /// Persistent client ID for this app installation.
+        /// Stored in UserDefaults and reused across sessions.
+        public let clientId: String
+
         public init(baseURL: URL) {
             self.baseURL = baseURL
             self.session = URLSession.shared
             self.decoder = JSONDecoder()
+            self.clientId = RelayClient.loadOrCreateClientId()
+        }
+
+        private static func loadOrCreateClientId() -> String {
+            let key = "dev.378labs.pi.clientId"
+            if let existing = UserDefaults.standard.string(forKey: key) {
+                return existing
+            }
+            let newId = UUID().uuidString
+            UserDefaults.standard.set(newId, forKey: key)
+            return newId
         }
 
         // MARK: - Health
@@ -52,12 +67,30 @@ extension Relay {
             let _: APIResponse<AnyCodable> = try await delete("/api/sessions/\(id)")
         }
 
-        public func activateSession(id: String) async throws -> ActivateSessionResponse {
-            let response: APIResponse<ActivateSessionResponse> = try await post("/api/sessions/\(id)/activate")
+        public func activateSession(id: String, clientId: String) async throws -> ActivateSessionResponse {
+            let request = ActivateSessionRequest(clientId: clientId)
+            let response: APIResponse<ActivateSessionResponse> = try await post(
+                "/api/sessions/\(id)/activate", body: request
+            )
             guard let data = response.data else {
                 throw RelayError.apiError(message: response.error ?? "No data")
             }
             return data
+        }
+
+        public func setClientCapabilities(
+            sessionId: String,
+            clientId: String,
+            capabilities: ClientCapabilities
+        ) async throws {
+            let request = SetClientCapabilitiesRequest(
+                clientKind: capabilities.clientKind,
+                capabilities: capabilities.capabilities
+            )
+            let _: APIResponse<ClientCapabilitiesResponse> = try await put(
+                "/api/sessions/\(sessionId)/clients/\(clientId)/capabilities",
+                body: request
+            )
         }
 
         public func getSessionHistory(id: String) async throws -> SessionHistoryResponse {
@@ -134,6 +167,23 @@ extension Relay {
         ) async throws -> T {
             var request = URLRequest(url: baseURL.appendingPathComponent(path))
             request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(body)
+            let (data, response) = try await session.data(for: request)
+            try validateHTTPResponse(response)
+            do {
+                return try decoder.decode(T.self, from: data)
+            } catch {
+                throw RelayError.decodingFailed(underlying: error)
+            }
+        }
+
+        @discardableResult
+        private func put<Body: Encodable & Sendable, T: Decodable & Sendable>(
+            _ path: String, body: Body
+        ) async throws -> T {
+            var request = URLRequest(url: baseURL.appendingPathComponent(path))
+            request.httpMethod = "PUT"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)
             let (data, response) = try await session.data(for: request)

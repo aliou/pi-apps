@@ -139,4 +139,61 @@ extension Relay {
 
     // SessionEntry is a type alias for AnyCodable since each entry is a JSON object with arbitrary fields
     public typealias SessionEntry = AnyCodable
+
+    // MARK: - Client Capabilities
+
+    public struct ActivateSessionRequest: Codable, Sendable {
+        public let clientId: String
+
+        public init(clientId: String) {
+            self.clientId = clientId
+        }
+    }
+
+    public struct ClientCapabilities: Sendable {
+        public let clientKind: ClientKind
+        public let capabilities: CapabilityFlags
+
+        public init(clientKind: ClientKind = .unknown, extensionUI: Bool = false) {
+            self.clientKind = clientKind
+            self.capabilities = CapabilityFlags(extensionUI: extensionUI)
+        }
+    }
+
+    public enum ClientKind: String, Codable, Sendable {
+        case web = "web"
+        case iOS = "ios"
+        case macOS = "macos"
+        case unknown = "unknown"
+    }
+
+    public struct CapabilityFlags: Codable, Sendable {
+        public let extensionUI: Bool
+
+        public init(extensionUI: Bool) {
+            self.extensionUI = extensionUI
+        }
+    }
+
+    public struct SetClientCapabilitiesRequest: Codable, Sendable {
+        public let clientKind: ClientKind
+        public let capabilities: CapabilityFlags
+
+        public init(clientKind: ClientKind, capabilities: CapabilityFlags) {
+            self.clientKind = clientKind
+            self.capabilities = capabilities
+        }
+    }
+
+    public struct ClientCapabilitiesResponse: Codable, Sendable {
+        public let sessionId: String
+        public let clientId: String
+        public let capabilities: CapabilityFlags
+
+        public init(sessionId: String, clientId: String, capabilities: CapabilityFlags) {
+            self.sessionId = sessionId
+            self.clientId = clientId
+            self.capabilities = capabilities
+        }
+    }
 }

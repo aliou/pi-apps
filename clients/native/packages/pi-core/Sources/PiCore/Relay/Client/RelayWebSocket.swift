@@ -4,11 +4,13 @@ import os
 extension Relay {
     public final class RelayWebSocket: Sendable {
         private let sessionId: String
+        private let clientId: String
         private let baseURL: URL
         private let state: RelayWebSocketState
 
-        public init(sessionId: String, baseURL: URL, lastSeq: Int = 0) {
+        public init(sessionId: String, clientId: String, baseURL: URL, lastSeq: Int = 0) {
             self.sessionId = sessionId
+            self.clientId = clientId
             self.baseURL = baseURL
             self.state = RelayWebSocketState(lastSeq: lastSeq)
         }
@@ -16,9 +18,9 @@ extension Relay {
         /// Connect and return an AsyncStream of server events.
         public func connect() -> AsyncStream<ServerEvent> {
             AsyncStream { continuation in
-                let task = Task { [sessionId, baseURL, state] in
+                let task = Task { [sessionId, clientId, baseURL, state] in
                     await state.setContinuation(continuation)
-                    await state.startConnection(sessionId: sessionId, baseURL: baseURL)
+                    await state.startConnection(sessionId: sessionId, clientId: clientId, baseURL: baseURL)
 
                     continuation.onTermination = { @Sendable _ in
                         Task { await state.disconnect() }
@@ -72,7 +74,7 @@ private actor RelayWebSocketState {
         continuation = nil
     }
 
-    func startConnection(sessionId: String, baseURL: URL) {
+    func startConnection(sessionId: String, clientId: String, baseURL: URL) {
         // Use http/https scheme with URLRequest-based webSocketTask.
         // webSocketTask(with: URL) requires ws/wss, but that causes
         // URLSession to send the full absolute URI in the HTTP request
@@ -81,17 +83,20 @@ private actor RelayWebSocketState {
         // only the path in the request line.
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         components.path = "/ws/sessions/\(sessionId)"
-        components.queryItems = [URLQueryItem(name: "lastSeq", value: "\(lastSeq)")]
+        components.queryItems = [
+            URLQueryItem(name: "clientId", value: clientId),
+            URLQueryItem(name: "lastSeq", value: "\(lastSeq)")
+        ]
 
         guard let url = components.url else { return }
         let wsTask = URLSession.shared.webSocketTask(with: URLRequest(url: url))
         self.task = wsTask
         wsTask.resume()
         reconnectAttempts = 0
-        receiveLoop(sessionId: sessionId, baseURL: baseURL)
+        receiveLoop(sessionId: sessionId, clientId: clientId, baseURL: baseURL)
     }
 
-    private func receiveLoop(sessionId: String, baseURL: URL) {
+    private func receiveLoop(sessionId: String, clientId: String, baseURL: URL) {
         guard let task else { return }
         task.receive { [weak self] result in
             guard let self else { return }
@@ -99,10 +104,10 @@ private actor RelayWebSocketState {
                 switch result {
                 case .success(let message):
                     await self.handleMessage(message)
-                    await self.receiveLoop(sessionId: sessionId, baseURL: baseURL)
+                    await self.receiveLoop(sessionId: sessionId, clientId: clientId, baseURL: baseURL)
                 case .failure(let error):
                     await self.handleDisconnect(
-                        error: error, sessionId: sessionId, baseURL: baseURL
+                        error: error, sessionId: sessionId, clientId: clientId, baseURL: baseURL
                     )
                 }
             }
@@ -128,7 +133,7 @@ private actor RelayWebSocketState {
         }
     }
 
-    private func handleDisconnect(error: Error, sessionId: String, baseURL: URL) {
+    private func handleDisconnect(error: Error, sessionId: String, clientId: String, baseURL: URL) {
         task = nil
         reconnectAttempts += 1
         let delay = min(
@@ -140,7 +145,7 @@ private actor RelayWebSocketState {
         Task {
             try? await Task.sleep(for: .seconds(delay))
             guard continuation != nil else { return } // cancelled
-            startConnection(sessionId: sessionId, baseURL: baseURL)
+            startConnection(sessionId: sessionId, clientId: clientId, baseURL: baseURL)
         }
     }
 }

@@ -48,18 +48,32 @@ final class ConversationStore {
 
         connectionState = .connecting
 
+        // Get the persistent clientId from the relay client
+        let clientId = await client.clientId
         let activatedLastSeq: Int
 
         // 1. Activate session (ensures sandbox is running) and get replay bound.
         do {
-            let activation = try await client.activateSession(id: sessionId)
+            let activation = try await client.activateSession(id: sessionId, clientId: clientId)
             activatedLastSeq = activation.lastSeq
         } catch {
             connectionState = .error(error.localizedDescription)
             return
         }
 
-        // 2. Reset local transcript state and replay journal events up to activate seq.
+        // 2. Register client capabilities after activation
+        do {
+            try await client.setClientCapabilities(
+                sessionId: sessionId,
+                clientId: clientId,
+                capabilities: Relay.ClientCapabilities(clientKind: .iOS, extensionUI: true)
+            )
+        } catch {
+            // Log but don't fail - capabilities are optional for basic functionality
+            print("Failed to set client capabilities: \(error)")
+        }
+
+        // 3. Reset local transcript state and replay journal events up to activate seq.
         items = []
         reducer = Client.EventReducer()
         eventSeq = 0
@@ -76,10 +90,11 @@ final class ConversationStore {
             }
         }
 
-        // 3. Connect WebSocket from the activate checkpoint.
+        // 4. Connect WebSocket from the activate checkpoint.
         let baseURL = await client.baseURL
         let webSocketConnection = Relay.RelayWebSocket(
             sessionId: sessionId,
+            clientId: clientId,
             baseURL: baseURL,
             lastSeq: activatedLastSeq
         )

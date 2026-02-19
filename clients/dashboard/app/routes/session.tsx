@@ -17,9 +17,11 @@ import {
   type ActivateResponse,
   api,
   type EventsResponse,
+  getClientId,
   type JournalEvent,
   RELAY_URL,
   type Session,
+  setClientCapabilities,
 } from "../lib/api";
 import { parseEventsToConversation } from "../lib/conversation";
 import { mergeCanonicalEvents } from "../lib/events";
@@ -248,15 +250,26 @@ export default function SessionPage() {
     setConnectionStatus("connecting");
     setError(null);
 
+    // Get or generate persistent clientId
+    const clientId = getClientId();
+
     const activateRes = await api.post<ActivateResponse>(
       `/sessions/${id}/activate`,
-      {},
+      { clientId },
     );
 
     if (activateRes.error || !activateRes.data) {
       setConnectionStatus("error");
       setError(activateRes.error ?? "Failed to activate session");
       return;
+    }
+
+    // Register client capabilities after activation
+    const capsRes = await setClientCapabilities(id, clientId, {
+      extensionUI: true,
+    });
+    if (capsRes.error) {
+      console.warn("Failed to set client capabilities:", capsRes.error);
     }
 
     setSandboxStatus(activateRes.data.sandboxStatus);
@@ -268,7 +281,7 @@ export default function SessionPage() {
     setEvents((prev) => mergeCanonicalEvents(prev, allEvents));
     lastSeqRef.current = activatedLastSeq;
 
-    const wsUrl = `${RELAY_URL.replace("http", "ws")}/ws/sessions/${id}?lastSeq=${activatedLastSeq}`;
+    const wsUrl = `${RELAY_URL.replace("http", "ws")}/ws/sessions/${id}?clientId=${encodeURIComponent(clientId)}&lastSeq=${activatedLastSeq}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

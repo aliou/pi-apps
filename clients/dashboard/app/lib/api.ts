@@ -53,6 +53,44 @@ export const api = {
     }),
 };
 
+const CLIENT_ID_KEY = "pi-dashboard-client-id";
+
+/**
+ * Get or generate a persistent client ID for this browser.
+ * Stored in localStorage and reused across sessions.
+ */
+export function getClientId(): string {
+  if (typeof window === "undefined") {
+    // SSR fallback - generate temporary ID
+    return crypto.randomUUID();
+  }
+
+  let clientId = localStorage.getItem(CLIENT_ID_KEY);
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem(CLIENT_ID_KEY, clientId);
+  }
+  return clientId;
+}
+
+/**
+ * Set client capabilities for a session.
+ * Must be called after activate to register this client for extension UI handling.
+ */
+export async function setClientCapabilities(
+  sessionId: string,
+  clientId: string,
+  capabilities: { extensionUI: boolean },
+): Promise<APIResponse<ClientCapabilitiesResponse>> {
+  return api.put<ClientCapabilitiesResponse>(
+    `/sessions/${sessionId}/clients/${clientId}/capabilities`,
+    {
+      clientKind: "web",
+      capabilities,
+    },
+  );
+}
+
 // Types for API responses
 export interface Session {
   id: string;
@@ -119,6 +157,21 @@ export interface ActivateResponse {
   lastSeq: number;
   sandboxStatus: string;
   wsEndpoint: string;
+}
+
+export interface ClientCapabilitiesRequest {
+  clientKind?: "web" | "ios" | "macos" | "unknown";
+  capabilities: {
+    extensionUI: boolean;
+  };
+}
+
+export interface ClientCapabilitiesResponse {
+  sessionId: string;
+  clientId: string;
+  capabilities: {
+    extensionUI: boolean;
+  };
 }
 
 export interface EventsResponse {
