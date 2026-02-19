@@ -131,6 +131,7 @@ src/
 │   ├── crypto.service.ts
 │   ├── idle-reaper.ts     # Auto-suspend idle sandboxes
 │   ├── extension-config.service.ts # Extension config management
+│   ├── extension-installer.ts # Pre-install git extensions on host for gondolin
 │   ├── settings-generator.ts # Settings file generation for sandboxes
 │   └── models-introspection.service.ts # Model availability detection
 ├── sandbox/          # Sandbox providers
