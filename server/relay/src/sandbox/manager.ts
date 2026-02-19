@@ -176,6 +176,7 @@ export class SandboxManager {
    */
   async validateExtensionPackage(
     source: string,
+    options?: { ignoreScripts?: boolean },
   ): Promise<{ valid: boolean; error?: string } | null> {
     if (this.activeValidationAbort) {
       return { valid: false, error: "validation already in progress" };
@@ -193,6 +194,7 @@ export class SandboxManager {
       this.activeValidationAbort = abortController;
       const result = await provider.validatePackage(source, {
         signal: abortController.signal,
+        ignoreScripts: options?.ignoreScripts,
       });
       return result;
     } catch {

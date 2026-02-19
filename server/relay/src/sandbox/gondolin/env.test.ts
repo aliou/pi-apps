@@ -24,6 +24,12 @@ describe("gondolin env helpers", () => {
     expect(env.npm_config_prefix).toBe("/agent/npm");
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.npm_config_ignore_scripts).toBeUndefined();
+  });
+
+  it("buildValidationEnv sets ignore_scripts when requested", () => {
+    const env = buildValidationEnv({ ignoreScripts: true });
+    expect(env.npm_config_ignore_scripts).toBe("true");
   });
 });
 

@@ -21,8 +21,10 @@ export function buildSandboxEnv(options: {
   return env;
 }
 
-export function buildValidationEnv(): Record<string, string> {
-  return {
+export function buildValidationEnv(options?: {
+  ignoreScripts?: boolean;
+}): Record<string, string> {
+  const env: Record<string, string> = {
     PI_CODING_AGENT_DIR: "/agent",
     npm_config_prefix: "/agent/npm",
     npm_config_maxsockets: "1",
@@ -30,4 +32,10 @@ export function buildValidationEnv(): Record<string, string> {
     npm_config_fetch_retry_mintimeout: "10000",
     npm_config_fetch_retry_maxtimeout: "60000",
   };
+
+  if (options?.ignoreScripts) {
+    env.npm_config_ignore_scripts = "true";
+  }
+
+  return env;
 }

@@ -9,6 +9,7 @@ interface AddPackageRequest {
   package: string;
   sessionId?: string;
   validate?: boolean;
+  ignoreScripts?: boolean;
 }
 
 export function extensionConfigsRoutes(): Hono<AppEnv> {
@@ -122,7 +123,9 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
 
     let validation: { valid: boolean; error?: string } | null = null;
     if (shouldValidate) {
-      validation = await sandboxManager.validateExtensionPackage(pkg);
+      validation = await sandboxManager.validateExtensionPackage(pkg, {
+        ignoreScripts: body.ignoreScripts,
+      });
       if (validation && !validation.valid) {
         return c.json(
           {

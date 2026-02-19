@@ -120,7 +120,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
    */
   async validatePackage(
     source: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; ignoreScripts?: boolean },
   ): Promise<{ valid: boolean; error?: string }> {
     const packageSource = source.trim();
     if (!packageSource) {
@@ -145,7 +145,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
             "/agent": new RealFSProvider(validateDir),
           },
         },
-        env: buildValidationEnv(),
+        env: buildValidationEnv({ ignoreScripts: options?.ignoreScripts }),
       });
 
       if (options?.signal) {
