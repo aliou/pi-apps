@@ -82,8 +82,19 @@ jobs:
         run: pnpm build
 
   relay-gondolin-assets:
-    name: Relay - Gondolin Assets Build & Probe
-    runs-on: ubuntu-latest
+    name: Relay - Gondolin Assets (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            gondolin-arch: x86_64
+            qemu-packages: qemu-system-arm qemu-system-x86
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            gondolin-arch: aarch64
+            qemu-packages: qemu-system-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,8 +120,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            qemu-system-arm \
-            qemu-system-x86 \
+            ${{ matrix.qemu-packages }} \
             qemu-utils \
             lz4 \
             curl \
@@ -124,6 +134,7 @@ jobs:
       - name: Create CI Gondolin build config
         env:
           GONDOLIN_CI_CONFIG: ${{ runner.temp }}/gondolin-ci-build-config.json
+          GONDOLIN_ARCH: ${{ matrix.gondolin-arch }}
         run: |
           python3 - <<'PY'
           import json
@@ -132,15 +143,16 @@ jobs:
 
           src = Path("server/sandboxes/gondolin/custom-assets.build-config.json")
           dst = Path(os.environ["GONDOLIN_CI_CONFIG"])
+          arch = os.environ["GONDOLIN_ARCH"]
 
           cfg = json.loads(src.read_text())
-          cfg["arch"] = "x86_64"
+          cfg["arch"] = arch
           container = cfg.get("container", {})
           container["force"] = True
           cfg["container"] = container
 
           dst.write_text(json.dumps(cfg, indent=2) + "\n")
-          print(f"wrote {dst}")
+          print(f"wrote {dst} (arch={arch})")
           PY
 
       - name: Build Gondolin assets
@@ -163,6 +175,6 @@ jobs:
       - name: Upload Gondolin assets artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gondolin-assets-${{ github.sha }}
+          name: gondolin-assets-${{ matrix.arch }}-${{ github.sha }}
           path: ${{ runner.temp }}/gondolin-assets
           retention-days: 7
