@@ -12,6 +12,7 @@
       "ca-certificates",
       "curl",
       "git",
+      "github-cli",
       "nodejs",
       "npm",
       "uv",
