@@ -76,10 +76,11 @@ export class ModelsIntrospectionService {
 
       // Test pi is working before attaching
       log.debug({ sessionId }, "testing pi executable");
-      if (!handle.exec) {
+      const exec = handle.exec;
+      if (!exec) {
         throw new Error("Sandbox provider does not support exec");
       }
-      const piTest = await handle.exec("which pi && pi --version");
+      const piTest = await exec("which pi && pi --version");
       log.debug(
         {
           sessionId,
