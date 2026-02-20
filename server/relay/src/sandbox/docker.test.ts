@@ -131,7 +131,7 @@ describe("DockerSandboxProvider", () => {
         const sessionId = `test-exec-${Date.now()}`;
         const handle = await provider.createSandbox({ sessionId });
 
-        const result = await handle.exec!("echo hello");
+        const result = await handle.exec?.("echo hello");
         expect(result.exitCode).toBe(0);
         expect(result.output).toContain("hello");
 
@@ -148,7 +148,7 @@ describe("DockerSandboxProvider", () => {
         const sessionId = `test-exec-fail-${Date.now()}`;
         const handle = await provider.createSandbox({ sessionId });
 
-        const result = await handle.exec!("exit 42");
+        const result = await handle.exec?.("exit 42");
         expect(result.exitCode).toBe(42);
 
         await handle.terminate();
@@ -164,7 +164,7 @@ describe("DockerSandboxProvider", () => {
         const sessionId = `test-exec-stderr-${Date.now()}`;
         const handle = await provider.createSandbox({ sessionId });
 
-        const result = await handle.exec!("echo error >&2");
+        const result = await handle.exec?.("echo error >&2");
         expect(result.output).toContain("error");
 
         await handle.terminate();
