@@ -11,6 +11,7 @@ import type { SandboxResourceTier } from "./provider-types";
 import type {
   CleanupResult,
   CreateSandboxOptions,
+  PtyHandle,
   SandboxChannel,
   SandboxHandle,
   SandboxInfo,
@@ -731,6 +732,75 @@ class DockerSandboxHandle implements SandboxHandle {
     return {
       exitCode: inspect.ExitCode ?? 0,
       output: Buffer.concat(chunks).toString("utf-8"),
+    };
+  }
+
+  async openPty(cols: number, rows: number): Promise<PtyHandle> {
+    if (this._status !== "running") {
+      throw new Error("Cannot openPty: container is not running");
+    }
+
+    const exec = await this.container.exec({
+      Cmd: ["/bin/bash", "-l"],
+      AttachStdin: true,
+      AttachStdout: true,
+      AttachStderr: true,
+      Tty: true,
+      Env: [`TERM=xterm-256color`, `COLUMNS=${cols}`, `LINES=${rows}`],
+    });
+
+    const stream = (await exec.start({
+      hijack: true,
+      stdin: true,
+    })) as Duplex;
+
+    const dataListeners = new Set<(data: string) => void>();
+    const exitListeners = new Set<(code: number) => void>();
+
+    // With Tty: true, docker doesn't multiplex -- raw output on stream
+    stream.on("data", (chunk: Buffer) => {
+      const str = chunk.toString("utf-8");
+      for (const listener of dataListeners) {
+        listener(str);
+      }
+    });
+
+    stream.on("end", () => {
+      exec
+        .inspect()
+        .then((info) => {
+          const code = info.ExitCode ?? 0;
+          for (const listener of exitListeners) {
+            listener(code);
+          }
+        })
+        .catch(() => {
+          for (const listener of exitListeners) {
+            listener(1);
+          }
+        });
+    });
+
+    return {
+      write(data: string) {
+        stream.write(data);
+      },
+      onData(handler: (data: string) => void) {
+        dataListeners.add(handler);
+        return () => dataListeners.delete(handler);
+      },
+      onExit(handler: (exitCode: number) => void) {
+        exitListeners.add(handler);
+        return () => exitListeners.delete(handler);
+      },
+      resize(c: number, r: number) {
+        exec.resize({ w: c, h: r }).catch(() => {});
+      },
+      close() {
+        stream.end();
+        dataListeners.clear();
+        exitListeners.clear();
+      },
     };
   }
 

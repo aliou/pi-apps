@@ -765,6 +765,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
               persistentDisk: false,
             }),
             exec: typeof handle.exec === "function",
+            terminal: typeof handle.openPty === "function",
           },
         },
         error: null,

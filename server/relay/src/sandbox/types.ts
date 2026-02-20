@@ -1,5 +1,27 @@
 import type { SandboxResourceTier } from "./provider-types";
 
+/**
+ * Bidirectional PTY session inside a sandbox.
+ * The consumer writes user input and reads terminal output.
+ * Supports resize for terminal dimension changes.
+ */
+export interface PtyHandle {
+  /** Write user input to the PTY stdin. */
+  write(data: string): void;
+
+  /** Subscribe to PTY output (stdout). Returns unsubscribe function. */
+  onData(handler: (data: string) => void): () => void;
+
+  /** Subscribe to PTY exit. Returns unsubscribe function. */
+  onExit(handler: (exitCode: number) => void): () => void;
+
+  /** Resize the PTY. */
+  resize(cols: number, rows: number): void;
+
+  /** Close the PTY session and release resources. */
+  close(): void;
+}
+
 export type SandboxStatus =
   | "creating"
   | "running"
@@ -86,6 +108,12 @@ export interface SandboxHandle {
    * Not all providers support this. Returns undefined if unsupported.
    */
   exec?(command: string): Promise<{ exitCode: number; output: string }>;
+
+  /**
+   * Open an interactive PTY session inside the sandbox.
+   * Not all providers support this. Undefined if unsupported.
+   */
+  openPty?(cols: number, rows: number): Promise<PtyHandle>;
 
   /**
    * Get a message-oriented channel to the pi process.

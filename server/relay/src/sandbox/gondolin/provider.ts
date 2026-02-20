@@ -19,6 +19,7 @@ import type { SandboxResourceTier } from "../provider-types";
 import type {
   CleanupResult,
   CreateSandboxOptions,
+  PtyHandle,
   SandboxChannel,
   SandboxHandle,
   SandboxInfo,
@@ -682,6 +683,68 @@ class GondolinSandboxHandle implements SandboxHandle {
     const result = await this.vm.exec(command);
     const output = result.stdout + (result.stderr ? `\n${result.stderr}` : "");
     return { exitCode: result.exitCode, output };
+  }
+
+  async openPty(cols: number, rows: number): Promise<PtyHandle> {
+    if (this._status !== "running" || !this.vm) {
+      throw new Error("Cannot openPty: sandbox is not running");
+    }
+
+    const proc = this.vm.exec("/bin/bash -l", {
+      cwd: "/workspace",
+      stdin: true,
+      pty: true,
+      stdout: "pipe",
+      buffer: false,
+      env: {
+        TERM: "xterm-256color",
+        COLUMNS: String(cols),
+        LINES: String(rows),
+      },
+    });
+
+    const dataListeners = new Set<(data: string) => void>();
+    const exitListeners = new Set<(code: number) => void>();
+
+    // Read stdout chunks and dispatch to listeners
+    const readLoop = async () => {
+      try {
+        for await (const chunk of proc) {
+          for (const listener of dataListeners) {
+            listener(chunk);
+          }
+        }
+      } catch {
+        // Stream ended or error
+      }
+      const result = await proc.result.catch(() => ({ exitCode: 1 }));
+      for (const listener of exitListeners) {
+        listener(result.exitCode);
+      }
+    };
+    void readLoop();
+
+    return {
+      write(data: string) {
+        proc.write(data);
+      },
+      onData(handler: (data: string) => void) {
+        dataListeners.add(handler);
+        return () => dataListeners.delete(handler);
+      },
+      onExit(handler: (exitCode: number) => void) {
+        exitListeners.add(handler);
+        return () => exitListeners.delete(handler);
+      },
+      resize(c: number, r: number) {
+        proc.resize(r, c);
+      },
+      close() {
+        proc.end();
+        dataListeners.clear();
+        exitListeners.clear();
+      },
+    };
   }
 
   async attach(): Promise<SandboxChannel> {

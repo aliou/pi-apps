@@ -166,6 +166,16 @@ async function main() {
   });
   app.get("/ws/sessions/:id", wsHandler);
 
+  // Terminal WebSocket handler
+  const { createTerminalHandler } = await import("./ws/terminal");
+  const terminalHandler = createTerminalHandler(upgradeWebSocket, {
+    sandboxManager,
+    sessionService,
+    environmentService,
+    secretsService,
+  });
+  app.get("/ws/sessions/:id/terminal", terminalHandler);
+
   // Start idle reaper
   const { resolveEnvConfig } = await import("./sandbox/manager");
   const reaper = new IdleReaper({
