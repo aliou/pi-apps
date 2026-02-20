@@ -5,7 +5,7 @@ import type { CryptoService, EncryptedData } from "./crypto.service";
 
 /**
  * Grouping kind for secrets.
- * - ai_provider: model provider API keys (used by /api/models)
+ * - ai_provider: model provider API keys (injected into sandboxes)
  * - env_var: arbitrary environment variables for extensions etc.
  * - sandbox_provider: sandbox provider configuration
  */
@@ -252,7 +252,6 @@ export class SecretsService {
 
   /**
    * Get env var names for enabled secrets of a specific kind.
-   * Used by /api/models to set dummy env vars for pi-ai provider detection.
    */
   async getEnabledEnvVarsByKind(kind: SecretKind): Promise<string[]> {
     const rows = await this.db.select().from(secrets);

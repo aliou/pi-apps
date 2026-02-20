@@ -32,7 +32,10 @@ export function modelsRoutes(): Hono<AppEnv> {
     const sessionDataDir = c.get("sessionDataDir");
 
     // Compute fingerprint from current state
-    const packages = extensionConfigService.getResolvedPackages("_introspect", "code");
+    const packages = extensionConfigService.getResolvedPackages(
+      "_introspect",
+      "code",
+    );
     const secrets = await secretsService.getAllAsEnv();
     const fingerprint = computeFingerprint(packages, secrets);
 
@@ -51,10 +54,14 @@ export function modelsRoutes(): Hono<AppEnv> {
     const allEnvs = environmentService.list();
     const gondolinEnv = allEnvs.find((e) => e.sandboxType === "gondolin");
     if (!gondolinEnv) {
-      return c.json({
-        data: [],
-        error: "No gondolin environment configured. Required for full model introspection.",
-      }, 500);
+      return c.json(
+        {
+          data: [],
+          error:
+            "No gondolin environment configured. Required for full model introspection.",
+        },
+        500,
+      );
     }
 
     const envConfig = await resolveEnvConfig(gondolinEnv, secretsService);

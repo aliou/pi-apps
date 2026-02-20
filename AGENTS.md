@@ -119,7 +119,7 @@ The relay server exposes REST endpoints and WebSocket for session communication.
 - `GET /api/sessions/:id/events` - Get recent events from journal (for debug view)
 - `GET /api/sessions/:id/history` - Get session conversation from pi's JSONL file
 - `GET /api/sessions/:id/logs` - Get sandbox stderr logs (diagnostics)
-- `GET /api/models` - List available models (based on configured secrets)
+- `GET /api/models` - List available models (introspected via ephemeral Gondolin sandbox, cached)
 - `GET /api/github/token` - GitHub token status
 - `POST /api/github/token` - Set GitHub token
 - `GET /api/github/repos` - List accessible repos
@@ -148,7 +148,7 @@ Session communication uses WebSocket. Client sends commands (prompt, abort, get_
 
 **Models Endpoint:**
 
-`GET /api/models` returns available models based on configured provider secrets. Uses pi-ai's built-in provider list. For the full list including extension-defined providers, use `get_available_models` via RPC on an active session.
+`GET /api/models` returns all available models, including extension-defined providers. It spins up an ephemeral Gondolin sandbox, sends `get_available_models` via RPC, and caches the result. The cache auto-invalidates when extension configs or secrets change (keyed by a fingerprint of both). Requires at least one Gondolin environment configured.
 
 ## Code Style
 
