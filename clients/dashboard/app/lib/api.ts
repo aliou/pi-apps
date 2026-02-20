@@ -259,6 +259,7 @@ export interface SandboxStatusResponse {
   capabilities: {
     exec: boolean;
     restart: boolean;
+    terminal: boolean;
   } | null;
 }
 

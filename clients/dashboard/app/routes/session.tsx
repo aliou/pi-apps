@@ -1,458 +1,65 @@
+import { ArrowLeftIcon, WarningIcon } from "@phosphor-icons/react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ArchiveBoxIcon,
-  ArrowClockwiseIcon,
-  ArrowLeftIcon,
-  BugIcon,
-  ChatCircleIcon,
-  PaperPlaneTiltIcon,
-  TrashIcon,
-  WarningIcon,
-  XIcon,
-} from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 import { ConversationView } from "../components/conversation-view";
 import { DebugView } from "../components/debug-view";
-import { SandboxExec } from "../components/sandbox-exec";
-import { StatusBadge } from "../components/status-badge";
-import { Button } from "../components/ui/button";
+import { SandboxTerminal } from "../components/sandbox-terminal";
+import { ChatInput } from "../components/chat-input";
+import { SessionHeader, type ViewMode } from "../components/session-header";
+
 import {
-  type ActivateResponse,
   api,
-  type EventsResponse,
-  getClientId,
-  type JournalEvent,
-  RELAY_URL,
-  type SandboxStatusResponse,
   type SandboxRestartResponse,
-  type Session,
-  setClientCapabilities,
 } from "../lib/api";
 import { parseEventsToConversation } from "../lib/conversation";
-import { mergeCanonicalEvents } from "../lib/events";
+import { useSandboxStatus } from "../lib/use-sandbox-status";
+import { useSessionEvents } from "../lib/use-session-events";
 import { useSidebar } from "../lib/sidebar";
-import { cn } from "../lib/utils";
-
-type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
-type ViewMode = "chat" | "debug";
 
 type LocationState = {
   initialPrompt?: string;
 };
 
-const ALL_EVENTS_FETCH_CHUNK = 1000;
-
-function ConnectionBadge({ status }: { status: ConnectionStatus }) {
-  const colors: Record<ConnectionStatus, string> = {
-    connecting: "bg-status-warn/20 text-status-warn",
-    connected: "bg-status-ok/20 text-status-ok",
-    disconnected: "bg-muted/20 text-muted",
-    error: "bg-status-err/20 text-status-err",
-  };
-
-  const labels: Record<ConnectionStatus, string> = {
-    connecting: "Connecting...",
-    connected: "Live",
-    disconnected: "Disconnected",
-    error: "Error",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full ${colors[status]}`}
-    >
-      <span
-        className={`w-1.5 h-1.5 rounded-full ${status === "connected" ? "bg-status-ok animate-pulse" : status === "connecting" ? "bg-status-warn animate-pulse" : "bg-current"}`}
-      />
-      {labels[status]}
-    </span>
-  );
-}
-
-function ViewToggle({
-  mode,
-  onChange,
-}: {
-  mode: ViewMode;
-  onChange: (mode: ViewMode) => void;
-}) {
-  return (
-    <div className="flex items-center bg-surface border border-border rounded-lg p-0.5">
-      <button
-        type="button"
-        onClick={() => onChange("chat")}
-        className={cn(
-          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
-          mode === "chat"
-            ? "bg-accent text-accent-fg"
-            : "text-muted hover:text-fg",
-        )}
-      >
-        <ChatCircleIcon className="w-4 h-4" />
-        Chat
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange("debug")}
-        className={cn(
-          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
-          mode === "debug"
-            ? "bg-accent text-accent-fg"
-            : "text-muted hover:text-fg",
-        )}
-      >
-        <BugIcon className="w-4 h-4" />
-        Debug
-      </button>
-    </div>
-  );
-}
-
-function useSandboxStatus(
-  sessionId: string | undefined,
-): SandboxStatusResponse | null {
-  const [sandboxStatus, setSandboxStatus] =
-    useState<SandboxStatusResponse | null>(null);
-
-  useEffect(() => {
-    if (!sessionId) return;
-
-    const fetchStatus = async () => {
-      const res = await api.get<SandboxStatusResponse>(
-        `/sessions/${sessionId}/sandbox`,
-      );
-      if (res.data) {
-        setSandboxStatus(res.data);
-      }
-    };
-
-    void fetchStatus();
-    const interval = setInterval(() => void fetchStatus(), 5000);
-    return () => clearInterval(interval);
-  }, [sessionId]);
-
-  return sandboxStatus;
-}
-
-function SandboxBadge({ status }: { status: SandboxStatusResponse }) {
-  const colors: Record<string, string> = {
-    running: "bg-status-ok/20 text-status-ok",
-    stopped: "bg-muted/20 text-muted",
-    creating: "bg-status-warn/20 text-status-warn",
-    error: "bg-status-err/20 text-status-err",
-  };
-
-  const dotColors: Record<string, string> = {
-    running: "bg-status-ok animate-pulse",
-    stopped: "bg-current",
-    creating: "bg-status-warn animate-pulse",
-    error: "bg-current",
-  };
-
-  const color = colors[status.status] ?? "bg-muted/20 text-muted";
-  const dotColor = dotColors[status.status] ?? "bg-current";
-  const label = status.provider
-    ? `${status.provider}: ${status.status}`
-    : `sandbox: ${status.status}`;
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${color}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
-      {label}
-    </span>
-  );
-}
-
-async function fetchAllEventsUntilSeq(
-  sessionId: string,
-  targetSeq: number,
-): Promise<JournalEvent[]> {
-  const collected: JournalEvent[] = [];
-  let cursor = 0;
-
-  while (cursor < targetSeq) {
-    const limit = Math.min(ALL_EVENTS_FETCH_CHUNK, targetSeq - cursor);
-    const res = await api.get<EventsResponse>(
-      `/sessions/${sessionId}/events?afterSeq=${cursor}&limit=${limit}`,
-    );
-
-    if (!res.data || res.data.events.length === 0) {
-      break;
-    }
-
-    collected.push(...res.data.events);
-    cursor = res.data.lastSeq;
-  }
-
-  return collected;
-}
-
 export default function SessionPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { collapsed } = useSidebar();
 
-  const [session, setSession] = useState<Session | null>(null);
-  const [events, setEvents] = useState<JournalEvent[]>([]);
-  const [connectionStatus, setConnectionStatus] =
-    useState<ConnectionStatus>("disconnected");
-  const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("chat");
-  const [inputText, setInputText] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const locationState = (location.state as LocationState | null) ?? null;
+  const initialPrompt = locationState?.initialPrompt?.trim();
+
+  const { events, connectionStatus, error, setError, sendPrompt, session } =
+    useSessionEvents(id, initialPrompt);
+
+  const sandboxStatus = useSandboxStatus(id);
+
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const tab = searchParams.get("tab");
+    return tab === "chat" || tab === "debug" || tab === "terminal"
+      ? tab
+      : "chat";
+  });
+
   const [isArchiving, setIsArchiving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
-  const sandboxStatus = useSandboxStatus(id);
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const lastSeqRef = useRef(0);
-  const reconnectTimeoutRef = useRef<number | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const initialPromptSentRef = useRef(false);
-  const wsReadyRef = useRef(false);
-  const pendingInitialPromptRef = useRef<string | null>(null);
-  const readinessProbeIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    navigate({ search: `?tab=${viewMode}` }, { replace: true });
+  }, [viewMode, navigate]);
 
   const conversationItems = useMemo(
     () => parseEventsToConversation(events),
     [events],
   );
-
-  const locationState = (location.state as LocationState | null) ?? null;
-  const initialPrompt = locationState?.initialPrompt?.trim();
-  const pendingPromptKey = id ? `pendingPrompt:${id}` : null;
-
-  useEffect(() => {
-    if (initialPrompt && !initialPromptSentRef.current) {
-      pendingInitialPromptRef.current = initialPrompt;
-      return;
-    }
-
-    if (!pendingPromptKey || initialPromptSentRef.current) return;
-    const fromStorage = sessionStorage.getItem(pendingPromptKey)?.trim();
-    if (fromStorage) {
-      pendingInitialPromptRef.current = fromStorage;
-    }
-  }, [initialPrompt, pendingPromptKey]);
-
-  useEffect(() => {
-    if (!id) return;
-    setEvents([]);
-    lastSeqRef.current = 0;
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-
-    api.get<Session>(`/sessions/${id}`).then((res) => {
-      if (res.data) {
-        setSession(res.data);
-      } else {
-        setError(res.error ?? "Failed to load session");
-      }
-    });
-  }, [id]);
-
-  const sendPrompt = useCallback((message: string): boolean => {
-    if (!wsRef.current || !wsReadyRef.current) return false;
-
-    wsRef.current.send(
-      JSON.stringify({
-        type: "prompt",
-        message,
-        id: crypto.randomUUID(),
-      }),
-    );
-
-    const seq = lastSeqRef.current + 1;
-    setEvents((prev) =>
-      mergeCanonicalEvents(prev, [
-        {
-          seq,
-          type: "prompt",
-          payload: { type: "prompt", message },
-          createdAt: new Date().toISOString(),
-        },
-      ]),
-    );
-    lastSeqRef.current = seq;
-    return true;
-  }, []);
-
-  const flushPendingInitialPrompt = useCallback(() => {
-    const pending = pendingInitialPromptRef.current;
-    if (!pending || initialPromptSentRef.current) return;
-
-    const sent = sendPrompt(pending);
-    if (!sent) return;
-
-    initialPromptSentRef.current = true;
-    pendingInitialPromptRef.current = null;
-
-    if (pendingPromptKey) {
-      sessionStorage.removeItem(pendingPromptKey);
-    }
-
-    navigate(location.pathname, { replace: true, state: {} });
-  }, [sendPrompt, pendingPromptKey, navigate, location.pathname]);
-
-  const connectWebSocket = useCallback(async () => {
-    if (!id || !RELAY_URL) return;
-
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
-    wsReadyRef.current = false;
-    readinessProbeIdRef.current = null;
-    setConnectionStatus("connecting");
-    setError(null);
-
-    // Get or generate persistent clientId
-    const clientId = getClientId();
-
-    const activateRes = await api.post<ActivateResponse>(
-      `/sessions/${id}/activate`,
-      { clientId },
-    );
-
-    if (activateRes.error || !activateRes.data) {
-      setConnectionStatus("error");
-      setError(activateRes.error ?? "Failed to activate session");
-      return;
-    }
-
-    // Register client capabilities after activation
-    const capsRes = await setClientCapabilities(id, clientId, {
-      extensionUI: true,
-    });
-    if (capsRes.error) {
-      console.warn("Failed to set client capabilities:", capsRes.error);
-    }
-
-    const activatedLastSeq = Math.max(
-      lastSeqRef.current,
-      activateRes.data.lastSeq,
-    );
-    const allEvents = await fetchAllEventsUntilSeq(id, activatedLastSeq);
-    setEvents((prev) => mergeCanonicalEvents(prev, allEvents));
-    lastSeqRef.current = activatedLastSeq;
-
-    const wsUrl = `${RELAY_URL.replace("http", "ws")}/ws/sessions/${id}?clientId=${encodeURIComponent(clientId)}&lastSeq=${activatedLastSeq}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConnectionStatus("connecting");
-      setError(null);
-    };
-
-    ws.onclose = (evt) => {
-      wsReadyRef.current = false;
-      readinessProbeIdRef.current = null;
-      setConnectionStatus("disconnected");
-      wsRef.current = null;
-
-      if (evt.code !== 1000) {
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          void connectWebSocket();
-        }, 3000);
-      }
-    };
-
-    ws.onerror = () => {
-      setConnectionStatus("error");
-      setError("WebSocket connection failed");
-    };
-
-    ws.onmessage = (evt) => {
-      try {
-        const event = JSON.parse(evt.data as string) as Record<string, unknown>;
-
-        if (event.type === "connected") {
-          wsReadyRef.current = true;
-          setConnectionStatus("connected");
-          lastSeqRef.current = event.lastSeq as number;
-
-          const pending = pendingInitialPromptRef.current;
-          if (pending && !initialPromptSentRef.current && wsRef.current) {
-            const probeId = crypto.randomUUID();
-            readinessProbeIdRef.current = probeId;
-            wsRef.current.send(
-              JSON.stringify({
-                type: "get_state",
-                id: probeId,
-              }),
-            );
-          }
-
-          return;
-        }
-        if (
-          event.type === "response" &&
-          event.command === "get_state" &&
-          event.success === true &&
-          typeof event.id === "string" &&
-          event.id === readinessProbeIdRef.current
-        ) {
-          readinessProbeIdRef.current = null;
-          flushPendingInitialPrompt();
-          return;
-        }
-
-        if (event.type === "replay_start" || event.type === "replay_end") {
-          return;
-        }
-
-        const seq = (event.seq as number) ?? lastSeqRef.current + 1;
-        const newEvent: JournalEvent = {
-          seq,
-          type: event.type as string,
-          payload: event,
-          createdAt: new Date().toISOString(),
-        };
-        setEvents((prev) => mergeCanonicalEvents(prev, [newEvent]));
-        lastSeqRef.current = Math.max(lastSeqRef.current, seq);
-      } catch {
-        // Ignore parse errors
-      }
-    };
-  }, [id, flushPendingInitialPrompt]);
-
-  useEffect(() => {
-    void connectWebSocket();
-
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close(1000);
-        wsRef.current = null;
-      }
-    };
-  }, [connectWebSocket]);
-
-  const handleSubmit = () => {
-    if (!inputText.trim() || !wsRef.current || isSubmitting) return;
-
-    const message = inputText.trim();
-    setInputText("");
-    setIsSubmitting(true);
-
-    const sent = sendPrompt(message);
-    if (!sent) {
-      setIsSubmitting(false);
-      return;
-    }
-    setTimeout(() => setIsSubmitting(false), 500);
-  };
 
   const handleArchive = async () => {
     if (!id || !session || session.status === "archived") return;
@@ -501,24 +108,6 @@ export default function SessionPage() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  };
-
-  const resizeTextarea = () => {
-    const textarea = inputRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
-    }
-  };
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: resize depends on inputText content
-  useEffect(resizeTextarea, [inputText]);
-
   if (error && !session) {
     return (
       <div className="mx-auto max-w-4xl">
@@ -541,78 +130,21 @@ export default function SessionPage() {
       data-collapsed={collapsed || undefined}
       className="fixed inset-0 flex flex-col bg-bg z-10 md:left-64 md:data-[collapsed]:left-14"
     >
-      <header className="flex-shrink-0 px-6 py-3 border-b border-border bg-surface md:px-10">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              to="/sessions"
-              className="text-muted hover:text-fg transition-colors p-1 -ml-1"
-            >
-              <ArrowLeftIcon className="w-5 h-5" />
-            </Link>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold text-fg">
-                  {session?.name || id?.slice(0, 8)}
-                </h1>
-                {session && <StatusBadge status={session.status} />}
-                <ConnectionBadge status={connectionStatus} />
-                {sandboxStatus && <SandboxBadge status={sandboxStatus} />}
-              </div>
-              <p className="text-xs text-muted">
-                {session?.mode} session
-                {session?.repoFullName
-                  ? ` - ${session.repoFullName}`
-                  : session?.repoId
-                    ? ` - ${session.repoId}`
-                    : ""}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void handleRestart()}
-              disabled={
-                !session ||
-                session.status === "archived" ||
-                sandboxStatus?.status === "creating" ||
-                isRestarting
-              }
-              loading={isRestarting}
-            >
-              <ArrowClockwiseIcon className="size-4" />
-              Restart
-            </Button>
-            <button
-              type="button"
-              onClick={handleArchive}
-              disabled={
-                !session || session.status === "archived" || isArchiving
-              }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
-            >
-              <ArchiveBoxIcon className="size-4" />
-              Archive
-            </button>
-            {session?.status === "archived" && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-status-err/30 px-2.5 py-1.5 text-xs text-status-err hover:bg-status-err/10 disabled:opacity-50"
-              >
-                <TrashIcon className="size-4" />
-                Delete
-              </button>
-            )}
-            <ViewToggle mode={viewMode} onChange={setViewMode} />
-            <span className="text-xs text-muted">{events.length} events</span>
-          </div>
-        </div>
-      </header>
+      <SessionHeader
+        session={session}
+        sessionId={id}
+        connectionStatus={connectionStatus}
+        sandboxStatus={sandboxStatus}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onArchive={() => void handleArchive()}
+        onDelete={() => void handleDelete()}
+        onRestart={() => void handleRestart()}
+        isArchiving={isArchiving}
+        isDeleting={isDeleting}
+        isRestarting={isRestarting}
+        collapsed={collapsed}
+      />
 
       {session?.extensionsStale && (
         <div className="flex-shrink-0 border-b border-amber-500/30 bg-amber-500/5 px-6 md:px-10">
@@ -625,83 +157,32 @@ export default function SessionPage() {
 
       <div className="flex-1 overflow-y-auto bg-bg px-6 md:px-10">
         <div className="max-w-4xl mx-auto">
-          {viewMode === "chat" ? (
-            <ConversationView items={conversationItems} />
-          ) : (
-            <div className="py-4 flex flex-col gap-6">
-              {sandboxStatus?.capabilities?.exec === true && id && (
-                <div>
-                  <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-                    Sandbox Console
-                  </h2>
-                  <SandboxExec sessionId={id} sandboxStatus={sandboxStatus} />
-                </div>
-              )}
-              <DebugView events={events} />
+          {viewMode === "chat" && (
+            <ConversationView items={conversationItems} autoScroll={false} />
+          )}
+          {viewMode === "debug" && (
+            <div className="py-4">
+              <DebugView events={events} autoScroll={false} />
+            </div>
+          )}
+          {viewMode === "terminal" && id && (
+            <div className="py-4 h-full">
+              <SandboxTerminal
+                sessionId={id}
+                sandboxStatus={sandboxStatus}
+              />
             </div>
           )}
         </div>
       </div>
 
       {viewMode === "chat" && (
-        <div className="flex-shrink-0 border-t border-border bg-surface px-6 py-4 md:px-10">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-end gap-2">
-              <div className="flex-1 relative">
-                <textarea
-                  ref={inputRef}
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={
-                    connectionStatus === "connected"
-                      ? "Type a message... (Enter to send, Shift+Enter for newline)"
-                      : "Waiting for connection..."
-                  }
-                  disabled={
-                    connectionStatus !== "connected" ||
-                    session?.status === "archived"
-                  }
-                  rows={1}
-                  className={cn(
-                    "w-full resize-none rounded-xl border border-border bg-bg px-4 py-3 pr-10",
-                    "text-sm text-fg placeholder:text-muted",
-                    "focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                  )}
-                />
-                {inputText && (
-                  <button
-                    type="button"
-                    onClick={() => setInputText("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-fg"
-                  >
-                    <XIcon className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={
-                  !inputText.trim() ||
-                  connectionStatus !== "connected" ||
-                  isSubmitting ||
-                  session?.status === "archived"
-                }
-                className={cn(
-                  "flex-shrink-0 p-3 rounded-xl transition-colors",
-                  "bg-accent text-accent-fg",
-                  "hover:bg-accent-hover",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
-                )}
-              >
-                <PaperPlaneTiltIcon className="w-5 h-5" weight="fill" />
-              </button>
-            </div>
-            {error && <p className="mt-2 text-xs text-status-err">{error}</p>}
-          </div>
-        </div>
+        <ChatInput
+          connectionStatus={connectionStatus}
+          session={session}
+          onSubmit={sendPrompt}
+          error={error}
+        />
       )}
     </div>
   );
