@@ -76,30 +76,10 @@ in {
     };
   };
 
-  dashboard-oci = pkgs.stdenv.mkDerivation {
-    pname = "pi-dashboard-oci";
-    version = release.rev;
-
-    src = pkgs.fetchurl {
-      url = "${baseUrl}/pi-dashboard-oci.tar.gz";
-      hash = release.dashboard-oci.${system}.hash;
-    };
-
-    # OCI tarball from podman save, needs to be preserved as-is.
-    dontUnpack = true;
-
-    installPhase = ''
-      runHook preInstall
-
-      mkdir -p $out
-      cp $src $out/pi-dashboard-oci.tar.gz
-
-      runHook postInstall
-    '';
-
-    meta = {
-      description = "Pi Dashboard OCI container image tarball";
-      platforms = ["aarch64-linux"];
-    };
+  # fetchurl returns a store path that IS the file, which is what
+  # virtualisation.oci-containers.containers.*.imageFile expects.
+  dashboard-oci = pkgs.fetchurl {
+    url = "${baseUrl}/pi-dashboard-oci.tar.gz";
+    hash = release.dashboard-oci.${system}.hash;
   };
 }
