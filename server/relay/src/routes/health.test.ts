@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
 import { SandboxLogStore } from "../sandbox/log-store";
@@ -53,6 +53,7 @@ describe("Health Routes", () => {
       const json = await res.json();
       expect(json.ok).toBe(true);
       expect(json.version).toBe("0.1.0");
+      expect(json.commit).toBe("dev");
     });
   });
 
@@ -68,6 +69,27 @@ describe("Health Routes", () => {
       expect(json.endpoints).toBeDefined();
       expect(json.endpoints.health).toBe("GET /health");
       expect(json.endpoints.rpc).toBe("WS /rpc (not yet implemented)");
+      expect(json.commit).toBe("dev");
+    });
+  });
+
+  describe("commit SHA injection", () => {
+    it("uses GIT_COMMIT env var when set", async () => {
+      vi.stubEnv("GIT_COMMIT", "abc1234");
+      vi.resetModules();
+
+      // Re-import health routes so the module-level COMMIT constant is
+      // re-evaluated with the stubbed env var.
+      const { Hono } = await import("hono");
+      const { healthRoutes } = await import("./health");
+      const app = new Hono();
+      app.route("/", healthRoutes());
+      const res = await app.request("/health");
+      const json = (await res.json()) as { commit: string };
+      const commit = json.commit;
+
+      expect(commit).toBe("abc1234");
+      vi.unstubAllEnvs();
     });
   });
 });
