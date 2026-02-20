@@ -674,6 +674,16 @@ class GondolinSandboxHandle implements SandboxHandle {
     this.setStatus("running");
   }
 
+  async exec(command: string): Promise<{ exitCode: number; output: string }> {
+    if (this._status !== "running" || !this.vm) {
+      throw new Error("Cannot exec: sandbox is not running");
+    }
+
+    const result = await this.vm.exec(command);
+    const output = result.stdout + (result.stderr ? `\n${result.stderr}` : "");
+    return { exitCode: result.exitCode, output };
+  }
+
   async attach(): Promise<SandboxChannel> {
     if (this._status !== "running") {
       throw new Error(

@@ -703,6 +703,37 @@ class DockerSandboxHandle implements SandboxHandle {
     }
   }
 
+  async exec(command: string): Promise<{ exitCode: number; output: string }> {
+    if (this._status !== "running") {
+      throw new Error("Cannot exec: container is not running");
+    }
+
+    const exec = await this.container.exec({
+      Cmd: ["/bin/sh", "-c", command],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+
+    const stream = await exec.start({ hijack: true, stdin: false });
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    this.container.modem.demuxStream(stream, stdout, stderr);
+
+    const chunks: Buffer[] = [];
+    stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+    stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+    await new Promise<void>((resolve) => {
+      stream.on("end", resolve);
+    });
+
+    const inspect = await exec.inspect();
+    return {
+      exitCode: inspect.ExitCode ?? 0,
+      output: Buffer.concat(chunks).toString("utf-8"),
+    };
+  }
+
   async attach(): Promise<SandboxChannel> {
     // If already attached, close old channel first
     if (this.currentChannel) {

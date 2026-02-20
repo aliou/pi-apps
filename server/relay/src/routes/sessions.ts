@@ -11,7 +11,7 @@ import {
 import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EnvironmentConfig } from "../services/environment.service";
 import { preInstallExtensions } from "../services/extension-installer";
-import type { SessionMode } from "../services/session.service";
+import type { SessionMode, SessionRecord } from "../services/session.service";
 import { readSessionHistory } from "../services/session-history";
 import {
   buildSettingsJson,
@@ -692,6 +692,357 @@ export function sessionsRoutes(): Hono<AppEnv> {
     });
   });
 
+  // Get live sandbox status and capabilities
+  app.get("/:id/sandbox", async (c) => {
+    const sessionService = c.get("sessionService");
+    const sandboxManager = c.get("sandboxManager");
+    const secretsService = c.get("secretsService");
+    const environmentService = c.get("environmentService");
+    const id = c.req.param("id");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    if (!session.sandboxProvider || !session.sandboxProviderId) {
+      return c.json({
+        data: {
+          sessionId: id,
+          provider: session.sandboxProvider ?? null,
+          providerId: null,
+          status: "stopped",
+          capabilities: null,
+        },
+        error: null,
+      });
+    }
+
+    try {
+      const envConfig = await resolveSessionEnvConfig(
+        session,
+        environmentService,
+        secretsService,
+      );
+      const handle = await sandboxManager.getHandleByType(
+        session.sandboxProvider as SandboxProviderType,
+        session.sandboxProviderId,
+        envConfig,
+      );
+
+      // Get provider capabilities
+      const provider = session.sandboxProvider as SandboxProviderType;
+      let providerCapabilities: {
+        losslessPause: boolean;
+        persistentDisk: boolean;
+      } | null = null;
+      try {
+        if (envConfig) {
+          const available = await sandboxManager.isProviderAvailable(envConfig);
+          if (available) {
+            // Capabilities are on the provider, not the handle.
+            // We infer from known provider types.
+            providerCapabilities = {
+              losslessPause: provider === "docker",
+              persistentDisk: provider !== "cloudflare",
+            };
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      return c.json({
+        data: {
+          sessionId: id,
+          provider,
+          providerId: session.sandboxProviderId,
+          status: handle.status,
+          imageDigest: handle.imageDigest ?? null,
+          capabilities: {
+            ...(providerCapabilities ?? {
+              losslessPause: false,
+              persistentDisk: false,
+            }),
+            exec: typeof handle.exec === "function",
+          },
+        },
+        error: null,
+      });
+    } catch (err) {
+      logger.error({ err, sessionId: id }, "sandbox status check failed");
+      return c.json({
+        data: {
+          sessionId: id,
+          provider: session.sandboxProvider,
+          providerId: session.sandboxProviderId,
+          status: "error",
+          capabilities: null,
+        },
+        error: null,
+      });
+    }
+  });
+
+  // Restart sandbox (terminate + recreate, keep session data)
+  app.post("/:id/restart", async (c) => {
+    const sessionService = c.get("sessionService");
+    const sandboxManager = c.get("sandboxManager");
+    const secretsService = c.get("secretsService");
+    const environmentService = c.get("environmentService");
+    const extensionConfigService = c.get("extensionConfigService");
+    const sessionDataDir = c.get("sessionDataDir");
+    const db = c.get("db");
+    const id = c.req.param("id");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    if (session.status === "archived") {
+      return c.json(
+        { data: null, error: "Cannot restart archived session" },
+        409,
+      );
+    }
+
+    const sandboxProvider = session.sandboxProvider as SandboxProviderType;
+    if (!sandboxProvider || sandboxProvider === "mock") {
+      return c.json(
+        { data: null, error: "Session has no restartable sandbox" },
+        409,
+      );
+    }
+
+    logger.info(
+      { sessionId: id, provider: sandboxProvider },
+      "restart: beginning",
+    );
+
+    try {
+      // 1. Terminate existing sandbox
+      if (session.sandboxProviderId) {
+        const envConfig = await resolveSessionEnvConfig(
+          session,
+          environmentService,
+          secretsService,
+        );
+        await sandboxManager.terminateByProviderId(
+          sandboxProvider,
+          session.sandboxProviderId,
+          envConfig,
+        );
+        logger.info({ sessionId: id }, "restart: old sandbox terminated");
+      }
+
+      // 2. Regenerate settings.json
+      const extPackages = extensionConfigService.getResolvedPackages(
+        id,
+        session.mode as "chat" | "code",
+      );
+      if (sandboxProvider === "gondolin" && extPackages.length > 0) {
+        const agentDir = join(sessionDataDir, id, "agent");
+        const extensionPaths = await preInstallExtensions(
+          agentDir,
+          extPackages,
+          "/agent/extensions",
+        );
+        writeSessionSettings(sessionDataDir, id, {
+          extensions: extensionPaths,
+        });
+      } else {
+        writeSessionSettings(sessionDataDir, id, {
+          packages: extPackages,
+        });
+      }
+
+      // 3. Load secrets and GitHub token
+      const secrets = await secretsService.getAllAsEnv();
+      const tokenSetting = db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, "github_repos_access_token"))
+        .get();
+      const githubToken = tokenSetting
+        ? (JSON.parse(tokenSetting.value) as string)
+        : undefined;
+
+      // 4. Resolve repo info for sandbox creation
+      const repoService = c.get("repoService");
+      let repoUrl: string | undefined;
+      let repoBranch: string | undefined;
+      if (session.repoId) {
+        const repo = repoService.get(session.repoId);
+        if (repo?.cloneUrl) {
+          repoUrl = repo.cloneUrl;
+          repoBranch = session.branchName ?? repo.defaultBranch ?? "main";
+        }
+      }
+
+      // 5. Resolve environment config
+      let environmentConfig: EnvironmentConfig | undefined;
+      let envConfig: EnvironmentSandboxConfig | undefined;
+      if (session.environmentId) {
+        const env = environmentService.get(session.environmentId);
+        if (env) {
+          environmentConfig = JSON.parse(env.config);
+          envConfig = await resolveEnvConfig(env, secretsService);
+        }
+      }
+
+      // 6. Update status to creating
+      sessionService.update(id, { status: "creating" });
+
+      // 7. Create new sandbox (async)
+      const createPromise = sandboxManager.createForSession(
+        id,
+        envConfig ?? {
+          sandboxType: sandboxProvider as "docker" | "cloudflare" | "gondolin",
+        },
+        {
+          repoUrl,
+          repoBranch,
+          githubToken,
+          secrets,
+          resourceTier: environmentConfig?.resourceTier,
+          nativeToolsEnabled:
+            session.sandboxImageDigest === "gondolin" ? undefined : undefined,
+        },
+      );
+
+      createPromise
+        .then(async (handle) => {
+          try {
+            if (
+              sandboxProvider === "cloudflare" &&
+              extPackages.length > 0 &&
+              handle.exec
+            ) {
+              const settingsJson = buildSettingsJson(extPackages);
+              const escaped = settingsJson.replace(/'/g, "'\\''");
+              await handle.exec(
+                `mkdir -p /data/agent && printf '%s\\n' '${escaped}' > /data/agent/settings.json`,
+              );
+            }
+
+            sessionService.update(id, {
+              status: "active",
+              sandboxProviderId: handle.providerId,
+              sandboxImageDigest: handle.imageDigest,
+              extensionsStale: false,
+            });
+            logger.info(
+              { sessionId: id, providerId: handle.providerId },
+              "restart: new sandbox ready",
+            );
+          } catch (err) {
+            logger.error(
+              { err, sessionId: id },
+              "restart: post-create update failed",
+            );
+          }
+        })
+        .catch((err) => {
+          logger.error(
+            { err, sessionId: id },
+            "restart: sandbox creation failed",
+          );
+          try {
+            sessionService.update(id, { status: "error" });
+          } catch {
+            // DB may be closed during test teardown
+          }
+        });
+
+      return c.json({
+        data: { ok: true, sandboxStatus: "creating" },
+        error: null,
+      });
+    } catch (err) {
+      logger.error({ err, sessionId: id }, "restart failed");
+      const message = err instanceof Error ? err.message : "Restart failed";
+      return c.json({ data: null, error: message }, 500);
+    }
+  });
+
+  // Execute a command inside the sandbox
+  app.post("/:id/exec", async (c) => {
+    const sessionService = c.get("sessionService");
+    const sandboxManager = c.get("sandboxManager");
+    const secretsService = c.get("secretsService");
+    const environmentService = c.get("environmentService");
+    const id = c.req.param("id");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    if (!session.sandboxProvider || !session.sandboxProviderId) {
+      return c.json({ data: null, error: "No sandbox running" }, 409);
+    }
+
+    let body: { command: string; timeout?: number };
+    try {
+      body = await c.req.json<{ command: string; timeout?: number }>();
+    } catch {
+      return c.json({ data: null, error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.command || typeof body.command !== "string") {
+      return c.json({ data: null, error: "command is required" }, 400);
+    }
+
+    try {
+      const envConfig = await resolveSessionEnvConfig(
+        session,
+        environmentService,
+        secretsService,
+      );
+      const handle = await sandboxManager.getHandleByType(
+        session.sandboxProvider as SandboxProviderType,
+        session.sandboxProviderId,
+        envConfig,
+      );
+
+      if (typeof handle.exec !== "function") {
+        return c.json(
+          { data: null, error: "Exec not supported by this sandbox provider" },
+          409,
+        );
+      }
+
+      if (handle.status !== "running") {
+        return c.json({ data: null, error: "Sandbox is not running" }, 409);
+      }
+
+      const timeoutMs = Math.min((body.timeout ?? 30) * 1000, 60_000);
+      const result = await Promise.race([
+        handle.exec(body.command),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Exec timed out")), timeoutMs),
+        ),
+      ]);
+
+      // Cap output size to 256KB
+      const maxOutput = 256 * 1024;
+      const output =
+        result.output.length > maxOutput
+          ? `${result.output.slice(0, maxOutput)}\n... (output truncated)`
+          : result.output;
+
+      return c.json({
+        data: { exitCode: result.exitCode, output },
+        error: null,
+      });
+    } catch (err) {
+      logger.error({ err, sessionId: id }, "exec failed");
+      const message = err instanceof Error ? err.message : "Exec failed";
+      return c.json({ data: null, error: message }, 500);
+    }
+  });
+
   // Archive a session (stop sandbox, mark as archived)
   app.post("/:id/archive", async (c) => {
     const sessionService = c.get("sessionService");
@@ -767,4 +1118,26 @@ export function sessionsRoutes(): Hono<AppEnv> {
   });
 
   return app;
+}
+
+/**
+ * Resolve EnvironmentSandboxConfig from a session's environmentId.
+ * Returns undefined if no environment is configured.
+ */
+async function resolveSessionEnvConfig(
+  session: SessionRecord,
+  environmentService: {
+    get(
+      id: string,
+    ): import("../services/environment.service").EnvironmentRecord | undefined;
+  },
+  secretsService: { getValue(id: string): Promise<string | null> },
+): Promise<EnvironmentSandboxConfig | undefined> {
+  if (!session.environmentId) return undefined;
+  const env = environmentService.get(session.environmentId);
+  if (!env) return undefined;
+  return resolveEnvConfig(
+    env,
+    secretsService as import("../services/secrets.service").SecretsService,
+  );
 }

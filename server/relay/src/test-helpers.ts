@@ -101,6 +101,22 @@ export function createTestSandboxManager(): SandboxManager {
     return origAttach("mock", providerId, undefined);
   };
 
+  // Override getHandleByType to use mock provider
+  const origGetHandle = manager.getHandleByType.bind(manager);
+  manager.getHandleByType = async (_providerType, providerId, _envConfig) => {
+    return origGetHandle("mock", providerId, undefined);
+  };
+
+  // Override terminateByProviderId to use mock provider
+  const origTerminate = manager.terminateByProviderId.bind(manager);
+  manager.terminateByProviderId = async (
+    _providerType,
+    providerId,
+    _envConfig,
+  ) => {
+    return origTerminate("mock", providerId, undefined);
+  };
+
   return manager;
 }
 

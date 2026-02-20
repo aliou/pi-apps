@@ -377,6 +377,145 @@ describe("Sessions Routes", () => {
     });
   });
 
+  describe("GET /api/sessions/:id/sandbox", () => {
+    it("returns sandbox status for provisioned session", async () => {
+      const app = createApp({ services });
+
+      const createRes = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "chat" }),
+      });
+      const createJson = (await createRes.json()) as { data: { id: string } };
+      const sessionId = createJson.data.id;
+
+      // Wait for sandbox provisioning
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const res = await app.request(`/api/sessions/${sessionId}/sandbox`);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.sessionId).toBe(sessionId);
+      expect(json.data.status).toBeDefined();
+    });
+
+    it("returns stopped status for session without sandbox", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}/sandbox`);
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.status).toBe("stopped");
+      expect(json.data.capabilities).toBeNull();
+    });
+
+    it("returns 404 for nonexistent session", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions/nonexistent-id/sandbox");
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("POST /api/sessions/:id/restart", () => {
+    it("restarts a provisioned session", async () => {
+      const app = createApp({ services });
+
+      const createRes = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "chat" }),
+      });
+      const createJson = (await createRes.json()) as { data: { id: string } };
+      const sessionId = createJson.data.id;
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const res = await app.request(`/api/sessions/${sessionId}/restart`, {
+        method: "POST",
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.ok).toBe(true);
+      expect(json.data.sandboxStatus).toBe("creating");
+    });
+
+    it("returns 409 for archived session", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      services.sessionService.update(session.id, { status: "archived" });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}/restart`, {
+        method: "POST",
+      });
+
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.error).toContain("archived");
+    });
+
+    it("returns 404 for nonexistent session", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions/nonexistent-id/restart", {
+        method: "POST",
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("POST /api/sessions/:id/exec", () => {
+    it("returns 409 for session without sandbox", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+
+      const app = createApp({ services });
+      const res = await app.request(`/api/sessions/${session.id}/exec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: "echo hello" }),
+      });
+
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.error).toContain("No sandbox");
+    });
+
+    it("returns 400 for missing command", async () => {
+      const app = createApp({ services });
+
+      const createRes = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "chat" }),
+      });
+      const createJson = (await createRes.json()) as { data: { id: string } };
+      const sessionId = createJson.data.id;
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const res = await app.request(`/api/sessions/${sessionId}/exec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toContain("command is required");
+    });
+
+    it("returns 404 for nonexistent session", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions/nonexistent-id/exec", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: "echo hello" }),
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe("DELETE /api/sessions/:id", () => {
     it("deletes session", async () => {
       const session = services.sessionService.create({ mode: "chat" });

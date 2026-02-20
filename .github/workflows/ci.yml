@@ -50,6 +50,16 @@ jobs:
         working-directory: server/relay
         run: pnpm test
 
+      - name: Pull sandbox image
+        run: docker pull ghcr.io/aliou/pi-sandbox-codex-universal:latest
+
+      - name: Test (Docker integration)
+        working-directory: server/relay
+        env:
+          RUN_DOCKER_TESTS: "1"
+          PI_SANDBOX_IMAGE: ghcr.io/aliou/pi-sandbox-codex-universal:latest
+        run: pnpm test src/sandbox/docker.test.ts
+
   dashboard:
     name: Dashboard - Build & Test
     runs-on: ubuntu-latest
@@ -174,6 +184,14 @@ jobs:
           GONDOLIN_GUEST_DIR: ${{ runner.temp }}/gondolin-assets
         run: |
           pnpm exec gondolin exec -- /bin/bash -lc "pi --version && npm --version && pi --help >/dev/null"
+
+      - name: Test (Gondolin integration)
+        if: matrix.arch == 'x86_64'
+        working-directory: server/relay
+        env:
+          RUN_GONDOLIN_TESTS: "1"
+          GONDOLIN_IMAGE_OUT: ${{ runner.temp }}/gondolin-assets
+        run: pnpm test src/sandbox/gondolin/provider.test.ts
 
       - name: Upload Gondolin assets artifact
         uses: actions/upload-artifact@v4

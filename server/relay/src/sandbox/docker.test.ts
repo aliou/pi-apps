@@ -121,6 +121,57 @@ describe("DockerSandboxProvider", () => {
     );
   });
 
+  describe("exec", () => {
+    it.skipIf(!process.env.RUN_DOCKER_TESTS)(
+      "runs a command inside the container",
+      { timeout: 30_000 },
+      async () => {
+        if (!dockerAvailable) return;
+
+        const sessionId = `test-exec-${Date.now()}`;
+        const handle = await provider.createSandbox({ sessionId });
+
+        const result = await handle.exec!("echo hello");
+        expect(result.exitCode).toBe(0);
+        expect(result.output).toContain("hello");
+
+        await handle.terminate();
+      },
+    );
+
+    it.skipIf(!process.env.RUN_DOCKER_TESTS)(
+      "returns non-zero exit code on failure",
+      { timeout: 30_000 },
+      async () => {
+        if (!dockerAvailable) return;
+
+        const sessionId = `test-exec-fail-${Date.now()}`;
+        const handle = await provider.createSandbox({ sessionId });
+
+        const result = await handle.exec!("exit 42");
+        expect(result.exitCode).toBe(42);
+
+        await handle.terminate();
+      },
+    );
+
+    it.skipIf(!process.env.RUN_DOCKER_TESTS)(
+      "captures stderr in output",
+      { timeout: 30_000 },
+      async () => {
+        if (!dockerAvailable) return;
+
+        const sessionId = `test-exec-stderr-${Date.now()}`;
+        const handle = await provider.createSandbox({ sessionId });
+
+        const result = await handle.exec!("echo error >&2");
+        expect(result.output).toContain("error");
+
+        await handle.terminate();
+      },
+    );
+  });
+
   describe("getSandbox", () => {
     it.skipIf(!process.env.RUN_DOCKER_TESTS)(
       "throws for unknown container ID",
