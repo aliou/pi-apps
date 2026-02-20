@@ -20,6 +20,11 @@ await esbuild.build({
   format: "esm",
   outfile: "dist/index.js",
   sourcemap: true,
+  define: {
+    // Bake the commit SHA in at build time. Set GIT_COMMIT env before
+    // running `pnpm build` in CI. Falls back to "dev" for local builds.
+    "process.env.GIT_COMMIT": JSON.stringify(process.env.GIT_COMMIT ?? "dev"),
+  },
   // Externalize native deps and packages with CJS __dirname usage
   external: [
     "@earendil-works/gondolin",

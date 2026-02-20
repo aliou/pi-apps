@@ -25,6 +25,8 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source and build
 COPY . .
+ARG GIT_COMMIT=dev
+ENV GIT_COMMIT=$GIT_COMMIT
 RUN pnpm run build
 
 # Prune to production dependencies (keeps native addons already compiled)

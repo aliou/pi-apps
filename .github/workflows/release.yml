@@ -36,12 +36,20 @@ jobs:
           cache: pnpm
           cache-dependency-path: server/relay/pnpm-lock.yaml
 
+      - name: Resolve short SHA
+        id: sha
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "short=${SHA:0:7}" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         working-directory: server/relay
         run: pnpm install --frozen-lockfile
 
       - name: Build
         working-directory: server/relay
+        env:
+          GIT_COMMIT: ${{ steps.sha.outputs.short }}
         run: pnpm build
 
       - name: Copy migrations into dist
