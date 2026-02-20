@@ -1,3 +1,4 @@
+import { createLogger } from "../lib/logger";
 import type {
   EnvironmentSandboxConfig,
   SandboxManager,
@@ -6,6 +7,8 @@ import type { SandboxChannel, SandboxHandle } from "../sandbox/types";
 import type { ExtensionConfigService } from "./extension-config.service";
 import type { SecretsService } from "./secrets.service";
 import { writeExtensionSettings } from "./settings-generator";
+
+const log = createLogger("models-introspection");
 
 export interface IntrospectedModel {
   provider: string;
@@ -43,34 +46,53 @@ export class ModelsIntrospectionService {
     let channel: SandboxChannel | null = null;
 
     try {
+      log.info({ sessionId }, "starting model introspection");
+
       // Get secrets for the sandbox
       const secrets = await this.secretsService.getAllAsEnv();
 
       // Write settings.json with extension packages so pi loads them
-      writeExtensionSettings(
+      const packages = writeExtensionSettings(
         this.sessionDataDir,
         sessionId,
         this.extensionConfigService,
         "code",
       );
+      log.debug({ sessionId, packages }, "wrote extension settings");
 
       // Create ephemeral sandbox with real provider
+      log.debug({ sessionId }, "creating sandbox");
       handle = await this.sandboxManager.createForSession(
         sessionId,
         this.envConfig,
         { secrets },
       );
+      log.debug({ sessionId }, "sandbox created");
 
       // Wait for it to be running
+      log.debug({ sessionId }, "resuming sandbox");
       await handle.resume(secrets);
+      log.debug({ sessionId }, "sandbox resumed");
 
       // Attach and send RPC
+      log.debug({ sessionId }, "attaching to channel");
       channel = await handle.attach();
-      const models = await this.queryModels(channel);
+      log.debug({ sessionId }, "channel attached");
 
+      // Wait for pi to initialize by waiting for first output (with timeout)
+      log.debug({ sessionId }, "waiting for pi initialization");
+      await this.waitForPiReady(channel, sessionId, 10_000);
+
+      const models = await this.queryModels(channel, sessionId);
+
+      log.info(
+        { sessionId, modelCount: models.length },
+        "model introspection complete",
+      );
       return { models, error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      log.error({ sessionId, err: message }, "model introspection failed");
       return { models: [], error: message };
     } finally {
       // Tear down
@@ -78,6 +100,7 @@ export class ModelsIntrospectionService {
       if (handle) {
         try {
           await handle.terminate();
+          log.debug({ sessionId }, "sandbox terminated");
         } catch {
           // Best-effort cleanup
         }
@@ -90,24 +113,103 @@ export class ModelsIntrospectionService {
           recursive: true,
           force: true,
         });
+        log.debug({ sessionId }, "session data cleaned up");
       } catch {
         // Best-effort cleanup
       }
     }
   }
 
-  private queryModels(channel: SandboxChannel): Promise<IntrospectedModel[]> {
+  /**
+   * Wait for pi to be ready by listening for any output.
+   * This ensures pi has started before we send commands.
+   */
+  private waitForPiReady(
+    channel: SandboxChannel,
+    sessionId: string,
+    timeoutMs: number,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const commandId = `get-models-${Date.now()}`;
+      let resolved = false;
 
       const timeout = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
         unsubMessage();
+        unsubClose();
+        log.warn(
+          { sessionId, timeoutMs },
+          "pi readiness wait timed out, proceeding anyway",
+        );
+        resolve(); // Don't reject, just proceed
+      }, timeoutMs);
+
+      const unsubMessage = channel.onMessage((message) => {
+        if (resolved) return;
+        // Any output from pi means it's starting up
+        const preview = message.slice(0, 50).replace(/\n/g, "\\n");
+        log.debug({ sessionId, preview }, "pi output detected, proceeding");
+        resolved = true;
+        clearTimeout(timeout);
+        unsubMessage();
+        unsubClose();
+        resolve();
+      });
+
+      const unsubClose = channel.onClose((reason) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeout);
+        unsubMessage();
+        log.error({ sessionId, reason }, "channel closed while waiting for pi");
+        reject(new Error(`Channel closed: ${reason ?? "unknown reason"}`));
+      });
+    });
+  }
+
+  private queryModels(
+    channel: SandboxChannel,
+    sessionId: string,
+  ): Promise<IntrospectedModel[]> {
+    return new Promise((resolve, reject) => {
+      const commandId = `get-models-${Date.now()}`;
+      log.debug(
+        { sessionId, commandId },
+        "sending get_available_models command",
+      );
+
+      let resolved = false;
+
+      const cleanup = () => {
+        resolved = true;
+        unsubMessage();
+        unsubClose();
+        clearTimeout(timeout);
+      };
+
+      const timeout = setTimeout(() => {
+        if (resolved) return;
+        cleanup();
+        log.error(
+          {
+            sessionId,
+            commandId,
+            timeoutMs: ModelsIntrospectionService.TIMEOUT_MS,
+          },
+          "timeout waiting for response",
+        );
         reject(
           new Error("Timed out waiting for get_available_models response"),
         );
       }, ModelsIntrospectionService.TIMEOUT_MS);
 
       const unsubMessage = channel.onMessage((message) => {
+        if (resolved) return;
+
+        // Log first few characters for debugging (avoid logging secrets)
+        const preview = message.slice(0, 100).replace(/\n/g, "\\n");
+        log.debug({ sessionId, preview }, "received message from sandbox");
+
         try {
           const event = JSON.parse(message);
           if (
@@ -115,18 +217,37 @@ export class ModelsIntrospectionService {
             event.command === "get_available_models" &&
             event.id === commandId
           ) {
-            clearTimeout(timeout);
-            unsubMessage();
+            cleanup();
 
             if (event.success && event.data?.models) {
+              log.debug(
+                { sessionId, commandId, modelCount: event.data.models.length },
+                "received successful response",
+              );
               resolve(event.data.models as IntrospectedModel[]);
             } else {
-              reject(new Error(event.error ?? "get_available_models failed"));
+              const errorMsg = event.error ?? "get_available_models failed";
+              log.error(
+                { sessionId, commandId, error: errorMsg },
+                "command failed",
+              );
+              reject(new Error(errorMsg));
             }
           }
         } catch {
-          // Ignore non-JSON or unrelated messages
+          // Non-JSON message (npm output, etc.) - log at trace level
+          log.trace({ sessionId, preview }, "ignoring non-JSON message");
         }
+      });
+
+      const unsubClose = channel.onClose((reason) => {
+        if (resolved) return;
+        cleanup();
+        log.error(
+          { sessionId, commandId, reason },
+          "channel closed before response received",
+        );
+        reject(new Error(`Channel closed: ${reason ?? "unknown reason"}`));
       });
 
       // Send the RPC command
