@@ -74,6 +74,21 @@ export class ModelsIntrospectionService {
       await handle.resume(secrets);
       log.debug({ sessionId }, "sandbox resumed");
 
+      // Test pi is working before attaching
+      log.debug({ sessionId }, "testing pi executable");
+      const piTest = await handle.exec("which pi && pi --version");
+      log.debug(
+        {
+          sessionId,
+          exitCode: piTest.exitCode,
+          output: piTest.output.slice(0, 200),
+        },
+        "pi test result",
+      );
+      if (piTest.exitCode !== 0) {
+        throw new Error(`pi not available: ${piTest.output}`);
+      }
+
       // Attach and send RPC
       log.debug({ sessionId }, "attaching to channel");
       channel = await handle.attach();
