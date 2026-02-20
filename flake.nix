@@ -96,6 +96,7 @@
             pkgs.lib.optionalAttrs (system == "aarch64-linux") {
               relay = piPackages.relay;
               gondolin-assets = piPackages.gondolin-assets;
+              dashboard-oci = piPackages.dashboard-oci;
             };
 
           devShells.default = pkgs.mkShellNoCC {
