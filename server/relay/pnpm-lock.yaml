@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@earendil-works/gondolin':
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@hono/node-server':
         specifier: ^1.14.1
         version: 1.19.9(hono@4.11.9)
@@ -131,8 +131,8 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
-  '@earendil-works/gondolin@0.4.0':
-    resolution: {integrity: sha512-lXbes0lgVhladHErnqo1ezUAIW74tzGjid++IVFXO+yrMw/GdxoOHpgtO+0zerHAD/zomySgLR3YDhVg8G+pRA==}
+  '@earendil-works/gondolin@0.5.0':
+    resolution: {integrity: sha512-bwBVWsyZc2/F576RLnPbjzSrldFlRYBnL3BOpUfedsh85hVTMInE4yRjgCkf+ClkJXjPujf7nPY6gwG4jodCzg==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -1756,7 +1756,7 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@earendil-works/gondolin@0.4.0':
+  '@earendil-works/gondolin@0.5.0':
     dependencies:
       cbor: 10.0.11
       node-forge: 1.3.3

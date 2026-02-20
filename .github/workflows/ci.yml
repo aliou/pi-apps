@@ -172,7 +172,7 @@ jobs:
           GONDOLIN_CI_CONFIG: ${{ runner.temp }}/gondolin-ci-build-config.json
         run: |
           ./server/sandboxes/gondolin/scripts/setup-custom-assets.sh \
-            --gondolin-ref v0.4.0 \
+            --gondolin-ref v0.5.0 \
             --config "$GONDOLIN_CI_CONFIG" \
             --output "$GONDOLIN_ASSETS_OUT" \
             ${{ matrix.skip-smoke && '--skip-smoke' || '' }}

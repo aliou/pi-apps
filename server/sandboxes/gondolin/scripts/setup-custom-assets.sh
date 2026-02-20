@@ -8,12 +8,12 @@ source cloned into a temporary directory.
 
 Usage:
   ./server/sandboxes/gondolin/scripts/setup-custom-assets.sh \
-    [--gondolin-ref v0.4.0] \
+    [--gondolin-ref v0.5.0] \
     [--config /abs/path/to/build-config.json] \
     [--output /abs/path/to/assets-dir]
 
 Defaults:
-  gondolin-ref: v0.4.0
+  gondolin-ref: v0.5.0
   config: <repo>/server/sandboxes/gondolin/custom-assets.build-config.json
   output: <repo>/.dev/relay/cache/gondolin-custom/pi-runtime-main
 
@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 RELAY_DIR="$REPO_ROOT/server/relay"
 
-GONDOLIN_REF="v0.4.0"
+GONDOLIN_REF="v0.5.0"
 GONDOLIN_REPO_URL="https://github.com/earendil-works/gondolin.git"
 CONFIG_PATH="$REPO_ROOT/server/sandboxes/gondolin/custom-assets.build-config.json"
 OUTPUT_PATH="$REPO_ROOT/.dev/relay/cache/gondolin-custom/pi-runtime-main"
