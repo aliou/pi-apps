@@ -209,6 +209,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       "GIT_CONFIG_GLOBAL=/data/git/gitconfig",
     ];
 
+    if (githubToken) {
+      containerEnv.push(`GH_TOKEN=${githubToken}`);
+    }
+
     // Create secrets directory on host and write secret files
     const secretsDir = this.writeSecretsDir(sessionId, secrets);
     const binds = [

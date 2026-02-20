@@ -133,13 +133,17 @@ class CloudflareSandboxHandle implements SandboxHandle {
 
   async resume(
     secrets?: Record<string, string>,
-    _githubToken?: string,
+    githubToken?: string,
   ): Promise<void> {
     const envVars: Record<string, string> = {};
     if (secrets) {
       for (const [key, value] of Object.entries(secrets)) {
         envVars[key.toUpperCase()] = value;
       }
+    }
+
+    if (githubToken) {
+      envVars.GH_TOKEN = githubToken;
     }
 
     const response = await this.workerFetch(
@@ -413,6 +417,7 @@ export class CloudflareSandboxProvider implements SandboxProvider {
       secrets,
       repoUrl,
       repoBranch,
+      githubToken,
       nativeToolsEnabled,
     } = options;
 
@@ -427,6 +432,10 @@ export class CloudflareSandboxProvider implements SandboxProvider {
       for (const [key, value] of Object.entries(secrets)) {
         envVars[key.toUpperCase()] = value;
       }
+    }
+
+    if (githubToken) {
+      envVars.GH_TOKEN = githubToken;
     }
 
     const response = await this.workerFetch(`/api/sandboxes/${sessionId}`, {

@@ -309,6 +309,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
       nativeToolsEnabled: Boolean(nativeToolsEnabled),
       tier,
       imagePath,
+      githubToken,
     });
 
     const handle = new GondolinSandboxHandle(
@@ -329,6 +330,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
       },
     );
 
+    handle.setGithubToken(githubToken);
     this.handleCache.set(sessionId, handle);
     return handle;
   }
@@ -516,6 +518,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
     nativeToolsEnabled?: boolean;
     tier?: SandboxResourceTier;
     imagePath?: string;
+    githubToken?: string;
   }): Promise<VM> {
     const startedAt = Date.now();
     logger.debug(`createVm start session=${options.sessionId}`);
@@ -542,6 +545,10 @@ export class GondolinSandboxProvider implements SandboxProvider {
       sessionId: options.sessionId,
       secrets: options.secrets,
     });
+
+    if (options.githubToken) {
+      env.GH_TOKEN = options.githubToken;
+    }
 
     const createStartedAt = Date.now();
     const vm = await GondolinVM.create({
@@ -594,6 +601,7 @@ type HandleDeps = {
     nativeToolsEnabled?: boolean;
     tier?: SandboxResourceTier;
     imagePath?: string;
+    githubToken?: string;
   }) => Promise<VM>;
   writeGitConfig: (sessionId: string, githubToken?: string) => void;
   logStore: SandboxLogStore | null;
@@ -606,6 +614,7 @@ class GondolinSandboxHandle implements SandboxHandle {
   private vm: VM | null;
   private secrets: Record<string, string> = {};
   private config: HandleConfig;
+  private githubToken?: string;
 
   constructor(
     config: HandleConfig,
@@ -614,6 +623,10 @@ class GondolinSandboxHandle implements SandboxHandle {
     this.config = config;
     this.vm = config.vm;
     this._status = config.initialStatus;
+  }
+
+  setGithubToken(token?: string): void {
+    this.githubToken = token;
   }
 
   get sessionId(): string {
@@ -640,6 +653,7 @@ class GondolinSandboxHandle implements SandboxHandle {
       this.secrets = { ...secrets };
     }
 
+    this.githubToken = githubToken;
     this.deps.writeGitConfig(this.sessionId, githubToken);
 
     if (this._status === "running") {
@@ -659,6 +673,7 @@ class GondolinSandboxHandle implements SandboxHandle {
       nativeToolsEnabled: this.config.nativeToolsEnabled,
       tier: this.config.resourceTier,
       imagePath: this.config.imagePath,
+      githubToken: this.githubToken,
     });
     this.setStatus("running");
   }
@@ -766,6 +781,9 @@ class GondolinSandboxHandle implements SandboxHandle {
       sessionId: this.sessionId,
       secrets: this.secrets,
     });
+    if (this.githubToken) {
+      env.GH_TOKEN = this.githubToken;
+    }
 
     const cmd = this.config.nativeToolsEnabled
       ? "/usr/local/bin/pi --mode rpc --continue -e /run/extensions/native-bridge.ts"

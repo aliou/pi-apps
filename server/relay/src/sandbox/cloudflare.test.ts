@@ -150,6 +150,20 @@ describe("CloudflareSandboxProvider", () => {
         provider.createSandbox({ sessionId: "test-fail" }),
       ).rejects.toThrow("Failed to create sandbox: 500");
     });
+
+    it("injects GH_TOKEN when githubToken is provided", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response('{"status":"running"}', { status: 200 }),
+      );
+      const provider = new CloudflareSandboxProvider(CONFIG);
+      await provider.createSandbox({
+        sessionId: "test-gh",
+        githubToken: "ghp_test123",
+      });
+
+      const body = JSON.parse(getCall(0)[1]?.body as string);
+      expect(body.envVars.GH_TOKEN).toBe("ghp_test123");
+    });
   });
 
   describe("getSandbox", () => {
@@ -312,6 +326,18 @@ describe("CloudflareSandboxHandle", () => {
         new Response("Container gone", { status: 500 }),
       );
       await expect(handle.resume()).rejects.toThrow("Resume failed: 500");
+    });
+
+    it("injects GH_TOKEN when githubToken is provided", async () => {
+      const handle = await createHandle();
+
+      mockFetch.mockResolvedValueOnce(
+        new Response('{"status":"running"}', { status: 200 }),
+      );
+      await handle.resume({ anthropic_api_key: "sk-new" }, "ghp_resume123");
+
+      const body = JSON.parse(getCall(1)[1]?.body as string);
+      expect(body.envVars.GH_TOKEN).toBe("ghp_resume123");
     });
   });
 
