@@ -2,6 +2,7 @@ import {
   CodeIcon,
   CubeIcon,
   GearIcon,
+  GitBranchIcon,
   GithubLogoIcon,
   KeyIcon,
   PackageIcon,
@@ -11,6 +12,7 @@ import { cn } from "../lib/utils";
 
 const SETTINGS_ITEMS = [
   { to: "/settings/secrets", label: "Secrets", icon: KeyIcon },
+  { to: "/settings/git", label: "Git", icon: GitBranchIcon },
   { to: "/settings/github", label: "GitHub", icon: GithubLogoIcon },
   { to: "/settings/environments", label: "Environments", icon: CubeIcon },
   { to: "/settings/models", label: "Models", icon: CodeIcon },

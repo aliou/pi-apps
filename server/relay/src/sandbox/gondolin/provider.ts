@@ -14,6 +14,7 @@ import {
   type VM,
 } from "@earendil-works/gondolin";
 import { createLogger } from "../../lib/logger";
+import { writeGitConfig } from "../git-config";
 import type { SandboxLogStore } from "../log-store";
 import type { SandboxResourceTier } from "../provider-types";
 import type {
@@ -259,6 +260,8 @@ export class GondolinSandboxProvider implements SandboxProvider {
       repoUrl,
       repoBranch,
       githubToken,
+      gitAuthorName,
+      gitAuthorEmail,
       nativeToolsEnabled,
     } = options;
 
@@ -275,7 +278,12 @@ export class GondolinSandboxProvider implements SandboxProvider {
     mkdirSync(workspaceDir, { recursive: true });
     mkdirSync(agentDir, { recursive: true });
 
-    this.setupGitConfig(gitDir, githubToken);
+    writeGitConfig(gitDir, {
+      githubToken,
+      gitAuthorName,
+      gitAuthorEmail,
+      credentialHelperPath: "/git",
+    });
 
     if (repoUrl) {
       await this.cloneRepoIntoDir(
@@ -423,29 +431,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
     githubToken?: string,
   ): void {
     const gitDir = join(this.getSessionDataPath(sessionId), "git");
-    this.setupGitConfig(gitDir, githubToken);
-  }
-
-  private setupGitConfig(gitDir: string, githubToken?: string): void {
-    mkdirSync(gitDir, { recursive: true });
-
-    const helperScript = githubToken
-      ? `#!/bin/sh\necho "protocol=https\nhost=github.com\nusername=x-access-token\npassword=${githubToken}"\n`
-      : "#!/bin/sh\n";
-    const helperPath = join(gitDir, "git-credential-helper");
-    writeFileSync(helperPath, helperScript, { mode: 0o700 });
-
-    const lines = [
-      "[user]",
-      '\tname = "pi-sandbox"',
-      '\temail = "pi-sandbox@noreply.github.com"',
-      "[safe]",
-      "\tdirectory = /workspace",
-    ];
-    if (githubToken) {
-      lines.push("[credential]", "\thelper = /git/git-credential-helper");
-    }
-    writeFileSync(join(gitDir, "gitconfig"), `${lines.join("\n")}\n`);
+    writeGitConfig(gitDir, { githubToken, credentialHelperPath: "/git" });
   }
 
   private async cloneRepoIntoDir(

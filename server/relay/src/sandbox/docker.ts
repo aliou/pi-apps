@@ -6,6 +6,7 @@ import readline from "node:readline";
 import { type Duplex, PassThrough } from "node:stream";
 import Docker from "dockerode";
 import { createLogger } from "../lib/logger";
+import { writeGitConfig } from "./git-config";
 import type { SandboxLogStore } from "./log-store";
 import type { SandboxResourceTier } from "./provider-types";
 import type {
@@ -161,6 +162,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       repoUrl,
       repoBranch,
       githubToken,
+      gitAuthorName,
+      gitAuthorEmail,
       nativeToolsEnabled,
     } = options;
 
@@ -182,7 +185,12 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // Set up git configuration (credentials + user identity)
     const gitDir = join(sessionDir, "git");
-    this.setupGitConfig(gitDir, githubToken);
+    writeGitConfig(gitDir, {
+      githubToken,
+      gitAuthorName,
+      gitAuthorEmail,
+      credentialHelperPath: "/data/git",
+    });
 
     // If repo URL provided, clone it into the workspace dir
     if (repoUrl) {
@@ -442,31 +450,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     githubToken?: string,
   ): void {
     const gitDir = join(this.getSessionDataPath(sessionId), "git");
-    this.setupGitConfig(gitDir, githubToken);
-  }
-
-  private setupGitConfig(gitDir: string, githubToken?: string): void {
-    mkdirSync(gitDir, { recursive: true });
-
-    // Credential helper script: echoes the GitHub token for github.com
-    const helperScript = githubToken
-      ? `#!/bin/sh\necho "protocol=https\nhost=github.com\nusername=x-access-token\npassword=${githubToken}"\n`
-      : "#!/bin/sh\n";
-    const helperPath = join(gitDir, "git-credential-helper");
-    writeFileSync(helperPath, helperScript, { mode: 0o700 });
-
-    // gitconfig
-    const lines = [
-      "[user]",
-      '\tname = "pi-sandbox"',
-      '\temail = "pi-sandbox@noreply.github.com"',
-      "[safe]",
-      "\tdirectory = /workspace",
-    ];
-    if (githubToken) {
-      lines.push("[credential]", "\thelper = /data/git/git-credential-helper");
-    }
-    writeFileSync(join(gitDir, "gitconfig"), `${lines.join("\n")}\n`);
+    writeGitConfig(gitDir, { githubToken, credentialHelperPath: "/data/git" });
   }
 
   private async cloneRepoIntoDir(

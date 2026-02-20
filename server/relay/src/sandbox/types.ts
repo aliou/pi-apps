@@ -148,6 +148,11 @@ export interface CreateSandboxOptions {
   /** GitHub PAT for git push and private repo clone */
   githubToken?: string;
 
+  /** Git author name for commits inside the sandbox */
+  gitAuthorName?: string;
+  /** Git author email for commits inside the sandbox */
+  gitAuthorEmail?: string;
+
   /** Provider-neutral resource tier. Provider maps to specific limits. */
   resourceTier?: SandboxResourceTier;
 

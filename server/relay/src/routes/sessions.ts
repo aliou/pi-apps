@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
+import type { AppDatabase } from "../db/connection";
 import { settings } from "../db/schema";
 import { createLogger } from "../lib/logger";
 import {
@@ -37,6 +38,17 @@ interface ClientCapabilitiesRequest {
   capabilities: {
     extensionUI: boolean;
   };
+}
+
+/** Read a string setting from the DB. Values are stored as JSON strings. */
+function readStringSetting(db: AppDatabase, key: string): string | undefined {
+  const row = db.select().from(settings).where(eq(settings.key, key)).get();
+  if (!row) return undefined;
+  try {
+    return JSON.parse(row.value) as string;
+  } catch {
+    return row.value;
+  }
 }
 
 export function sessionsRoutes(): Hono<AppEnv> {
@@ -126,14 +138,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
     if (body.mode === "code") {
       // Read GitHub token for repo resolution and sandbox git auth
       const db = c.get("db");
-      const tokenSetting = db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, "github_repos_access_token"))
-        .get();
-      if (tokenSetting) {
-        githubToken = JSON.parse(tokenSetting.value) as string;
-      }
+      githubToken = readStringSetting(db, "github_repos_access_token");
 
       // Resolve repo for cloning — fetch live from GitHub, persist on use
       if (body.repoId) {
@@ -201,6 +206,11 @@ export function sessionsRoutes(): Hono<AppEnv> {
       // Read secrets fresh for sandbox injection
       const secrets = await secretsService.getAllAsEnv();
 
+      // Read git author settings
+      const settingsDb = c.get("db");
+      const gitAuthorName = readStringSetting(settingsDb, "git_author_name");
+      const gitAuthorEmail = readStringSetting(settingsDb, "git_author_email");
+
       // Resolve environment config
       let resolvedEnvConfig: EnvironmentSandboxConfig | undefined;
       if (environmentId) {
@@ -226,6 +236,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
                 repoUrl,
                 repoBranch,
                 githubToken,
+                gitAuthorName,
+                gitAuthorEmail,
                 secrets,
                 resourceTier: environmentConfig?.resourceTier,
                 nativeToolsEnabled: body.nativeToolsEnabled,
@@ -422,14 +434,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
             "activate secrets-loaded",
           );
           // Read GitHub token for git credential refresh
-          const tokenSetting = db
-            .select()
-            .from(settings)
-            .where(eq(settings.key, "github_repos_access_token"))
-            .get();
-          const ghToken = tokenSetting
-            ? (JSON.parse(tokenSetting.value) as string)
-            : undefined;
+          const ghToken = readStringSetting(db, "github_repos_access_token");
           logger.info(
             {
               sessionId: id,
@@ -815,16 +820,11 @@ export function sessionsRoutes(): Hono<AppEnv> {
         session.mode as "chat" | "code",
       );
 
-      // 3. Load secrets and GitHub token
+      // 3. Load secrets, GitHub token, and git author settings
       const secrets = await secretsService.getAllAsEnv();
-      const tokenSetting = db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, "github_repos_access_token"))
-        .get();
-      const githubToken = tokenSetting
-        ? (JSON.parse(tokenSetting.value) as string)
-        : undefined;
+      const githubToken = readStringSetting(db, "github_repos_access_token");
+      const gitAuthorName = readStringSetting(db, "git_author_name");
+      const gitAuthorEmail = readStringSetting(db, "git_author_email");
 
       // 4. Resolve repo info for sandbox creation
       const repoService = c.get("repoService");
@@ -862,6 +862,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
           repoUrl,
           repoBranch,
           githubToken,
+          gitAuthorName,
+          gitAuthorEmail,
           secrets,
           resourceTier: environmentConfig?.resourceTier,
           nativeToolsEnabled:
