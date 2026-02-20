@@ -10,12 +10,11 @@ import {
 } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EnvironmentConfig } from "../services/environment.service";
-import { preInstallExtensions } from "../services/extension-installer";
 import type { SessionMode, SessionRecord } from "../services/session.service";
 import { readSessionHistory } from "../services/session-history";
 import {
   buildSettingsJson,
-  writeSessionSettings,
+  writeExtensionSettings,
 } from "../services/settings-generator";
 
 interface CreateSessionRequest {
@@ -192,25 +191,12 @@ export function sessionsRoutes(): Hono<AppEnv> {
       });
 
       // Write settings.json for extension packages (before sandbox starts)
-      const packages = extensionConfigService.getResolvedPackages(
+      const packages = writeExtensionSettings(
+        sessionDataDir,
         session.id,
+        extensionConfigService,
         body.mode as "chat" | "code",
       );
-      if (sandboxProvider === "gondolin" && packages.length > 0) {
-        const agentDir = join(sessionDataDir, session.id, "agent");
-        const extensionPaths = await preInstallExtensions(
-          agentDir,
-          packages,
-          "/agent/extensions",
-        );
-        writeSessionSettings(sessionDataDir, session.id, {
-          extensions: extensionPaths,
-        });
-      } else {
-        writeSessionSettings(sessionDataDir, session.id, {
-          packages,
-        });
-      }
 
       // Read secrets fresh for sandbox injection
       const secrets = await secretsService.getAllAsEnv();
@@ -410,28 +396,12 @@ export function sessionsRoutes(): Hono<AppEnv> {
           const settingsStartedAt = Date.now();
           const extensionConfigService = c.get("extensionConfigService");
           const sessionDataDir = c.get("sessionDataDir");
-          const extPackages = extensionConfigService.getResolvedPackages(
+          const extPackages = writeExtensionSettings(
+            sessionDataDir,
             id,
+            extensionConfigService,
             current.mode as "chat" | "code",
           );
-          if (
-            current.sandboxProvider === "gondolin" &&
-            extPackages.length > 0
-          ) {
-            const agentDir = join(sessionDataDir, id, "agent");
-            const extensionPaths = await preInstallExtensions(
-              agentDir,
-              extPackages,
-              "/agent/extensions",
-            );
-            writeSessionSettings(sessionDataDir, id, {
-              extensions: extensionPaths,
-            });
-          } else {
-            writeSessionSettings(sessionDataDir, id, {
-              packages: extPackages,
-            });
-          }
           logger.debug(
             {
               sessionId: id,
@@ -838,25 +808,12 @@ export function sessionsRoutes(): Hono<AppEnv> {
       }
 
       // 2. Regenerate settings.json
-      const extPackages = extensionConfigService.getResolvedPackages(
+      const extPackages = writeExtensionSettings(
+        sessionDataDir,
         id,
+        extensionConfigService,
         session.mode as "chat" | "code",
       );
-      if (sandboxProvider === "gondolin" && extPackages.length > 0) {
-        const agentDir = join(sessionDataDir, id, "agent");
-        const extensionPaths = await preInstallExtensions(
-          agentDir,
-          extPackages,
-          "/agent/extensions",
-        );
-        writeSessionSettings(sessionDataDir, id, {
-          extensions: extensionPaths,
-        });
-      } else {
-        writeSessionSettings(sessionDataDir, id, {
-          packages: extPackages,
-        });
-      }
 
       // 3. Load secrets and GitHub token
       const secrets = await secretsService.getAllAsEnv();

@@ -1,6 +1,11 @@
-import type { SandboxManager } from "../sandbox/manager";
+import type {
+  EnvironmentSandboxConfig,
+  SandboxManager,
+} from "../sandbox/manager";
 import type { SandboxChannel, SandboxHandle } from "../sandbox/types";
+import type { ExtensionConfigService } from "./extension-config.service";
 import type { SecretsService } from "./secrets.service";
+import { writeExtensionSettings } from "./settings-generator";
 
 export interface IntrospectedModel {
   provider: string;
@@ -14,19 +19,22 @@ export interface ModelsIntrospectionResult {
 }
 
 /**
- * Queries available models via Pi RPC by spinning up an ephemeral sandbox,
- * sending `get_available_models`, and tearing it down.
+ * Queries available models via Pi RPC by spinning up an ephemeral Gondolin
+ * sandbox, sending `get_available_models`, and tearing it down.
  *
  * This captures extension-defined providers/models that the built-in
  * pi-ai provider list does not include.
  */
 export class ModelsIntrospectionService {
   /** Timeout for the entire introspection flow (sandbox create + RPC round-trip). */
-  private static readonly TIMEOUT_MS = 30_000;
+  private static readonly TIMEOUT_MS = 60_000;
 
   constructor(
     private sandboxManager: SandboxManager,
     private secretsService: SecretsService,
+    private extensionConfigService: ExtensionConfigService,
+    private sessionDataDir: string,
+    private envConfig: EnvironmentSandboxConfig,
   ) {}
 
   async getModels(): Promise<ModelsIntrospectionResult> {
@@ -38,10 +46,20 @@ export class ModelsIntrospectionService {
       // Get secrets for the sandbox
       const secrets = await this.secretsService.getAllAsEnv();
 
-      // Create ephemeral sandbox
-      handle = await this.sandboxManager.createMockForSession(sessionId, {
-        secrets,
-      });
+      // Write settings.json with extension packages so pi loads them
+      writeExtensionSettings(
+        this.sessionDataDir,
+        sessionId,
+        this.extensionConfigService,
+        "code",
+      );
+
+      // Create ephemeral sandbox with real provider
+      handle = await this.sandboxManager.createForSession(
+        sessionId,
+        this.envConfig,
+        { secrets },
+      );
 
       // Wait for it to be running
       await handle.resume(secrets);
@@ -63,6 +81,17 @@ export class ModelsIntrospectionService {
         } catch {
           // Best-effort cleanup
         }
+      }
+      // Clean up ephemeral session data directory
+      try {
+        const { join } = await import("node:path");
+        const { rmSync } = await import("node:fs");
+        rmSync(join(this.sessionDataDir, sessionId), {
+          recursive: true,
+          force: true,
+        });
+      } catch {
+        // Best-effort cleanup
       }
     }
   }

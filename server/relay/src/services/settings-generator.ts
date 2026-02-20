@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { ExtensionConfigService } from "./extension-config.service";
 
 /**
  * Pi settings.json structure (subset -- only the fields we generate).
@@ -11,6 +12,25 @@ import { join } from "node:path";
 interface PiSettings {
   packages?: string[];
   extensions?: string[];
+}
+
+/**
+ * Resolve extension packages for a session and write settings.json.
+ * This is the single entry point for all callers (session create, activate,
+ * restart, model introspection). Pi installs the packages at startup.
+ *
+ * Returns the resolved package list so callers that need it (e.g. Cloudflare
+ * exec path) can reuse it without re-querying.
+ */
+export function writeExtensionSettings(
+  sessionDataDir: string,
+  sessionId: string,
+  extensionConfigService: ExtensionConfigService,
+  mode: "chat" | "code",
+): string[] {
+  const packages = extensionConfigService.getResolvedPackages(sessionId, mode);
+  writeSessionSettings(sessionDataDir, sessionId, { packages });
+  return packages;
 }
 
 /**

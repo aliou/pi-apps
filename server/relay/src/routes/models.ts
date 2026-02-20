@@ -1,70 +1,79 @@
-import { getEnvApiKey, getModels, getProviders } from "@mariozechner/pi-ai";
+import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
+import { createLogger } from "../lib/logger";
+import { resolveEnvConfig } from "../sandbox/manager";
+import type { IntrospectedModel } from "../services/models-introspection.service";
 import { ModelsIntrospectionService } from "../services/models-introspection.service";
 
+const log = createLogger("models");
+
 /**
- * Models API - returns available models based on configured secrets.
+ * Models API - returns available models via Pi RPC introspection.
  *
- * Determines which providers have credentials by querying enabled secrets
- * with kind=ai_provider from the DB. Temporarily sets dummy env vars so
- * pi-ai's getEnvApiKey() returns truthy for those providers.
+ * Spins up an ephemeral Gondolin sandbox, sends get_available_models to
+ * the pi agent, and returns the result. This includes both built-in
+ * provider models and extension-defined models.
  *
- * This uses pi-ai's built-in provider list only. Custom providers from
- * extensions are not included. For the full list including extensions,
- * use get_available_models via RPC on an active session.
+ * Results are cached and auto-invalidated when the fingerprint of
+ * (extension packages + secret values) changes.
  */
 export function modelsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
+  let cachedFingerprint: string | null = null;
+  let cachedModels: IntrospectedModel[] | null = null;
+
   app.get("/", async (c) => {
-    const secretsService = c.get("secretsService");
-
-    // Get env var names for enabled ai_provider secrets
-    const configuredEnvVars =
-      await secretsService.getEnabledEnvVarsByKind("ai_provider");
-
-    // Temporarily set dummy values so getEnvApiKey() returns truthy
-    const originalValues: Record<string, string | undefined> = {};
-    for (const envVar of configuredEnvVars) {
-      originalValues[envVar] = process.env[envVar];
-      process.env[envVar] = "configured";
-    }
-
-    try {
-      const availableModels = getProviders()
-        .filter((provider) => getEnvApiKey(provider))
-        .flatMap((provider) => getModels(provider));
-
-      return c.json({ data: availableModels, error: null });
-    } finally {
-      // Restore original env values
-      for (const envVar of configuredEnvVars) {
-        if (originalValues[envVar] === undefined) {
-          delete process.env[envVar];
-        } else {
-          process.env[envVar] = originalValues[envVar];
-        }
-      }
-    }
-  });
-
-  /**
-   * GET /api/models/full
-   *
-   * Returns models from Pi RPC, including extension-defined providers.
-   * Spins up an ephemeral sandbox, sends get_available_models, tears down.
-   */
-  app.get("/full", async (c) => {
     const sandboxManager = c.get("sandboxManager");
     const secretsService = c.get("secretsService");
+    const extensionConfigService = c.get("extensionConfigService");
+    const environmentService = c.get("environmentService");
+    const sessionDataDir = c.get("sessionDataDir");
+
+    // Compute fingerprint from current state
+    const packages = extensionConfigService.getResolvedPackages("_introspect", "code");
+    const secrets = await secretsService.getAllAsEnv();
+    const fingerprint = computeFingerprint(packages, secrets);
+
+    // Return cached result if fingerprint matches
+    if (cachedFingerprint === fingerprint && cachedModels !== null) {
+      log.debug("returning cached models");
+      return c.json({ data: cachedModels, error: null });
+    }
+
+    log.info(
+      { previousFingerprint: cachedFingerprint, newFingerprint: fingerprint },
+      "cache miss, running introspection",
+    );
+
+    // Find a gondolin environment to use for introspection
+    const allEnvs = environmentService.list();
+    const gondolinEnv = allEnvs.find((e) => e.sandboxType === "gondolin");
+    if (!gondolinEnv) {
+      return c.json({
+        data: [],
+        error: "No gondolin environment configured. Required for full model introspection.",
+      }, 500);
+    }
+
+    const envConfig = await resolveEnvConfig(gondolinEnv, secretsService);
 
     const introspection = new ModelsIntrospectionService(
       sandboxManager,
       secretsService,
+      extensionConfigService,
+      sessionDataDir,
+      envConfig,
     );
 
     const result = await introspection.getModels();
+
+    // Only cache successful results
+    if (!result.error) {
+      cachedFingerprint = fingerprint;
+      cachedModels = result.models;
+    }
 
     if (result.error) {
       return c.json({ data: result.models, error: result.error });
@@ -74,4 +83,30 @@ export function modelsRoutes(): Hono<AppEnv> {
   });
 
   return app;
+}
+
+/**
+ * Compute a fingerprint from the inputs that affect model availability.
+ * Changes to extension packages or secret values produce a different hash.
+ */
+function computeFingerprint(
+  packages: string[],
+  secrets: Record<string, string>,
+): string {
+  const hash = createHash("sha256");
+
+  // Extension packages (sorted for stability)
+  for (const pkg of [...packages].sort()) {
+    hash.update(`pkg:${pkg}\n`);
+  }
+
+  // Secret env var names + values (sorted by name for stability)
+  const sortedEntries = Object.entries(secrets).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  for (const [name, value] of sortedEntries) {
+    hash.update(`secret:${name}:${value}\n`);
+  }
+
+  return hash.digest("hex");
 }
