@@ -439,6 +439,8 @@ export class GondolinSandboxProvider implements SandboxProvider {
       "[user]",
       '\tname = "pi-sandbox"',
       '\temail = "pi-sandbox@noreply.github.com"',
+      "[safe]",
+      "\tdirectory = /workspace",
     ];
     if (githubToken) {
       lines.push("[credential]", "\thelper = /git/git-credential-helper");

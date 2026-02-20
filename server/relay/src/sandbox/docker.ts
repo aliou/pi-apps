@@ -460,6 +460,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       "[user]",
       '\tname = "pi-sandbox"',
       '\temail = "pi-sandbox@noreply.github.com"',
+      "[safe]",
+      "\tdirectory = /workspace",
     ];
     if (githubToken) {
       lines.push("[credential]", "\thelper = /data/git/git-credential-helper");
