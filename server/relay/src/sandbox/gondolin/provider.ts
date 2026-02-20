@@ -707,8 +707,8 @@ class GondolinSandboxHandle implements SandboxHandle {
     });
 
     const cmd = this.config.nativeToolsEnabled
-      ? "/usr/local/bin/pi --mode rpc -e /run/extensions/native-bridge.ts"
-      : "/usr/local/bin/pi --mode rpc";
+      ? "/usr/local/bin/pi --mode rpc --continue -e /run/extensions/native-bridge.ts"
+      : "/usr/local/bin/pi --mode rpc --continue";
 
     logger.debug(
       { sessionId: this.sessionId, cmd, envKeys: Object.keys(env) },

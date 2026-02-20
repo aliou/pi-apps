@@ -236,9 +236,10 @@ export class DockerSandboxProvider implements SandboxProvider {
             "pi",
             "--mode",
             "rpc",
+            "--continue",
             ...containerExtensionPaths.flatMap((p) => ["-e", p]),
           ]
-        : undefined; // use image default CMD
+        : ["pi", "--mode", "rpc", "--continue"];
 
     // Always pull to get latest image (digest is stored per-session)
     await this.pullImage(this.config.image);

@@ -66,11 +66,14 @@ export function readSessionHistory(agentDir: string): SessionEntry[] | null {
 
   if (jsonlFiles.length === 0) return null;
 
-  // Pick the most recently modified file
-  jsonlFiles.sort((a, b) => b.mtime - a.mtime);
-  const latestFile = jsonlFiles[0];
-  if (!latestFile) return null;
+  // Sort oldest-first so entries are in chronological order across sessions.
+  jsonlFiles.sort((a, b) => a.mtime - b.mtime);
 
-  const content = readFileSync(latestFile.path, "utf-8");
-  return parseSessionEntries(content);
+  const allEntries: SessionEntry[] = [];
+  for (const file of jsonlFiles) {
+    const content = readFileSync(file.path, "utf-8");
+    allEntries.push(...parseSessionEntries(content));
+  }
+
+  return allEntries.length > 0 ? allEntries : null;
 }
