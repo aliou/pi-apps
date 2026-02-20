@@ -30,7 +30,7 @@ export interface ModelsIntrospectionResult {
  */
 export class ModelsIntrospectionService {
   /** Timeout for the entire introspection flow (sandbox create + RPC round-trip). */
-  private static readonly TIMEOUT_MS = 60_000;
+  private static readonly TIMEOUT_MS = 15_000;
 
   constructor(
     private sandboxManager: SandboxManager,
@@ -41,6 +41,21 @@ export class ModelsIntrospectionService {
   ) {}
 
   async getModels(): Promise<ModelsIntrospectionResult> {
+    // Add overall timeout for the entire introspection
+    return Promise.race([
+      this.getIntrospectionWithTimeout(),
+      new Promise<ModelsIntrospectionResult>((resolve) =>
+        setTimeout(() => {
+          resolve({
+            models: [],
+            error: `Models introspection timed out after ${ModelsIntrospectionService.TIMEOUT_MS}ms`,
+          });
+        }, ModelsIntrospectionService.TIMEOUT_MS),
+      ),
+    ]);
+  }
+
+  private async getIntrospectionWithTimeout(): Promise<ModelsIntrospectionResult> {
     const sessionId = `introspect-models-${Date.now()}`;
     let handle: SandboxHandle | null = null;
     let channel: SandboxChannel | null = null;
