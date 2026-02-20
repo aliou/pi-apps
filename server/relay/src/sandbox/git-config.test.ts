@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -19,21 +19,36 @@ describe("writeGitConfig", () => {
     return {
       gitconfig: readFileSync(join(gitDir, "gitconfig"), "utf-8"),
       helper: readFileSync(join(gitDir, "git-credential-helper"), "utf-8"),
+      tokenFile: existsSync(join(gitDir, "git-credential-token"))
+        ? readFileSync(join(gitDir, "git-credential-token"), "utf-8")
+        : null,
     };
   }
 
-  it("writes credential helper with token", () => {
-    const { helper } = setup({
+  it("writes token to separate file and helper reads from it", () => {
+    const { helper, tokenFile } = setup({
       githubToken: "ghp_abc123",
       credentialHelperPath: "/git",
     });
-    expect(helper).toContain("password=ghp_abc123");
-    expect(helper).toContain("username=x-access-token");
+    expect(tokenFile).toBe("ghp_abc123");
+    expect(helper).toContain("git-credential-token");
+    expect(helper).not.toContain("ghp_abc123");
+  });
+
+  it("does not embed token with shell metacharacters in helper script", () => {
+    const { helper, tokenFile } = setup({
+      githubToken: '$(evil) `cmd` "quotes" $VAR',
+      credentialHelperPath: "/git",
+    });
+    expect(tokenFile).toBe('$(evil) `cmd` "quotes" $VAR');
+    expect(helper).not.toContain("$(evil)");
+    expect(helper).not.toContain("`cmd`");
   });
 
   it("writes empty helper without token", () => {
-    const { helper } = setup({ credentialHelperPath: "/git" });
+    const { helper, tokenFile } = setup({ credentialHelperPath: "/git" });
     expect(helper).toBe("#!/bin/sh\n");
+    expect(tokenFile).toBeNull();
   });
 
   it("uses default author when not provided", () => {

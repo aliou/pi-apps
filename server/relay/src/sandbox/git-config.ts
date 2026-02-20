@@ -20,8 +20,19 @@ export function writeGitConfig(gitDir: string, opts: GitConfigOptions): void {
   const { githubToken, credentialHelperPath } = opts;
   mkdirSync(gitDir, { recursive: true });
 
+  if (githubToken) {
+    // Write token to a separate file to avoid shell injection via metacharacters.
+    writeFileSync(join(gitDir, "git-credential-token"), githubToken, {
+      mode: 0o600,
+    });
+  }
   const helperScript = githubToken
-    ? `#!/bin/sh\necho "protocol=https\nhost=github.com\nusername=x-access-token\npassword=${githubToken}"\n`
+    ? [
+        "#!/bin/sh",
+        `TOKEN=$(cat "$(dirname "$0")/git-credential-token")`,
+        'printf "protocol=https\\nhost=github.com\\nusername=x-access-token\\npassword=%s\\n" "$TOKEN"',
+        "",
+      ].join("\n")
     : "#!/bin/sh\n";
   writeFileSync(join(gitDir, "git-credential-helper"), helperScript, {
     mode: 0o700,
