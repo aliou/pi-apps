@@ -30,7 +30,7 @@ export interface ModelsIntrospectionResult {
  */
 export class ModelsIntrospectionService {
   /** Timeout for the entire introspection flow (sandbox create + RPC round-trip). */
-  private static readonly TIMEOUT_MS = 15_000;
+  private static readonly TIMEOUT_MS = 10_000;
 
   constructor(
     private sandboxManager: SandboxManager,
