@@ -250,6 +250,28 @@ export interface ProbeResult {
   error?: string;
 }
 
+// Sandbox
+export interface SandboxStatusResponse {
+  sessionId: string;
+  provider: string | null;
+  providerId: string | null;
+  status: string; // "running" | "stopped" | "creating" | "error" etc
+  capabilities: {
+    exec: boolean;
+    restart: boolean;
+  } | null;
+}
+
+export interface SandboxRestartResponse {
+  ok: boolean;
+  sandboxStatus: string;
+}
+
+export interface SandboxExecResponse {
+  exitCode: number;
+  output: string;
+}
+
 // Extension configs
 export type ExtensionScope = "global" | "chat" | "code" | "session";
 

@@ -1,5 +1,6 @@
 import {
   ArchiveBoxIcon,
+  ArrowClockwiseIcon,
   ArrowLeftIcon,
   BugIcon,
   ChatCircleIcon,
@@ -12,7 +13,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { ConversationView } from "../components/conversation-view";
 import { DebugView } from "../components/debug-view";
+import { SandboxExec } from "../components/sandbox-exec";
 import { StatusBadge } from "../components/status-badge";
+import { Button } from "../components/ui/button";
 import {
   type ActivateResponse,
   api,
@@ -20,6 +23,8 @@ import {
   getClientId,
   type JournalEvent,
   RELAY_URL,
+  type SandboxStatusResponse,
+  type SandboxRestartResponse,
   type Session,
   setClientCapabilities,
 } from "../lib/api";
@@ -103,6 +108,63 @@ function ViewToggle({
   );
 }
 
+function useSandboxStatus(
+  sessionId: string | undefined,
+): SandboxStatusResponse | null {
+  const [sandboxStatus, setSandboxStatus] =
+    useState<SandboxStatusResponse | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const fetchStatus = async () => {
+      const res = await api.get<SandboxStatusResponse>(
+        `/sessions/${sessionId}/sandbox`,
+      );
+      if (res.data) {
+        setSandboxStatus(res.data);
+      }
+    };
+
+    void fetchStatus();
+    const interval = setInterval(() => void fetchStatus(), 5000);
+    return () => clearInterval(interval);
+  }, [sessionId]);
+
+  return sandboxStatus;
+}
+
+function SandboxBadge({ status }: { status: SandboxStatusResponse }) {
+  const colors: Record<string, string> = {
+    running: "bg-status-ok/20 text-status-ok",
+    stopped: "bg-muted/20 text-muted",
+    creating: "bg-status-warn/20 text-status-warn",
+    error: "bg-status-err/20 text-status-err",
+  };
+
+  const dotColors: Record<string, string> = {
+    running: "bg-status-ok animate-pulse",
+    stopped: "bg-current",
+    creating: "bg-status-warn animate-pulse",
+    error: "bg-current",
+  };
+
+  const color = colors[status.status] ?? "bg-muted/20 text-muted";
+  const dotColor = dotColors[status.status] ?? "bg-current";
+  const label = status.provider
+    ? `${status.provider}: ${status.status}`
+    : `sandbox: ${status.status}`;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${color}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+      {label}
+    </span>
+  );
+}
+
 async function fetchAllEventsUntilSeq(
   sessionId: string,
   targetSeq: number,
@@ -141,9 +203,11 @@ export default function SessionPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [inputText, setInputText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [sandboxStatus, setSandboxStatus] = useState<string | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+
+  const sandboxStatus = useSandboxStatus(id);
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastSeqRef = useRef(0);
@@ -272,7 +336,6 @@ export default function SessionPage() {
       console.warn("Failed to set client capabilities:", capsRes.error);
     }
 
-    setSandboxStatus(activateRes.data.sandboxStatus);
     const activatedLastSeq = Math.max(
       lastSeqRef.current,
       activateRes.data.lastSeq,
@@ -423,6 +486,21 @@ export default function SessionPage() {
     navigate("/sessions");
   };
 
+  const handleRestart = async () => {
+    if (!id || !session || session.status === "archived") return;
+
+    setIsRestarting(true);
+    const res = await api.post<SandboxRestartResponse>(
+      `/sessions/${id}/restart`,
+      {},
+    );
+    setIsRestarting(false);
+
+    if (res.error) {
+      setError(res.error);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -479,11 +557,7 @@ export default function SessionPage() {
                 </h1>
                 {session && <StatusBadge status={session.status} />}
                 <ConnectionBadge status={connectionStatus} />
-                {sandboxStatus && (
-                  <span className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-muted">
-                    sandbox: {sandboxStatus}
-                  </span>
-                )}
+                {sandboxStatus && <SandboxBadge status={sandboxStatus} />}
               </div>
               <p className="text-xs text-muted">
                 {session?.mode} session
@@ -497,6 +571,21 @@ export default function SessionPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleRestart()}
+              disabled={
+                !session ||
+                session.status === "archived" ||
+                sandboxStatus?.status === "creating" ||
+                isRestarting
+              }
+              loading={isRestarting}
+            >
+              <ArrowClockwiseIcon className="size-4" />
+              Restart
+            </Button>
             <button
               type="button"
               onClick={handleArchive}
@@ -539,7 +628,17 @@ export default function SessionPage() {
           {viewMode === "chat" ? (
             <ConversationView items={conversationItems} />
           ) : (
-            <DebugView events={events} />
+            <div className="py-4 flex flex-col gap-6">
+              {sandboxStatus?.capabilities?.exec === true && id && (
+                <div>
+                  <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+                    Sandbox Console
+                  </h2>
+                  <SandboxExec sessionId={id} sandboxStatus={sandboxStatus} />
+                </div>
+              )}
+              <DebugView events={events} />
+            </div>
           )}
         </div>
       </div>
