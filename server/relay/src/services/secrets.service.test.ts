@@ -315,4 +315,213 @@ describe("SecretsService", () => {
       expect(envVars).toEqual([]);
     });
   });
+
+  describe("domains", () => {
+    it("creates a secret with domains", async () => {
+      const secret = await service.create({
+        name: "Anthropic",
+        envVar: "ANTHROPIC_API_KEY",
+        kind: "ai_provider",
+        value: "sk-ant-123",
+        domains: ["api.anthropic.com", "*.anthropic.com"],
+      });
+
+      expect(secret.domains).toEqual(["api.anthropic.com", "*.anthropic.com"]);
+    });
+
+    it("normalizes domains (lowercase, trim, dedupe)", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "TEST_KEY",
+        kind: "env_var",
+        value: "val",
+        domains: ["  API.Example.COM  ", "api.example.com", "Other.Host"],
+      });
+
+      expect(secret.domains).toEqual(["api.example.com", "other.host"]);
+    });
+
+    it("treats empty domains array as no domains", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "TEST_KEY",
+        kind: "env_var",
+        value: "val",
+        domains: [],
+      });
+
+      expect(secret.domains).toBeUndefined();
+    });
+
+    it("rejects domain with URL scheme", async () => {
+      await expect(
+        service.create({
+          name: "Test",
+          envVar: "TEST_KEY",
+          kind: "env_var",
+          value: "val",
+          domains: ["https://example.com"],
+        }),
+      ).rejects.toThrow("URL scheme");
+    });
+
+    it("rejects domain with slash", async () => {
+      await expect(
+        service.create({
+          name: "Test",
+          envVar: "TEST_KEY",
+          kind: "env_var",
+          value: "val",
+          domains: ["example.com/path"],
+        }),
+      ).rejects.toThrow("slash");
+    });
+
+    it("rejects domain with query string", async () => {
+      await expect(
+        service.create({
+          name: "Test",
+          envVar: "TEST_KEY",
+          kind: "env_var",
+          value: "val",
+          domains: ["example.com?foo=bar"],
+        }),
+      ).rejects.toThrow("query string");
+    });
+
+    it("updates domains on existing secret", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "TEST_KEY",
+        kind: "env_var",
+        value: "val",
+      });
+
+      await service.update(secret.id, {
+        domains: ["new.example.com"],
+      });
+
+      const list = await service.list();
+      const updated = list.find((s) => s.id === secret.id);
+      expect(updated?.domains).toEqual(["new.example.com"]);
+    });
+
+    it("clears domains when set to empty array", async () => {
+      const secret = await service.create({
+        name: "Test",
+        envVar: "TEST_KEY",
+        kind: "env_var",
+        value: "val",
+        domains: ["example.com"],
+      });
+
+      await service.update(secret.id, { domains: [] });
+
+      const list = await service.list();
+      const updated = list.find((s) => s.id === secret.id);
+      expect(updated?.domains).toBeUndefined();
+    });
+
+    it("lists secrets with domains included", async () => {
+      await service.create({
+        name: "With Domains",
+        envVar: "KEY_A",
+        kind: "ai_provider",
+        value: "val-a",
+        domains: ["api.example.com"],
+      });
+      await service.create({
+        name: "Without Domains",
+        envVar: "KEY_B",
+        kind: "env_var",
+        value: "val-b",
+      });
+
+      const list = await service.list();
+      const withDomains = list.find((s) => s.envVar === "KEY_A");
+      const withoutDomains = list.find((s) => s.envVar === "KEY_B");
+
+      expect(withDomains?.domains).toEqual(["api.example.com"]);
+      expect(withoutDomains?.domains).toBeUndefined();
+    });
+  });
+
+  describe("getSecretMaterial", () => {
+    it("puts all secrets in directEnv for docker provider", async () => {
+      await service.create({
+        name: "Scoped",
+        envVar: "SCOPED_KEY",
+        kind: "ai_provider",
+        value: "scoped-val",
+        domains: ["api.example.com"],
+      });
+      await service.create({
+        name: "Direct",
+        envVar: "DIRECT_KEY",
+        kind: "env_var",
+        value: "direct-val",
+      });
+
+      const material = await service.getSecretMaterial("docker");
+      expect(material.directEnv).toEqual({
+        SCOPED_KEY: "scoped-val",
+        DIRECT_KEY: "direct-val",
+      });
+      expect(material.gondolinHookSecrets).toEqual([]);
+    });
+
+    it("splits secrets for gondolin provider", async () => {
+      await service.create({
+        name: "Scoped",
+        envVar: "SCOPED_KEY",
+        kind: "ai_provider",
+        value: "scoped-val",
+        domains: ["api.example.com"],
+      });
+      await service.create({
+        name: "Direct",
+        envVar: "DIRECT_KEY",
+        kind: "env_var",
+        value: "direct-val",
+      });
+
+      const material = await service.getSecretMaterial("gondolin");
+      expect(material.directEnv).toEqual({ DIRECT_KEY: "direct-val" });
+      expect(material.gondolinHookSecrets).toEqual([
+        {
+          envVar: "SCOPED_KEY",
+          value: "scoped-val",
+          hosts: ["api.example.com"],
+        },
+      ]);
+    });
+
+    it("excludes disabled secrets from material", async () => {
+      await service.create({
+        name: "Disabled",
+        envVar: "DISABLED_KEY",
+        kind: "ai_provider",
+        value: "disabled-val",
+        enabled: false,
+        domains: ["api.example.com"],
+      });
+
+      const material = await service.getSecretMaterial("gondolin");
+      expect(material.directEnv).toEqual({});
+      expect(material.gondolinHookSecrets).toEqual([]);
+    });
+
+    it("treats secrets without domains as direct env for gondolin", async () => {
+      await service.create({
+        name: "No Domains",
+        envVar: "NO_DOMAINS_KEY",
+        kind: "ai_provider",
+        value: "val",
+      });
+
+      const material = await service.getSecretMaterial("gondolin");
+      expect(material.directEnv).toEqual({ NO_DOMAINS_KEY: "val" });
+      expect(material.gondolinHookSecrets).toEqual([]);
+    });
+  });
 });

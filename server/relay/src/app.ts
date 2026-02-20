@@ -113,7 +113,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
   app.route("/api/settings", settingsRoutes());
   app.route(
     "/api/secrets",
-    secretsRoutes(services.secretsService, services.sandboxManager),
+    secretsRoutes(services.secretsService),
   );
   app.route("/api/environments", environmentsRoutes());
   app.route("/api/extension-configs", extensionConfigsRoutes());

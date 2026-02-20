@@ -11,8 +11,10 @@ import process from "node:process";
 import {
   VM as GondolinVM,
   RealFSProvider,
+  createHttpHooks,
   type VM,
 } from "@earendil-works/gondolin";
+import type { SandboxSecretMaterial } from "../types";
 import { createLogger } from "../../lib/logger";
 import { writeGitConfig } from "../git-config";
 import type { SandboxLogStore } from "../log-store";
@@ -257,6 +259,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
     const {
       sessionId,
       secrets,
+      secretMaterial,
       repoUrl,
       repoBranch,
       githubToken,
@@ -306,6 +309,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
     const vm = await this.createVm({
       sessionId,
       secrets,
+      secretMaterial,
       nativeToolsEnabled: Boolean(nativeToolsEnabled),
       tier,
       imagePath,
@@ -515,6 +519,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
     sessionId: string;
     sessionDir?: string;
     secrets?: Record<string, string>;
+    secretMaterial?: SandboxSecretMaterial;
     nativeToolsEnabled?: boolean;
     tier?: SandboxResourceTier;
     imagePath?: string;
@@ -541,13 +546,43 @@ export class GondolinSandboxProvider implements SandboxProvider {
       throw new Error(`Gondolin image assets not found: ${imagePath}`);
     }
 
+    // Build base env from direct (non-hook) secrets
+    const directEnv = options.secretMaterial?.directEnv ?? options.secrets;
     const env = buildSandboxEnv({
       sessionId: options.sessionId,
-      secrets: options.secrets,
+      directEnv,
     });
 
     if (options.githubToken) {
       env.GH_TOKEN = options.githubToken;
+    }
+
+    // Build Gondolin HTTP hooks for domain-scoped secrets
+    const hookSecrets = options.secretMaterial?.gondolinHookSecrets;
+    let httpHooks: ReturnType<typeof createHttpHooks>["httpHooks"] | undefined;
+
+    if (hookSecrets && hookSecrets.length > 0) {
+      const secretDefs: Record<string, { hosts: string[]; value: string }> = {};
+      for (const hs of hookSecrets) {
+        secretDefs[hs.envVar] = { hosts: hs.hosts, value: hs.value };
+      }
+
+      const hookResult = createHttpHooks({ secrets: secretDefs });
+      httpHooks = hookResult.httpHooks;
+
+      // Merge placeholder env vars (guest sees placeholders, not real values)
+      for (const [key, value] of Object.entries(hookResult.env)) {
+        env[key] = value;
+      }
+
+      logger.debug(
+        {
+          sessionId: options.sessionId,
+          hookSecretCount: hookSecrets.length,
+          placeholderKeys: Object.keys(hookResult.env),
+        },
+        "createVm: HTTP hooks configured",
+      );
     }
 
     const createStartedAt = Date.now();
@@ -565,6 +600,7 @@ export class GondolinSandboxProvider implements SandboxProvider {
         },
       },
       env,
+      ...(httpHooks ? { httpHooks } : {}),
     });
     logger.debug(
       `createVm vm.create done session=${options.sessionId} elapsedMs=${Date.now() - createStartedAt}`,
@@ -598,6 +634,7 @@ type HandleDeps = {
     sessionId: string;
     sessionDir?: string;
     secrets?: Record<string, string>;
+    secretMaterial?: SandboxSecretMaterial;
     nativeToolsEnabled?: boolean;
     tier?: SandboxResourceTier;
     imagePath?: string;
@@ -613,6 +650,7 @@ class GondolinSandboxHandle implements SandboxHandle {
   private currentChannel: GondolinSandboxChannel | null = null;
   private vm: VM | null;
   private secrets: Record<string, string> = {};
+  private secretMaterial?: SandboxSecretMaterial;
   private config: HandleConfig;
   private githubToken?: string;
 
@@ -648,9 +686,13 @@ class GondolinSandboxHandle implements SandboxHandle {
   async resume(
     secrets?: Record<string, string>,
     githubToken?: string,
+    secretMaterial?: SandboxSecretMaterial,
   ): Promise<void> {
     if (secrets) {
       this.secrets = { ...secrets };
+    }
+    if (secretMaterial) {
+      this.secretMaterial = secretMaterial;
     }
 
     this.githubToken = githubToken;
@@ -670,6 +712,7 @@ class GondolinSandboxHandle implements SandboxHandle {
       sessionId: this.sessionId,
       sessionDir: this.config.sessionDir,
       secrets: this.secrets,
+      secretMaterial: this.secretMaterial,
       nativeToolsEnabled: this.config.nativeToolsEnabled,
       tier: this.config.resourceTier,
       imagePath: this.config.imagePath,
@@ -779,7 +822,7 @@ class GondolinSandboxHandle implements SandboxHandle {
 
     const env = buildSandboxEnv({
       sessionId: this.sessionId,
-      secrets: this.secrets,
+      directEnv: this.secretMaterial?.directEnv ?? this.secrets,
     });
     if (this.githubToken) {
       env.GH_TOKEN = this.githubToken;

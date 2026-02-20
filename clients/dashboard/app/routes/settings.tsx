@@ -1,10 +1,11 @@
 import {
+  CaretDownIcon,
+  CaretRightIcon,
   CheckCircleIcon,
   CubeIcon,
-  EyeIcon,
-  EyeSlashIcon,
   FloppyDiskIcon,
   KeyIcon,
+  MinusIcon,
   PlusIcon,
   TerminalIcon,
   ToggleLeftIcon,
@@ -30,6 +31,7 @@ interface SecretInfo {
   createdAt: string;
   updatedAt: string;
   keyVersion: number;
+  domains?: string[];
 }
 
 interface CreateSecretBody {
@@ -38,6 +40,7 @@ interface CreateSecretBody {
   kind: SecretKind;
   value: string;
   enabled?: boolean;
+  domains?: string[];
 }
 
 interface UpdateSecretBody {
@@ -46,6 +49,7 @@ interface UpdateSecretBody {
   kind?: SecretKind;
   enabled?: boolean;
   value?: string;
+  domains?: string[];
 }
 
 // --- Filter tabs ---
@@ -70,15 +74,142 @@ const secretKindOptions = [
   },
 ] as const;
 
+// --- Domain Restrictions Editor ---
+
+function DomainRestrictionsEditor({
+  domains,
+  onDomainsChange,
+  saving,
+  persistedDomains: persistedDomainsInitial,
+}: {
+  domains: string[];
+  onDomainsChange: (domains: string[]) => void;
+  saving?: boolean;
+  persistedDomains?: string[];
+}) {
+  const [open, setOpen] = useState(domains.length > 0);
+  const [newDomain, setNewDomain] = useState("");
+  const persistedDomains = new Set(persistedDomainsInitial ?? domains);
+
+  const handleAdd = () => {
+    const val = newDomain.trim().toLowerCase();
+    if (val && !domains.includes(val)) {
+      onDomainsChange([...domains, val]);
+    }
+    setNewDomain("");
+  };
+
+  const handleRemove = (domain: string) => {
+    onDomainsChange(domains.filter((d) => d !== domain));
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-xs text-muted hover:text-fg"
+      >
+        {open ? (
+          <CaretDownIcon className="size-3" />
+        ) : (
+          <CaretRightIcon className="size-3" />
+        )}
+        Domain restrictions
+        {!open && domains.length > 0 && (
+          <span className="rounded-full bg-accent/10 px-1.5 py-0.5 text-xs text-accent">
+            {domains.length}
+          </span>
+        )}
+        {saving && <span className="text-muted/50">(saving...)</span>}
+      </button>
+
+      {open && (
+        <div className="mt-2 rounded-lg border border-border/50 bg-bg/50 p-3">
+          <p className="mb-3 text-xs text-muted">
+            Only send this secret to matching hosts. Without restrictions, the
+            secret is available as a plain environment variable.
+          </p>
+
+          <div className="flex flex-col gap-1.5">
+            {domains.map((d) => (
+              <div key={d} className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={d}
+                  readOnly
+                  className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 font-mono text-sm text-fg"
+                />
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-lg border border-border p-1.5 text-muted opacity-30"
+                >
+                  <PlusIcon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(d)}
+                  disabled={!persistedDomains.has(d)}
+                  className="rounded-lg border border-border p-1.5 text-muted hover:bg-red-500/10 hover:text-red-500 disabled:opacity-30"
+                >
+                  <MinusIcon className="size-3.5" />
+                </button>
+              </div>
+            ))}
+
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={newDomain}
+                onChange={(e) => setNewDomain(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAdd();
+                  }
+                }}
+                placeholder="api.example.com"
+                className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleAdd}
+                disabled={!newDomain.trim()}
+                className="rounded-lg border border-border p-1.5 text-muted hover:bg-accent/10 hover:text-accent disabled:opacity-30"
+              >
+                <PlusIcon className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled
+                className="rounded-lg border border-border p-1.5 text-muted opacity-30"
+              >
+                <MinusIcon className="size-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Add Secret Form ---
 
-function AddSecretForm({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false);
+function AddSecretForm({
+  onCreated,
+  onCancel,
+}: {
+  onCreated: () => void;
+  onCancel: () => void;
+}) {
   const [name, setName] = useState("");
   const [envVar, setEnvVar] = useState("");
   const [kind, setKind] = useState<SecretKind>("ai_provider");
   const [value, setValue] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [domains, setDomains] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,6 +219,7 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
     setKind("ai_provider");
     setValue("");
     setEnabled(true);
+    setDomains([]);
     setError(null);
   };
 
@@ -107,6 +239,7 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
       kind,
       value: value.trim(),
       enabled,
+      ...(domains.length > 0 ? { domains } : {}),
     };
 
     const res = await api.post<SecretInfo>("/secrets", body);
@@ -118,23 +251,8 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
     }
 
     reset();
-    setOpen(false);
     onCreated();
   };
-
-  if (!open) {
-    return (
-      <Button
-        variant="secondary"
-        size="md"
-        onClick={() => setOpen(true)}
-        className="border-dashed"
-      >
-        <PlusIcon className="size-4" />
-        Add secret
-      </Button>
-    );
-  }
 
   return (
     <form
@@ -147,7 +265,7 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
           type="button"
           onClick={() => {
             reset();
-            setOpen(false);
+            onCancel();
           }}
           className="text-muted hover:text-fg"
         >
@@ -194,7 +312,9 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
             renderItem={(item) => (
               <div>
                 <p className="truncate">{item.label}</p>
-                <p className="truncate text-xs text-muted">{item.description}</p>
+                <p className="truncate text-xs text-muted">
+                  {item.description}
+                </p>
               </div>
             )}
           />
@@ -223,6 +343,13 @@ function AddSecretForm({ onCreated }: { onCreated: () => void }) {
         />
       </label>
 
+      <div className="mt-3">
+        <DomainRestrictionsEditor
+          domains={domains}
+          onDomainsChange={setDomains}
+        />
+      </div>
+
       <div className="mt-4 flex justify-end">
         <Button type="submit" loading={saving} variant="primary" size="md">
           <FloppyDiskIcon className="size-4" />
@@ -247,12 +374,13 @@ function SecretRow({
   onDelete: (id: string) => Promise<void>;
 }) {
   const [value, setValue] = useState("");
-  const [showValue, setShowValue] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updated, setUpdated] = useState(false);
+  const [domains, setDomains] = useState<string[]>(secret.domains ?? []);
+  const [savingDomains, setSavingDomains] = useState(false);
 
   const handleSave = async () => {
     if (!value.trim()) return;
@@ -281,6 +409,18 @@ function SecretRow({
     setDeleting(true);
     await onDelete(secret.id);
     setDeleting(false);
+  };
+
+  const handleSaveDomains = async (newDomains: string[]) => {
+    setSavingDomains(true);
+    const body: UpdateSecretBody = { domains: newDomains };
+    const res = await api.put<{ ok: boolean }>(`/secrets/${secret.id}`, body);
+    setSavingDomains(false);
+    if (res.error) {
+      setUpdateError(res.error);
+    } else {
+      setDomains(newDomains);
+    }
   };
 
   return (
@@ -317,6 +457,11 @@ function SecretRow({
               Disabled
             </span>
           )}
+          {domains.length > 0 && (
+            <span className="flex items-center gap-1 rounded-full bg-muted/10 px-2 py-0.5 text-xs text-muted">
+              {domains.length} {domains.length === 1 ? "host" : "hosts"}
+            </span>
+          )}
         </div>
 
         {updateError && (
@@ -330,26 +475,13 @@ function SecretRow({
         )}
 
         <div className="mt-3 flex gap-2">
-          <div className="relative flex-1">
-            <input
-              type={showValue ? "text" : "password"}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="(enter new value)"
-              className="w-full rounded-lg border border-border bg-bg px-3 py-2 pr-10 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => setShowValue(!showValue)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
-            >
-              {showValue ? (
-                <EyeSlashIcon className="size-4" />
-              ) : (
-                <EyeIcon className="size-4" />
-              )}
-            </button>
-          </div>
+          <input
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="(enter new value)"
+            className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+          />
 
           <Button
             onClick={handleSave}
@@ -390,6 +522,16 @@ function SecretRow({
             <TrashIcon className="size-4" />
           </Button>
         </div>
+
+        <div className="mt-3">
+          <DomainRestrictionsEditor
+            domains={domains}
+            onDomainsChange={(next) => {
+              handleSaveDomains(next);
+            }}
+            saving={savingDomains}
+          />
+        </div>
       </div>
     </div>
   );
@@ -402,6 +544,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const loadSecrets = useCallback(async () => {
     const res = await api.get<SecretInfo[]>("/secrets");
@@ -469,51 +612,69 @@ export default function SettingsPage() {
           Secrets
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Keys are encrypted at rest (AES-256-GCM) and injected into sandbox containers.
+          Keys are encrypted at rest (AES-256-GCM) and injected into sandbox
+          containers.
         </p>
       </div>
 
-      {/* Kind filter tabs */}
-      <Tabs
-        value={kindFilter}
-        onValueChange={(details) => setKindFilter(details.value as KindFilter)}
-        className="mb-4"
-      >
-        <Tabs.List className="gap-1 rounded-lg border border-border bg-bg p-1">
-          <Tabs.Trigger
-            value="all"
-            className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
-          >
-            All
-            <span className="ml-0.5 text-muted">{secrets.length}</span>
-          </Tabs.Trigger>
-          <Tabs.Trigger
-            value="ai_provider"
-            className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
-          >
-            <KeyIcon className="size-3.5" weight="bold" />
-            AI Providers
-            <span className="ml-0.5 text-muted">{aiCount}</span>
-          </Tabs.Trigger>
-          <Tabs.Trigger
-            value="env_var"
-            className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
-          >
-            <TerminalIcon className="size-3.5" weight="bold" />
-            Env Vars
-            <span className="ml-0.5 text-muted">{envCount}</span>
-          </Tabs.Trigger>
-          <Tabs.Trigger
-            value="sandbox_provider"
-            className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
-          >
-            <CubeIcon className="size-3.5" weight="bold" />
-            Sandbox
-            <span className="ml-0.5 text-muted">{sandboxCount}</span>
-          </Tabs.Trigger>
-          <Tabs.Indicator className="top-1 bottom-1 rounded-md bg-surface" />
-        </Tabs.List>
-      </Tabs>
+      {/* Kind filter tabs + add button */}
+      <div className="mb-4 flex items-center gap-2">
+        <Tabs
+          value={kindFilter}
+          onValueChange={(details) =>
+            setKindFilter(details.value as KindFilter)
+          }
+          className="flex-1"
+        >
+          <Tabs.List className="gap-1 rounded-lg border border-border bg-bg p-1">
+            <Tabs.Trigger
+              value="all"
+              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+            >
+              All
+              <span className="ml-0.5 text-muted">{secrets.length}</span>
+            </Tabs.Trigger>
+            <Tabs.Trigger
+              value="ai_provider"
+              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+            >
+              <KeyIcon className="size-3.5" weight="bold" />
+              AI Providers
+              <span className="ml-0.5 text-muted">{aiCount}</span>
+            </Tabs.Trigger>
+            <Tabs.Trigger
+              value="env_var"
+              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+            >
+              <TerminalIcon className="size-3.5" weight="bold" />
+              Env Vars
+              <span className="ml-0.5 text-muted">{envCount}</span>
+            </Tabs.Trigger>
+            <Tabs.Trigger
+              value="sandbox_provider"
+              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+            >
+              <CubeIcon className="size-3.5" weight="bold" />
+              Sandbox
+              <span className="ml-0.5 text-muted">{sandboxCount}</span>
+            </Tabs.Trigger>
+            <Tabs.Indicator className="top-1 bottom-1 rounded-md bg-surface" />
+          </Tabs.List>
+        </Tabs>
+
+        <button
+          type="button"
+          onClick={() => setShowAddForm(!showAddForm)}
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            showAddForm
+              ? "border-accent/30 bg-accent/10 text-accent"
+              : "border-border bg-bg text-muted hover:text-fg"
+          }`}
+        >
+          <PlusIcon className="size-3.5" weight="bold" />
+          Add secret
+        </button>
+      </div>
 
       {loading ? (
         <div className="py-8 text-center text-sm text-muted">Loading...</div>
@@ -522,31 +683,35 @@ export default function SettingsPage() {
           {error}
         </div>
       ) : (
-        <>
-          <div className="space-y-3">
-            {filtered.length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted">
-                {kindFilter === "all"
-                  ? "No secrets configured."
-                  : `No ${kindFilter === "ai_provider" ? "AI provider" : kindFilter === "sandbox_provider" ? "sandbox" : "env var"} secrets.`}
-              </div>
-            ) : (
-              filtered.map((secret) => (
-                <SecretRow
-                  key={secret.id}
-                  secret={secret}
-                  onToggle={handleToggle}
-                  onUpdateValue={handleUpdateValue}
-                  onDelete={handleDelete}
-                />
-              ))
-            )}
-          </div>
+        <div className="space-y-3">
+          {showAddForm && (
+            <AddSecretForm
+              onCreated={() => {
+                loadSecrets();
+                setShowAddForm(false);
+              }}
+              onCancel={() => setShowAddForm(false)}
+            />
+          )}
 
-          <div className="mt-4">
-            <AddSecretForm onCreated={loadSecrets} />
-          </div>
-        </>
+          {filtered.length === 0 && !showAddForm ? (
+            <div className="py-6 text-center text-sm text-muted">
+              {kindFilter === "all"
+                ? "No secrets configured."
+                : `No ${kindFilter === "ai_provider" ? "AI provider" : kindFilter === "sandbox_provider" ? "sandbox" : "env var"} secrets.`}
+            </div>
+          ) : (
+            filtered.map((secret) => (
+              <SecretRow
+                key={secret.id}
+                secret={secret}
+                onToggle={handleToggle}
+                onUpdateValue={handleUpdateValue}
+                onDelete={handleDelete}
+              />
+            ))
+          )}
+        </div>
       )}
     </div>
   );

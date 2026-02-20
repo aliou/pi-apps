@@ -17,6 +17,7 @@ import type {
   SandboxHandle,
   SandboxInfo,
   SandboxProvider,
+  SandboxSecretMaterial,
 } from "./types";
 
 const log = createLogger("sandbox");
@@ -71,13 +72,13 @@ export class SandboxManager {
   private providerCache = new Map<string, SandboxProvider>();
   /** Mock provider singleton (for tests only). */
   private mockProvider: MockSandboxProvider | null = null;
-  /** Cached secrets snapshot for new sandbox creation. */
-  private secretsSnapshot: Record<string, string> = {};
   /** Abort controller for the currently running extension validation. */
   private activeValidationAbort: AbortController | null = null;
+  private secretsService: SecretsService;
 
-  constructor(config: SandboxManagerConfig) {
+  constructor(config: SandboxManagerConfig, secretsService: SecretsService) {
     this.config = config;
+    this.secretsService = secretsService;
   }
 
   /**
@@ -233,31 +234,42 @@ export class SandboxManager {
   }
 
   /**
-   * Update the secrets snapshot used for new sandbox creations.
-   * Does not affect already-running sandboxes.
+   * Resolve secret material for a given provider type.
+   * Fetches fresh secrets from the secrets service.
    */
-  setSecrets(secrets: Record<string, string>): void {
-    this.secretsSnapshot = { ...secrets };
-  }
-
-  /**
-   * Get the current secrets snapshot.
-   */
-  getSecrets(): Record<string, string> {
-    return { ...this.secretsSnapshot };
+  async resolveSecretMaterial(
+    providerType: "docker" | "cloudflare" | "gondolin" | "mock",
+  ): Promise<SandboxSecretMaterial> {
+    const material = await this.secretsService.getSecretMaterial(providerType);
+    return {
+      directEnv: material.directEnv,
+      gondolinHookSecrets:
+        material.gondolinHookSecrets.length > 0
+          ? material.gondolinHookSecrets
+          : undefined,
+    };
   }
 
   /**
    * Create a sandbox for a session using environment config.
+   * Resolves secrets internally from the secrets service.
    * Returns the handle. Caller should persist handle.providerId to DB.
    */
   async createForSession(
     sessionId: string,
     envConfig: EnvironmentSandboxConfig,
-    options?: Omit<CreateSandboxOptions, "sessionId">,
+    options?: Omit<CreateSandboxOptions, "sessionId" | "secrets" | "secretMaterial">,
   ): Promise<SandboxHandle> {
     const provider = this.getProvider(envConfig);
-    return provider.createSandbox({ sessionId, ...options });
+    const material = await this.resolveSecretMaterial(
+      envConfig.sandboxType as "docker" | "cloudflare" | "gondolin" | "mock",
+    );
+    return provider.createSandbox({
+      sessionId,
+      ...options,
+      secrets: material.directEnv,
+      secretMaterial: material,
+    });
   }
 
   /**
@@ -265,10 +277,15 @@ export class SandboxManager {
    */
   async createMockForSession(
     sessionId: string,
-    options?: Omit<CreateSandboxOptions, "sessionId">,
+    options?: Omit<CreateSandboxOptions, "sessionId" | "secrets" | "secretMaterial">,
   ): Promise<SandboxHandle> {
     const provider = this.getMockProvider();
-    return provider.createSandbox({ sessionId, ...options });
+    const material = await this.resolveSecretMaterial("mock");
+    return provider.createSandbox({
+      sessionId,
+      ...options,
+      secrets: material.directEnv,
+    });
   }
 
   /**
@@ -306,13 +323,12 @@ export class SandboxManager {
 
   /**
    * Resume a sandbox session: get handle and call resume().
-   * Used by the activate endpoint.
+   * Resolves secrets internally from the secrets service.
    */
   async resumeSession(
     providerType: SandboxProviderType,
     providerId: string,
     envConfig?: EnvironmentSandboxConfig,
-    secrets?: Record<string, string>,
     githubToken?: string,
   ): Promise<SandboxHandle> {
     const handle = await this.getHandleByType(
@@ -320,7 +336,10 @@ export class SandboxManager {
       providerId,
       envConfig,
     );
-    await handle.resume(secrets, githubToken);
+    const material = await this.resolveSecretMaterial(
+      providerType as "docker" | "cloudflare" | "gondolin" | "mock",
+    );
+    await handle.resume(material.directEnv, githubToken, material);
     return handle;
   }
 

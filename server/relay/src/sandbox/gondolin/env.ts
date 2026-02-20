@@ -1,5 +1,11 @@
 export function buildSandboxEnv(options: {
   sessionId: string;
+  /** Direct (non-hook) env vars to merge. */
+  directEnv?: Record<string, string>;
+  /**
+   * @deprecated Use `directEnv` instead. Kept for backward compatibility
+   * with callers that have not migrated to structured secret material.
+   */
   secrets?: Record<string, string>;
 }): Record<string, string> {
   const env: Record<string, string> = {
@@ -14,6 +20,12 @@ export function buildSandboxEnv(options: {
     XDG_STATE_HOME: "/agent/state",
   };
 
+  // Merge direct env vars (preferred path)
+  for (const [key, value] of Object.entries(options.directEnv ?? {})) {
+    env[key] = value;
+  }
+
+  // Backward compat: merge legacy secrets map
   for (const [key, value] of Object.entries(options.secrets ?? {})) {
     env[key] = value;
   }

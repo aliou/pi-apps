@@ -86,22 +86,20 @@ async function main() {
   const sessionDataDir = join(paths.stateDir, "sessions");
 
   const sandboxLogStore = new SandboxLogStore();
-  const sandboxManager = new SandboxManager({
-    docker: {
-      sessionDataDir,
-      secretsBaseDir: paths.stateDir,
+  const sandboxManager = new SandboxManager(
+    {
+      docker: {
+        sessionDataDir,
+        secretsBaseDir: paths.stateDir,
+      },
+      gondolin: {
+        sessionDataDir,
+      },
+      logStore: sandboxLogStore,
     },
-    gondolin: {
-      sessionDataDir,
-    },
-    logStore: sandboxLogStore,
-  });
+    secretsService,
+  );
   log.info("sandbox manager initialized (on-demand providers)");
-
-  // Load initial secrets snapshot for new sandbox creations
-  const initialSecrets = await secretsService.getAllAsEnv();
-  sandboxManager.setSecrets(initialSecrets);
-  log.info({ count: Object.keys(initialSecrets).length }, "secrets loaded");
 
   // Initialize environment service
   const environmentService = new EnvironmentService(db);

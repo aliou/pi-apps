@@ -23,6 +23,8 @@ export interface SecretInfo {
   createdAt: string;
   updatedAt: string;
   keyVersion: number;
+  /** Host domain patterns for Gondolin HTTP hook scoping. */
+  domains?: string[];
 }
 
 /**
@@ -34,6 +36,8 @@ export interface CreateSecretParams {
   kind: SecretKind;
   value: string;
   enabled?: boolean;
+  /** Host domain patterns for Gondolin HTTP hook scoping. */
+  domains?: string[];
 }
 
 /**
@@ -46,6 +50,64 @@ export interface UpdateSecretParams {
   kind?: SecretKind;
   enabled?: boolean;
   value?: string;
+  /** Host domain patterns for Gondolin HTTP hook scoping. */
+  domains?: string[];
+}
+
+/**
+ * A secret scoped to specific hosts for Gondolin HTTP hook substitution.
+ */
+export interface GondolinHookSecret {
+  envVar: string;
+  value: string;
+  hosts: string[];
+}
+
+/**
+ * Provider-specific secret material. Providers use `directEnv` for plain
+ * env vars and `gondolinHookSecrets` for HTTP-hook-scoped secrets.
+ */
+export interface ProviderSecretMaterial {
+  directEnv: Record<string, string>;
+  gondolinHookSecrets: GondolinHookSecret[];
+}
+
+/**
+ * Validate a single domain pattern. Trims, lowercases, rejects invalid entries.
+ * Returns normalized pattern or throws.
+ */
+function validateDomainPattern(pattern: string): string {
+  const trimmed = pattern.trim().toLowerCase();
+  if (trimmed.length === 0) {
+    throw new Error("Domain pattern must not be empty");
+  }
+  if (trimmed.includes("://")) {
+    throw new Error(
+      `Domain pattern must not contain URL scheme: "${trimmed}"`,
+    );
+  }
+  if (trimmed.includes("/")) {
+    throw new Error(`Domain pattern must not contain slash: "${trimmed}"`);
+  }
+  if (trimmed.includes("?")) {
+    throw new Error(
+      `Domain pattern must not contain query string: "${trimmed}"`,
+    );
+  }
+  return trimmed;
+}
+
+/**
+ * Normalize a domains array: validate each entry, deduplicate.
+ * Returns undefined if input is empty or undefined (treated as no domains).
+ */
+function normalizeDomains(input?: string[]): string[] | undefined {
+  if (!input || input.length === 0) {
+    return undefined;
+  }
+  const normalized = input.map(validateDomainPattern);
+  const unique = [...new Set(normalized)];
+  return unique.length > 0 ? unique : undefined;
 }
 
 /**
@@ -81,6 +143,7 @@ export class SecretsService {
    */
   async create(params: CreateSecretParams): Promise<SecretInfo> {
     const envVar = validateEnvVar(params.envVar);
+    const domains = normalizeDomains(params.domains);
     const encrypted = this.crypto.encrypt(params.value);
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
@@ -95,6 +158,7 @@ export class SecretsService {
       ciphertext: encrypted.ciphertext,
       tag: encrypted.tag,
       keyVersion: encrypted.keyVersion,
+      domains: domains ? JSON.stringify(domains) : null,
       createdAt: now,
       updatedAt: now,
     });
@@ -108,6 +172,7 @@ export class SecretsService {
       createdAt: now,
       updatedAt: now,
       keyVersion: encrypted.keyVersion,
+      ...(domains ? { domains } : {}),
     };
   }
 
@@ -148,6 +213,10 @@ export class SecretsService {
       updates.tag = encrypted.tag;
       updates.keyVersion = encrypted.keyVersion;
     }
+    if (params.domains !== undefined) {
+      const domains = normalizeDomains(params.domains);
+      updates.domains = domains ? JSON.stringify(domains) : null;
+    }
 
     await this.db.update(secrets).set(updates).where(eq(secrets.id, id));
     return true;
@@ -166,16 +235,22 @@ export class SecretsService {
    */
   async list(): Promise<SecretInfo[]> {
     const rows = await this.db.select().from(secrets);
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      envVar: row.envVar,
-      kind: row.kind as SecretKind,
-      enabled: row.enabled,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      keyVersion: row.keyVersion,
-    }));
+    return rows.map((row) => {
+      const domains = row.domains
+        ? (JSON.parse(row.domains) as string[])
+        : undefined;
+      return {
+        id: row.id,
+        name: row.name,
+        envVar: row.envVar,
+        kind: row.kind as SecretKind,
+        enabled: row.enabled,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        keyVersion: row.keyVersion,
+        ...(domains ? { domains } : {}),
+      };
+    });
   }
 
   /**
@@ -258,6 +333,48 @@ export class SecretsService {
     return rows
       .filter((r) => r.kind === kind && r.enabled)
       .map((r) => r.envVar);
+  }
+
+  /**
+   * Get provider-specific secret material. For gondolin, secrets with
+   * domains go into hook secrets; without domains go into direct env.
+   * For other providers, all secrets go into direct env.
+   */
+  async getSecretMaterial(
+    provider: "docker" | "cloudflare" | "gondolin" | "mock",
+  ): Promise<ProviderSecretMaterial> {
+    const rows = await this.db
+      .select()
+      .from(secrets)
+      .where(eq(secrets.enabled, true));
+
+    const directEnv: Record<string, string> = {};
+    const gondolinHookSecrets: GondolinHookSecret[] = [];
+
+    for (const row of rows) {
+      const encrypted: EncryptedData = {
+        iv: row.iv,
+        ciphertext: row.ciphertext,
+        tag: row.tag,
+        keyVersion: row.keyVersion,
+      };
+      const value = this.crypto.decrypt(encrypted);
+      const domains = row.domains
+        ? (JSON.parse(row.domains) as string[])
+        : undefined;
+
+      if (provider === "gondolin" && domains && domains.length > 0) {
+        gondolinHookSecrets.push({
+          envVar: row.envVar,
+          value,
+          hosts: domains,
+        });
+      } else {
+        directEnv[row.envVar] = value;
+      }
+    }
+
+    return { directEnv, gondolinHookSecrets };
   }
 
   /**

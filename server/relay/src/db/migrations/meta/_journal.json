@@ -57,6 +57,13 @@
       "when": 1770753969574,
       "tag": "0007_spooky_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1771614383536,
+      "tag": "0008_petite_ultragirl",
+      "breakpoints": true
     }
   ]
 }

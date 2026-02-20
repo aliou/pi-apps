@@ -5,6 +5,7 @@ import { createLogger } from "../lib/logger";
 import { resolveEnvConfig } from "../sandbox/manager";
 import type { IntrospectedModel } from "../services/models-introspection.service";
 import { ModelsIntrospectionService } from "../services/models-introspection.service";
+import type { SecretInfo } from "../services/secrets.service";
 
 const log = createLogger("models");
 
@@ -36,8 +37,9 @@ export function modelsRoutes(): Hono<AppEnv> {
       "_introspect",
       "code",
     );
+    const secretsList = await secretsService.list();
     const secrets = await secretsService.getAllAsEnv();
-    const fingerprint = computeFingerprint(packages, secrets);
+    const fingerprint = computeFingerprint(packages, secrets, secretsList);
     log.debug(
       {
         fingerprint,
@@ -102,11 +104,13 @@ export function modelsRoutes(): Hono<AppEnv> {
 
 /**
  * Compute a fingerprint from the inputs that affect model availability.
- * Changes to extension packages or secret values produce a different hash.
+ * Changes to extension packages, secret values, or domain metadata
+ * produce a different hash.
  */
 function computeFingerprint(
   packages: string[],
   secrets: Record<string, string>,
+  secretsList?: SecretInfo[],
 ): string {
   const hash = createHash("sha256");
 
@@ -121,6 +125,18 @@ function computeFingerprint(
   );
   for (const [name, value] of sortedEntries) {
     hash.update(`secret:${name}:${value}\n`);
+  }
+
+  // Domain metadata (sorted by envVar for stability)
+  if (secretsList) {
+    const sorted = [...secretsList].sort((a, b) =>
+      a.envVar.localeCompare(b.envVar),
+    );
+    for (const s of sorted) {
+      if (s.domains && s.domains.length > 0) {
+        hash.update(`domains:${s.envVar}:${s.domains.sort().join(",")}\n`);
+      }
+    }
   }
 
   return hash.digest("hex");

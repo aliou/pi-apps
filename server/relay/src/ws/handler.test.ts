@@ -20,6 +20,7 @@ describe("WebSocket Handler", () => {
     const result = createTestDatabase();
     db = result.db;
     sqlite = result.sqlite;
+    const secretsService = createTestSecretsService(db);
     deps = {
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
@@ -31,9 +32,9 @@ describe("WebSocket Handler", () => {
         gondolin: {
           sessionDataDir: "/tmp/pi-test-sessions",
         },
-      }),
+      }, secretsService),
       environmentService: new EnvironmentService(db),
-      secretsService: createTestSecretsService(db),
+      secretsService,
       sessionHubManager: createTestSessionHubManager(db),
     };
   });

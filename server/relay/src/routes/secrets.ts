@@ -1,24 +1,13 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { createLogger } from "../lib/logger";
-import type { SandboxManager } from "../sandbox/manager";
 import type { SecretKind, SecretsService } from "../services/secrets.service";
 
 export function secretsRoutes(
   secretsService: SecretsService,
-  sandboxManager: SandboxManager,
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const logger = createLogger("secrets");
-
-  /**
-   * Refresh the sandbox manager's secrets snapshot after a mutation.
-   * Only affects future sandbox creations, not running containers.
-   */
-  async function refreshSecrets(): Promise<void> {
-    const env = await secretsService.getAllAsEnv();
-    sandboxManager.setSecrets(env);
-  }
 
   // List all secrets (metadata only, no values)
   app.get("/", async (c) => {
@@ -34,6 +23,7 @@ export function secretsRoutes(
       kind?: string;
       value?: string;
       enabled?: boolean;
+      domains?: string[];
     };
     try {
       body = await c.req.json();
@@ -41,7 +31,7 @@ export function secretsRoutes(
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const { name, envVar, kind, value, enabled } = body;
+    const { name, envVar, kind, value, enabled, domains } = body;
 
     if (typeof name !== "string" || name.trim() === "") {
       return c.json({ data: null, error: "name is required" }, 400);
@@ -70,9 +60,9 @@ export function secretsRoutes(
         kind: (kind as SecretKind) ?? "env_var",
         value,
         enabled,
+        domains,
       });
 
-      await refreshSecrets();
       return c.json({ data: secret, error: null }, 201);
     } catch (err) {
       logger.error({ err }, "failed to create secret");
@@ -91,6 +81,10 @@ export function secretsRoutes(
       if (msg.startsWith("envVar")) {
         return c.json({ data: null, error: msg }, 400);
       }
+      // domain validation errors
+      if (msg.startsWith("Domain pattern")) {
+        return c.json({ data: null, error: msg }, 400);
+      }
       throw err;
     }
   });
@@ -105,6 +99,7 @@ export function secretsRoutes(
       kind?: string;
       enabled?: boolean;
       value?: string;
+      domains?: string[];
     };
     try {
       body = await c.req.json();
@@ -130,13 +125,13 @@ export function secretsRoutes(
         kind: body.kind as SecretKind | undefined,
         enabled: body.enabled,
         value: body.value,
+        domains: body.domains,
       });
 
       if (!updated) {
         return c.json({ data: null, error: "Secret not found" }, 404);
       }
 
-      await refreshSecrets();
       return c.json({ data: { ok: true }, error: null });
     } catch (err) {
       logger.error({ err, secretId: id }, "failed to update secret");
@@ -153,6 +148,9 @@ export function secretsRoutes(
       if (msg.startsWith("envVar")) {
         return c.json({ data: null, error: msg }, 400);
       }
+      if (msg.startsWith("Domain pattern")) {
+        return c.json({ data: null, error: msg }, 400);
+      }
       throw err;
     }
   });
@@ -166,7 +164,6 @@ export function secretsRoutes(
       return c.json({ data: null, error: "Secret not found" }, 404);
     }
 
-    await refreshSecrets();
     return c.json({ data: { ok: true }, error: null });
   });
 

@@ -8,6 +8,11 @@ import type { SecretsService } from "./secrets.service";
 function makeMockSecretsService(): SecretsService {
   return {
     getAllAsEnv: async () => ({}),
+    getSecretMaterial: async () => ({
+      directEnv: {},
+      gondolinHookSecrets: [],
+    }),
+    list: async () => [],
   } as unknown as SecretsService;
 }
 
@@ -19,6 +24,7 @@ function makeMockExtensionConfigService(): ExtensionConfigService {
 
 describe("ModelsIntrospectionService", () => {
   it.skip("returns models from an ephemeral sandbox via RPC", async () => {
+    const mockSecrets = makeMockSecretsService();
     const manager = new SandboxManager({
       docker: {
         sessionDataDir: "/tmp/pi-test-sessions",
@@ -27,7 +33,7 @@ describe("ModelsIntrospectionService", () => {
       gondolin: {
         sessionDataDir: "/tmp/pi-test-sessions",
       },
-    });
+    }, mockSecrets);
 
     const envConfig: EnvironmentSandboxConfig = {
       sandboxType: "gondolin",

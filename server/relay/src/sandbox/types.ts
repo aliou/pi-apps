@@ -98,10 +98,13 @@ export interface SandboxHandle {
    * - If creating: waits until ready.
    * - If gone/unrecoverable: throws.
    *
-   * If secrets provided, refreshes the secrets files on the host
-   * before resuming (bind mount makes them visible to the container).
+   * Accepts either a flat secrets map (legacy) or structured material.
    */
-  resume(secrets?: Record<string, string>, githubToken?: string): Promise<void>;
+  resume(
+    secrets?: Record<string, string>,
+    githubToken?: string,
+    secretMaterial?: SandboxSecretMaterial,
+  ): Promise<void>;
 
   /**
    * Execute a command inside the running sandbox.
@@ -132,6 +135,21 @@ export interface SandboxHandle {
   onStatusChange(handler: (status: SandboxStatus) => void): () => void;
 }
 
+/**
+ * Structured secret material for sandbox providers. Separates direct
+ * env var secrets from Gondolin HTTP-hook-scoped secrets.
+ */
+export interface SandboxSecretMaterial {
+  /** Secrets injected as plain environment variables. */
+  directEnv: Record<string, string>;
+  /** Secrets scoped to specific hosts via Gondolin HTTP hooks. */
+  gondolinHookSecrets?: Array<{
+    envVar: string;
+    value: string;
+    hosts: string[];
+  }>;
+}
+
 export interface CreateSandboxOptions {
   sessionId: string;
 
@@ -140,6 +158,9 @@ export interface CreateSandboxOptions {
 
   /** Secrets to inject (read fresh from DB at creation time) */
   secrets?: Record<string, string>;
+
+  /** Structured secret material (preferred over `secrets`). */
+  secretMaterial?: SandboxSecretMaterial;
 
   /** Git repo to clone into workspace (optional) */
   repoUrl?: string;

@@ -203,9 +203,6 @@ export function sessionsRoutes(): Hono<AppEnv> {
         body.mode as "chat" | "code",
       );
 
-      // Read secrets fresh for sandbox injection
-      const secrets = await secretsService.getAllAsEnv();
-
       // Read git author settings
       const settingsDb = c.get("db");
       const gitAuthorName = readStringSetting(settingsDb, "git_author_name");
@@ -223,7 +220,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
       // Start sandbox provisioning (async, don't await)
       const createPromise =
         sandboxProvider === "mock"
-          ? sandboxManager.createMockForSession(session.id, { secrets })
+          ? sandboxManager.createMockForSession(session.id)
           : sandboxManager.createForSession(
               session.id,
               resolvedEnvConfig ?? {
@@ -238,7 +235,6 @@ export function sessionsRoutes(): Hono<AppEnv> {
                 githubToken,
                 gitAuthorName,
                 gitAuthorEmail,
-                secrets,
                 resourceTier: environmentConfig?.resourceTier,
                 nativeToolsEnabled: body.nativeToolsEnabled,
               },
@@ -423,26 +419,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
             "activate settings-written",
           );
 
-          const secretsStartedAt = Date.now();
-          const secrets = await secretsService.getAllAsEnv();
-          logger.debug(
-            {
-              sessionId: id,
-              elapsedMs: Date.now() - secretsStartedAt,
-              keys: Object.keys(secrets).length,
-            },
-            "activate secrets-loaded",
-          );
           // Read GitHub token for git credential refresh
           const ghToken = readStringSetting(db, "github_repos_access_token");
-          logger.info(
-            {
-              sessionId: id,
-              secretCount: Object.keys(secrets).length,
-              keys: Object.keys(secrets),
-            },
-            "activate: secrets loaded",
-          );
           // Resolve environment config for the provider
           const envResolveStartedAt = Date.now();
           let envConfig: EnvironmentSandboxConfig | undefined;
@@ -467,7 +445,6 @@ export function sessionsRoutes(): Hono<AppEnv> {
             current.sandboxProvider as SandboxProviderType,
             current.sandboxProviderId,
             envConfig,
-            secrets,
             ghToken,
           );
           logger.debug(
@@ -820,8 +797,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
         session.mode as "chat" | "code",
       );
 
-      // 3. Load secrets, GitHub token, and git author settings
-      const secrets = await secretsService.getAllAsEnv();
+      // 3. Load GitHub token and git author settings
       const githubToken = readStringSetting(db, "github_repos_access_token");
       const gitAuthorName = readStringSetting(db, "git_author_name");
       const gitAuthorEmail = readStringSetting(db, "git_author_email");
@@ -864,10 +840,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
           githubToken,
           gitAuthorName,
           gitAuthorEmail,
-          secrets,
           resourceTier: environmentConfig?.resourceTier,
-          nativeToolsEnabled:
-            session.sandboxImageDigest === "gondolin" ? undefined : undefined,
         },
       );
 

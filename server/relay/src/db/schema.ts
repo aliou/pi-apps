@@ -123,6 +123,8 @@ export const secrets = sqliteTable(
     createdAt: text("created_at").notNull(),
     /** ISO timestamp of last update */
     updatedAt: text("updated_at").notNull(),
+    /** JSON array of host domain patterns for Gondolin HTTP hook scoping (nullable) */
+    domains: text("domains"),
   },
   (table) => [uniqueIndex("secrets_env_var_idx").on(table.envVar)],
 );

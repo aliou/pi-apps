@@ -34,7 +34,7 @@ export class ModelsIntrospectionService {
 
   constructor(
     private sandboxManager: SandboxManager,
-    private secretsService: SecretsService,
+    _secretsService: SecretsService,
     private extensionConfigService: ExtensionConfigService,
     private sessionDataDir: string,
     private envConfig: EnvironmentSandboxConfig,
@@ -63,9 +63,6 @@ export class ModelsIntrospectionService {
     try {
       log.info({ sessionId }, "starting model introspection");
 
-      // Get secrets for the sandbox
-      const secrets = await this.secretsService.getAllAsEnv();
-
       // Write settings.json with extension packages so pi loads them
       const packages = writeExtensionSettings(
         this.sessionDataDir,
@@ -75,18 +72,17 @@ export class ModelsIntrospectionService {
       );
       log.debug({ sessionId, packages }, "wrote extension settings");
 
-      // Create ephemeral sandbox with real provider
+      // Create ephemeral sandbox with real provider (manager resolves secrets)
       log.debug({ sessionId }, "creating sandbox");
       handle = await this.sandboxManager.createForSession(
         sessionId,
         this.envConfig,
-        { secrets },
       );
       log.debug({ sessionId }, "sandbox created");
 
       // Wait for it to be running
       log.debug({ sessionId }, "resuming sandbox");
-      await handle.resume(secrets);
+      await handle.resume();
       log.debug({ sessionId }, "sandbox resumed");
 
       // Test pi is working before attaching

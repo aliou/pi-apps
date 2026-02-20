@@ -134,6 +134,7 @@ class CloudflareSandboxHandle implements SandboxHandle {
   async resume(
     secrets?: Record<string, string>,
     githubToken?: string,
+    _secretMaterial?: import("./types").SandboxSecretMaterial,
   ): Promise<void> {
     const envVars: Record<string, string> = {};
     if (secrets) {
