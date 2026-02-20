@@ -38,7 +38,14 @@ export function modelsRoutes(): Hono<AppEnv> {
     );
     const secrets = await secretsService.getAllAsEnv();
     const fingerprint = computeFingerprint(packages, secrets);
-    log.debug({ fingerprint, packageCount: packages.length, secretCount: Object.keys(secrets).length }, "computed fingerprint");
+    log.debug(
+      {
+        fingerprint,
+        packageCount: packages.length,
+        secretCount: Object.keys(secrets).length,
+      },
+      "computed fingerprint",
+    );
 
     // Return cached result if fingerprint matches
     if (cachedFingerprint === fingerprint && cachedModels !== null) {
