@@ -1,4 +1,4 @@
-import { PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, CaretDownIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "../lib/api";
 import type { ConnectionStatus } from "../lib/use-session-events";
@@ -21,15 +21,11 @@ export function ChatInput({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleSubmit = () => {
-    if (
-      !inputText.trim() ||
-      connectionStatus !== "connected" ||
-      isSubmitting ||
-      session?.status === "archived"
-    )
-      return;
+  const disabled = connectionStatus !== "connected" || session?.status === "archived";
+  const canSend = inputText.trim().length > 0 && !disabled && !isSubmitting;
 
+  const handleSubmit = () => {
+    if (!canSend) return;
     const message = inputText.trim();
     setInputText("");
     setIsSubmitting(true);
@@ -56,60 +52,55 @@ export function ChatInput({
   useEffect(resizeTextarea, [inputText]);
 
   return (
-    <div className="flex-shrink-0 border-t border-border bg-surface px-6 py-4 md:px-10">
+    <div className="flex-shrink-0 px-6 pb-4 pt-2 md:px-10">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-end gap-2">
-          <div className="flex-1 relative">
-            <textarea
-              ref={inputRef}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                connectionStatus === "connected"
-                  ? "Type a message... (Enter to send, Shift+Enter for newline)"
-                  : "Waiting for connection..."
-              }
-              disabled={
-                connectionStatus !== "connected" ||
-                session?.status === "archived"
-              }
-              rows={1}
-              className={cn(
-                "w-full resize-none rounded-xl border border-border bg-bg px-4 py-3 pr-10",
-                "text-sm text-fg placeholder:text-muted",
-                "focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent",
-                "disabled:opacity-50 disabled:cursor-not-allowed",
-              )}
-            />
-            {inputText && (
+        <div className={cn(
+          "rounded-2xl border border-border bg-surface transition-colors",
+          "focus-within:border-accent/50",
+          disabled && "opacity-50",
+        )}>
+          <textarea
+            ref={inputRef}
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={disabled ? "Waiting for connection..." : "Reply..."}
+            disabled={disabled}
+            rows={1}
+            className={cn(
+              "w-full resize-none bg-transparent px-4 pt-3 pb-1",
+              "text-sm text-fg placeholder:text-muted",
+              "focus:outline-none",
+              "disabled:cursor-not-allowed",
+            )}
+          />
+          <div className="flex items-center justify-between px-3 pb-2">
+            <div className="flex items-center gap-1">
+              {/* Model selector - disabled placeholder for now */}
               <button
                 type="button"
-                onClick={() => setInputText("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-fg"
+                disabled
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted/60 cursor-not-allowed"
               >
-                <XIcon className="w-4 h-4" />
+                {session?.currentModelId || "Model"}
+                <CaretDownIcon className="size-3" />
               </button>
-            )}
+            </div>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSend}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-full transition-colors",
+                canSend
+                  ? "bg-accent text-accent-fg hover:bg-accent-hover"
+                  : "bg-muted/20 text-muted/40 cursor-not-allowed",
+              )}
+              aria-label="Send message"
+            >
+              <ArrowUpIcon className="size-4" weight="bold" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={
-              !inputText.trim() ||
-              connectionStatus !== "connected" ||
-              isSubmitting ||
-              session?.status === "archived"
-            }
-            className={cn(
-              "flex-shrink-0 p-3 rounded-xl transition-colors",
-              "bg-accent text-accent-fg",
-              "hover:bg-accent-hover",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-            )}
-          >
-            <PaperPlaneTiltIcon className="w-5 h-5" weight="fill" />
-          </button>
         </div>
         {error && <p className="mt-2 text-xs text-status-err">{error}</p>}
       </div>

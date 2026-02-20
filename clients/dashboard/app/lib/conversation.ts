@@ -10,6 +10,7 @@ export type ConversationItem =
       timestamp: string;
       streaming: boolean;
     }
+  | { type: "thinking"; id: string; text: string; timestamp: string }
   | {
       type: "tool";
       id: string;
@@ -24,6 +25,7 @@ export type ConversationItem =
 interface ContentBlock {
   type: string;
   text?: string;
+  thinking?: string;
 }
 
 interface MessagePayload {
@@ -48,16 +50,31 @@ interface ToolEndPayload {
   isError?: boolean;
 }
 
+interface AssistantMessageEvent {
+  type: string;
+  delta?: string;
+  content?: string;
+  contentIndex?: number;
+}
+
 interface MessageUpdatePayload {
   message?: MessagePayload;
-  assistantMessageEvent?: {
-    type: string;
-    delta?: string;
-  };
+  assistantMessageEvent?: AssistantMessageEvent;
 }
 
 /**
  * Parse journal events into conversation items for the chat view.
+ *
+ * Uses the structured start/delta/end events from the RPC protocol:
+ * - thinking_start / thinking_delta / thinking_end
+ * - text_start / text_delta / text_end
+ * - tool_execution_start / tool_execution_end
+ *
+ * Items appear in the timeline in the order they occur, so you get:
+ * thinking -> text -> tool -> thinking -> text -> ...
+ *
+ * For history replay (full content array in message), blocks are processed
+ * in array order.
  */
 export function parseEventsToConversation(
   events: JournalEvent[],
@@ -67,33 +84,59 @@ export function parseEventsToConversation(
     string,
     { name: string; args: string; output: string; status: string }
   >();
-  let currentAssistantText = "";
-  let currentAssistantId: string | null = null;
-  let currentAssistantTimestamp = "";
 
-  // Helper to flush current assistant message
-  const flushAssistant = (streaming: boolean) => {
-    if (currentAssistantId && currentAssistantText.trim()) {
+  let currentAssistantText = "";
+  let currentThinkingText = "";
+  let currentAssistantId: string | null = null;
+  let currentTimestamp = "";
+  let thinkingCounter = 0;
+  let assistantChunkCounter = 0;
+
+  const flushThinking = () => {
+    if (currentThinkingText.trim()) {
       items.push({
-        type: "assistant",
-        id: currentAssistantId,
-        text: currentAssistantText.trim(),
-        timestamp: currentAssistantTimestamp,
-        streaming,
+        type: "thinking",
+        id: `thinking-${thinkingCounter++}`,
+        text: currentThinkingText.trim(),
+        timestamp: currentTimestamp,
       });
     }
+    currentThinkingText = "";
+  };
+
+  const flushAssistantText = (streaming: boolean) => {
+    if (currentAssistantText.trim()) {
+      items.push({
+        type: "assistant",
+        id: currentAssistantId ?? `assistant-chunk-${assistantChunkCounter++}`,
+        text: currentAssistantText.trim(),
+        timestamp: currentTimestamp,
+        streaming,
+      });
+      // Advance id so next chunk is unique
+      currentAssistantId = `assistant-chunk-${assistantChunkCounter++}`;
+    }
     currentAssistantText = "";
+  };
+
+  const flushAll = (streaming: boolean) => {
+    flushThinking();
+    flushAssistantText(streaming);
+  };
+
+  const resetTurn = () => {
+    currentAssistantText = "";
+    currentThinkingText = "";
     currentAssistantId = null;
-    currentAssistantTimestamp = "";
+    currentTimestamp = "";
   };
 
   for (const event of events) {
     const payload = event.payload as Record<string, unknown>;
 
     switch (event.type) {
-      // User sent a prompt
       case "prompt": {
-        flushAssistant(false);
+        flushAll(false);
         const p = payload as PromptPayload;
         if (p.message) {
           items.push({
@@ -106,57 +149,84 @@ export function parseEventsToConversation(
         break;
       }
 
-      // Assistant message started
       case "message_start": {
-        flushAssistant(false);
+        flushAll(false);
         currentAssistantId = `assistant-${event.seq}`;
-        currentAssistantTimestamp = event.createdAt;
-        currentAssistantText = "";
+        currentTimestamp = event.createdAt;
+        resetTurn();
+        currentAssistantId = `assistant-${event.seq}`;
+        currentTimestamp = event.createdAt;
         break;
       }
 
-      // Assistant message streaming update
       case "message_update": {
         const p = payload as MessageUpdatePayload;
         const evt = p.assistantMessageEvent;
 
-        // If we don't have an active assistant message, create one
         if (!currentAssistantId) {
           currentAssistantId = `assistant-${event.seq}`;
-          currentAssistantTimestamp = event.createdAt;
+          currentTimestamp = event.createdAt;
         }
 
-        // Handle delta events
-        if (evt?.type === "text_delta" && evt.delta) {
-          currentAssistantText += evt.delta;
+        if (evt) {
+          switch (evt.type) {
+            // Thinking lifecycle
+            case "thinking_delta":
+              if (evt.delta) currentThinkingText += evt.delta;
+              break;
+            case "thinking_end":
+              // Use the final content if available, otherwise use accumulated deltas
+              if (evt.content) currentThinkingText = evt.content;
+              flushThinking();
+              break;
+
+            // Text lifecycle
+            case "text_delta":
+              if (evt.delta) currentAssistantText += evt.delta;
+              break;
+            case "text_end":
+              if (evt.content) currentAssistantText = evt.content;
+              flushAssistantText(false);
+              break;
+
+            // Ignore start events and others
+            default:
+              break;
+          }
         }
 
-        // Also try to get full text from message.content
-        const msg = p.message;
-        if (msg?.content) {
-          if (typeof msg.content === "string") {
-            currentAssistantText = msg.content;
-          } else if (Array.isArray(msg.content)) {
-            const textContent = msg.content.find(
-              (c: ContentBlock) => c.type === "text",
-            );
-            if (textContent?.text) {
-              currentAssistantText = textContent.text;
+        // Full content array from message snapshot (history replay).
+        // Only process if there are no streaming events (avoid double-counting).
+        if (!evt) {
+          const msg = p.message;
+          if (msg?.content) {
+            if (typeof msg.content === "string") {
+              currentAssistantText = msg.content;
+            } else if (Array.isArray(msg.content)) {
+              for (const block of msg.content) {
+                if (block.type === "thinking" && block.thinking?.trim()) {
+                  flushAssistantText(false);
+                  currentThinkingText = block.thinking;
+                  flushThinking();
+                } else if (block.type === "text" && block.text?.trim()) {
+                  flushThinking();
+                  currentAssistantText = block.text;
+                  flushAssistantText(false);
+                }
+              }
             }
           }
         }
         break;
       }
 
-      // Assistant message ended
       case "message_end": {
-        flushAssistant(false);
+        flushAll(false);
         break;
       }
 
-      // Tool execution started
       case "tool_execution_start": {
-        flushAssistant(true); // Keep assistant streaming while tools run
+        flushAll(true);
         const p = payload as ToolStartPayload;
         if (p.toolCallId) {
           toolCalls.set(p.toolCallId, {
@@ -178,7 +248,6 @@ export function parseEventsToConversation(
         break;
       }
 
-      // Tool execution ended
       case "tool_execution_end": {
         const p = payload as ToolEndPayload;
         if (p.toolCallId) {
@@ -190,7 +259,6 @@ export function parseEventsToConversation(
             tool.output = outputText;
             toolCalls.set(p.toolCallId, tool);
 
-            // Update the existing tool item
             const idx = items.findIndex(
               (item) =>
                 item.type === "tool" && item.id === `tool-${p.toolCallId}`,
@@ -211,7 +279,6 @@ export function parseEventsToConversation(
         break;
       }
 
-      // Agent lifecycle events
       case "agent_start": {
         items.push({
           type: "system",
@@ -223,14 +290,12 @@ export function parseEventsToConversation(
       }
 
       case "agent_end": {
-        flushAssistant(false);
+        flushAll(false);
         break;
       }
 
-      // Response events (RPC responses)
       case "response": {
         const p = payload as { command?: string; success?: boolean };
-        // Only show errors or important responses
         if (p.command === "prompt" && p.success === false) {
           items.push({
             type: "system",
@@ -244,8 +309,8 @@ export function parseEventsToConversation(
     }
   }
 
-  // Flush any remaining assistant message (still streaming)
-  flushAssistant(true);
+  // Flush any remaining (still streaming)
+  flushAll(true);
 
   return items;
 }

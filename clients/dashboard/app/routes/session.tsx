@@ -21,6 +21,7 @@ import { parseEventsToConversation } from "../lib/conversation";
 import { useSandboxStatus } from "../lib/use-sandbox-status";
 import { useSessionEvents } from "../lib/use-session-events";
 import { useSidebar } from "../lib/sidebar";
+import { cn } from "../lib/utils";
 
 type LocationState = {
   initialPrompt?: string;
@@ -155,26 +156,36 @@ export default function SessionPage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto bg-bg px-6 md:px-10">
-        <div className="max-w-4xl mx-auto">
-          {viewMode === "chat" && (
-            <ConversationView items={conversationItems} autoScroll={false} />
-          )}
-          {viewMode === "debug" && (
-            <div className="py-4">
-              <DebugView events={events} autoScroll={false} />
-            </div>
-          )}
-          {viewMode === "terminal" && id && (
-            <div className="py-4 h-full">
-              <SandboxTerminal
-                sessionId={id}
-                sandboxStatus={sandboxStatus}
-              />
-            </div>
-          )}
+      <div
+        className={cn(
+          "flex-1 flex flex-col overflow-hidden bg-bg px-6 md:px-10",
+          viewMode !== "chat" && "hidden",
+        )}
+      >
+        <div className="max-w-4xl mx-auto w-full flex-1 overflow-hidden">
+          <ConversationView items={conversationItems} />
         </div>
       </div>
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto bg-bg px-6 md:px-10",
+          viewMode !== "debug" && "hidden",
+        )}
+      >
+        <div className="max-w-4xl mx-auto py-4">
+          <DebugView events={events} autoScroll={false} />
+        </div>
+      </div>
+      {viewMode === "terminal" && id && (
+        <div className="flex-1 overflow-y-auto bg-bg px-6 md:px-10">
+          <div className="max-w-4xl mx-auto py-4 h-full">
+            <SandboxTerminal
+              sessionId={id}
+              sandboxStatus={sandboxStatus}
+            />
+          </div>
+        </div>
+      )}
 
       {viewMode === "chat" && (
         <ChatInput

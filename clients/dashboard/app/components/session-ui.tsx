@@ -1,4 +1,5 @@
 import {
+  CaretRightIcon,
   CheckCircleIcon,
   ClockIcon,
   CopyIcon,
@@ -36,8 +37,13 @@ function inferCodeLanguage(path?: string, toolName?: string): string {
 }
 
 function fencedCode(text: string, language = "text"): string {
-  const trimmed = text.replace(/\n+$/, "");
-  return `\`\`\`${language}\n${trimmed}\n\`\`\``;
+  const trimmed = text.replace(/^\n+/, "").replace(/\n+$/, "");
+  // Use enough backticks to avoid conflicts with content
+  let fence = "```";
+  while (trimmed.includes(fence)) {
+    fence += "`";
+  }
+  return `${fence}${language}\n${trimmed}\n${fence}`;
 }
 
 function trimCodeBlockTrailingBlankLines(markdown: string): string {
@@ -198,8 +204,8 @@ export function ToolCallCard({
   status: ToolStatus;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <div className="mb-2 flex items-center gap-2 text-sm">
+    <div className="rounded-lg border border-border bg-surface p-2">
+      <div className="flex items-center gap-2 text-xs">
         <WrenchIcon className="size-4 text-muted" />
         <span className="font-mono text-fg">{name}</span>
         <span className="ml-auto">
@@ -375,22 +381,48 @@ export function NativeToolCall({
   output?: string;
   diff?: string;
 }) {
-  if (toolName === "read") return <ReadToolCall status={status} path={path} output={output} />;
-  if (toolName === "write") return <WriteToolCall status={status} path={path} content={output} />;
-  if (toolName === "edit") return <EditToolCall status={status} path={path} diff={diff} output={output} />;
-  if (toolName === "bash") return <BashToolCall status={status} command={command} output={output} />;
-  if (toolName === "ask_user") return <AskUserToolCall status={status} output={output} />;
-  if (toolName === "process") return <ProcessToolCall status={status} output={output} />;
+  const [expanded, setExpanded] = useState(false);
+
+  // Build the summary line
+  let summary = "";
+  if (toolName === "read" && path) summary = path;
+  else if (toolName === "bash" && command)
+    summary = command.length > 100 ? `${command.slice(0, 100)}...` : command;
+  else if ((toolName === "edit" || toolName === "write") && path) summary = path;
+  else if (toolName === "ask_user") summary = "asking user";
+  else if (toolName === "process") summary = "background process";
+  else summary = path ?? command ?? "";
+
+  const displayOutput = diff ?? output;
 
   return (
-    <ToolCallCard name={toolName} status={status}>
-      <ToolCallDetails
-        args={JSON.stringify({ path, command }, null, 2)}
-        output={output}
-        path={path}
-        toolName={toolName}
-      />
-    </ToolCallCard>
+    <div className="group">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs text-muted hover:bg-surface transition-colors"
+      >
+        <StatusIcon status={status} />
+        <span className="font-mono font-medium text-fg/80">{toolName}</span>
+        {summary && (
+          <span className="truncate font-mono text-muted/80">{summary}</span>
+        )}
+        <CaretRightIcon
+          className={cn(
+            "ml-auto size-3 text-muted/60 transition-transform",
+            expanded && "rotate-90",
+          )}
+        />
+      </button>
+      {expanded && displayOutput && (
+        <div className="mt-1 ml-6 rounded-md border border-border/60 bg-surface overflow-hidden">
+          <MarkdownCode
+            text={displayOutput}
+            language={inferCodeLanguage(path, toolName)}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

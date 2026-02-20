@@ -1,4 +1,4 @@
-import { ChatCircleIcon, CodeIcon, CloudIcon, GithubLogoIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, ChatCircleIcon, CodeIcon, CloudIcon, GithubLogoIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { SearchableSelect, Tabs } from "../components/ui";
@@ -308,28 +308,43 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="relative">
+          <div className={cn(
+            "rounded-2xl border border-border bg-surface/50 transition-colors",
+            "focus-within:border-accent/50",
+          )}>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
               placeholder={
                 mode === "chat"
-                  ? "Ask anything"
-                  : "Describe what you want to build or change"
+                  ? "Ask anything..."
+                  : "Describe what you want to build or change..."
               }
-              rows={6}
-              className="w-full resize-none rounded-xl border border-border bg-bg px-4 py-4 pr-14 text-base text-fg placeholder:text-muted focus:border-accent focus:outline-none"
+              rows={4}
+              className="w-full resize-none bg-transparent px-4 pt-4 pb-1 text-base text-fg placeholder:text-muted focus:outline-none"
             />
-
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!canSubmit || isSubmitting || isLoading}
-              className="absolute bottom-3 right-3 inline-flex size-10 items-center justify-center rounded-lg bg-accent text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Create session"
-            >
-              ↑
-            </button>
+            <div className="flex items-center justify-end px-3 pb-3">
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canSubmit || isSubmitting || isLoading}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full transition-colors",
+                  canSubmit && !isSubmitting && !isLoading
+                    ? "bg-accent text-accent-fg hover:bg-accent-hover"
+                    : "bg-muted/20 text-muted/40 cursor-not-allowed",
+                )}
+                aria-label="Create session"
+              >
+                <ArrowUpIcon className="size-4" weight="bold" />
+              </button>
+            </div>
           </div>
 
           {error && <p className="mt-3 text-sm text-status-err">{error}</p>}

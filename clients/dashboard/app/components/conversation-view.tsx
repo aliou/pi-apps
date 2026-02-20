@@ -1,13 +1,13 @@
-import { CopyIcon, UserIcon } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowDownIcon, CopyIcon, UserIcon } from "@phosphor-icons/react";
+import { useState } from "react";
 import { Streamdown } from "streamdown";
 import type { ConversationItem } from "../lib/conversation";
+import { useStickToBottom } from "../lib/use-stick-to-bottom";
 import { cn } from "../lib/utils";
 import { NativeToolCall } from "./session-ui";
 
 interface ConversationViewProps {
   items: ConversationItem[];
-  autoScroll?: boolean;
 }
 
 function safeParseJson(value: string): Record<string, unknown> | null {
@@ -41,65 +41,71 @@ function trimCodeBlockTrailingBlankLines(markdown: string): string {
   );
 }
 
-export function ConversationView({
-  items,
-  autoScroll = true,
-}: ConversationViewProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const prevLengthRef = useRef(items.length);
-  const prevLastFingerprintRef = useRef("");
+const markdownStyles = cn(
+  "text-sm text-fg [&_.sd-markdown]:text-sm",
+  "[&_[data-streamdown=code-block]]:overflow-hidden [&_[data-streamdown=code-block]]:rounded-md [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border/80",
+  "[&_[data-streamdown=code-block-header]]:hidden",
+  "[&_[data-streamdown=code-block-body]]:bg-bg-deep [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:border-0",
+  "dark:[&_[data-streamdown=code-block-body]]:bg-[#2B3E54]",
+  "[&_.sd-markdown_pre]:overflow-x-auto [&_.sd-markdown_pre]:rounded-md",
+  "[&_[data-streamdown=inline-code]]:font-mono [&_[data-streamdown=inline-code]]:text-[0.92em]",
+  "[&_[data-streamdown=inline-code]]:rounded-md [&_[data-streamdown=inline-code]]:border [&_[data-streamdown=inline-code]]:border-border/80",
+  "[&_[data-streamdown=inline-code]]:bg-bg-deep [&_[data-streamdown=inline-code]]:px-1.5 [&_[data-streamdown=inline-code]]:py-0.5",
+  "dark:[&_[data-streamdown=inline-code]]:bg-[#203246] dark:[&_[data-streamdown=inline-code]]:text-[#D8E4F2] dark:[&_[data-streamdown=inline-code]]:border-[#36506B]",
+  "[&_[data-streamdown=inline-code]]:whitespace-nowrap",
+);
 
-  useEffect(() => {
-    if (!autoScroll) return;
-
-    const last = items[items.length - 1];
-    const lastFingerprint = !last
-      ? ""
-      : `${last.id}:${last.type === "assistant" ? last.text.length : ""}`;
-
-    const appendedItem = items.length > prevLengthRef.current;
-    const streamedAssistantUpdate =
-      items.length > 0 && lastFingerprint !== prevLastFingerprintRef.current;
-
-    if (appendedItem || streamedAssistantUpdate) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-
-    prevLengthRef.current = items.length;
-    prevLastFingerprintRef.current = lastFingerprint;
-  }, [items, autoScroll]);
-
-  if (items.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 text-muted">
-        <p className="text-sm">No messages yet</p>
-        <p className="text-xs mt-1">Send a prompt to start the conversation</p>
-      </div>
-    );
-  }
+export function ConversationView({ items }: ConversationViewProps) {
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+    useStickToBottom();
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      {items.map((item) => {
-        switch (item.type) {
-          case "user":
-            return <UserMessage key={item.id} item={item} />;
-          case "assistant":
-            return <AssistantMessage key={item.id} item={item} />;
-          case "tool":
-            return <ToolCallItem key={item.id} item={item} />;
-          case "system":
-            return <SystemMessage key={item.id} item={item} />;
-          default:
-            return null;
-        }
-      })}
-      <div ref={bottomRef} />
+    <div className="relative h-full">
+      <div
+        ref={scrollRef}
+        className="h-full overflow-y-auto conversation-no-scrollbar"
+      >
+        <div ref={contentRef} className="flex flex-col gap-3 p-4 pb-8">
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-muted">
+              <p className="text-sm">No messages yet</p>
+              <p className="text-xs mt-1">
+                Send a prompt to start the conversation
+              </p>
+            </div>
+          ) : (
+            items.map((item) => {
+              switch (item.type) {
+                case "user":
+                  return <UserMessage key={item.id} item={item} />;
+                case "assistant":
+                  return <AssistantMessage key={item.id} item={item} />;
+                case "thinking":
+                  return <ThinkingItem key={item.id} item={item} />;
+                case "tool":
+                  return <ToolCallItem key={item.id} item={item} />;
+                case "system":
+                  return <SystemMessage key={item.id} item={item} />;
+                default:
+                  return null;
+              }
+            })
+          )}
+        </div>
+      </div>
+      {!isAtBottom && (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className="absolute bottom-4 right-4 z-10 flex size-8 items-center justify-center rounded-full border border-border bg-surface shadow-md hover:bg-surface-hover transition-colors"
+        >
+          <ArrowDownIcon className="size-4 text-muted" />
+        </button>
+      )}
     </div>
   );
 }
 
-// User message bubble
 function UserMessage({
   item,
 }: {
@@ -119,7 +125,6 @@ function UserMessage({
   );
 }
 
-// Assistant message bubble
 function AssistantMessage({
   item,
 }: {
@@ -140,20 +145,7 @@ function AssistantMessage({
           <span className="text-xs font-semibold text-muted">Pi</span>
         </div>
         <div className="bg-surface border border-border rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm group relative">
-          <div
-            className={cn(
-              "text-sm text-fg [&_.sd-markdown]:text-sm",
-              "[&_[data-streamdown=code-block]]:overflow-hidden [&_[data-streamdown=code-block]]:rounded-md [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border/80",
-              "[&_[data-streamdown=code-block-header]]:hidden",
-              "[&_[data-streamdown=code-block-body]]:bg-bg-deep [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:border-0",
-              "dark:[&_[data-streamdown=code-block-body]]:bg-[#2B3E54]",
-              "[&_.sd-markdown_pre]:overflow-x-auto [&_.sd-markdown_pre]:rounded-md",
-              "[&_[data-streamdown=inline-code]]:font-mono [&_[data-streamdown=inline-code]]:text-[0.92em]",
-              "[&_[data-streamdown=inline-code]]:rounded-md [&_[data-streamdown=inline-code]]:border [&_[data-streamdown=inline-code]]:border-border/80",
-              "[&_[data-streamdown=inline-code]]:bg-bg-deep [&_[data-streamdown=inline-code]]:px-1.5 [&_[data-streamdown=inline-code]]:py-0.5",
-              "dark:[&_[data-streamdown=inline-code]]:bg-[#203246] dark:[&_[data-streamdown=inline-code]]:text-[#D8E4F2] dark:[&_[data-streamdown=inline-code]]:border-[#36506B]",
-            )}
-          >
+          <div className={markdownStyles}>
             <Streamdown>
               {trimCodeBlockTrailingBlankLines(item.text)}
             </Streamdown>
@@ -177,7 +169,6 @@ function AssistantMessage({
   );
 }
 
-// Tool call item (expandable)
 function ToolCallItem({
   item,
 }: {
@@ -189,7 +180,7 @@ function ToolCallItem({
   const diff = asString(parsedArgs?.diff) ?? findDiffText(item.output);
 
   return (
-    <div className="ml-10 my-1">
+    <div className="ml-10">
       <NativeToolCall
         toolName={item.name}
         status={item.status}
@@ -202,7 +193,33 @@ function ToolCallItem({
   );
 }
 
-// System message
+function ThinkingItem({
+  item,
+}: {
+  item: Extract<ConversationItem, { type: "thinking" }>;
+}) {
+  return (
+    <div className="ml-10">
+      <details className="rounded-md border border-border/50 bg-bg-deep/30">
+        <summary className="cursor-pointer px-3 py-1.5 text-xs text-muted/70 italic">
+          Thinking...
+        </summary>
+        <div
+          className={cn(
+            "border-t border-border/30 px-3 py-2 text-xs text-fg/60",
+            markdownStyles,
+            "[&_.sd-markdown]:text-xs [&_.sd-markdown]:text-fg/60",
+          )}
+        >
+          <Streamdown>
+            {trimCodeBlockTrailingBlankLines(item.text)}
+          </Streamdown>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function SystemMessage({
   item,
 }: {

@@ -106,4 +106,13 @@
     background-color: #243548;
     color: #9fb4c9;
   }
+
+  .conversation-no-scrollbar,
+  .conversation-no-scrollbar * {
+    scrollbar-width: none;
+  }
+  .conversation-no-scrollbar::-webkit-scrollbar,
+  .conversation-no-scrollbar *::-webkit-scrollbar {
+    display: none;
+  }
 }
