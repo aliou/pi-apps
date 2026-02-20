@@ -15,6 +15,7 @@
     "@phosphor-icons/react": "^2.1.7",
     "@react-router/node": "^7.6.1",
     "clsx": "^2.1.1",
+    "fuse.js": "^7.1.0",
     "ghostty-web": "^0.4.0",
     "isbot": "^5",
     "react": "^19.0.0",

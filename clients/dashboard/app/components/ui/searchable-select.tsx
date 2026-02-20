@@ -2,8 +2,12 @@ import { Combobox, createListCollection } from "@ark-ui/react/combobox";
 import { Menu } from "@ark-ui/react/menu";
 import { Portal } from "@ark-ui/react/portal";
 import { CaretUpDownIcon, CheckIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import Fuse from "fuse.js";
 import { type ReactNode, useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
+
+/** Strip non-alphanumeric chars (except spaces) so "K2.5" becomes "K25", matching queries like "k25". */
+const normalize = (s: string) => s.replace(/[^a-zA-Z0-9 ]/g, "");
 
 export interface SearchableSelectItem {
   label: string;
@@ -35,17 +39,31 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [inputValue, setInputValue] = useState("");
 
+  const fuse = useMemo(
+    () =>
+      new Fuse(items, {
+        keys: [
+          { name: "label", weight: 2 },
+          { name: "value", weight: 1 },
+        ],
+        threshold: 0.3,
+        ignoreLocation: true,
+        getFn: (obj, path) => {
+          const raw = Fuse.config.getFn(obj, path);
+          if (typeof raw === "string") return normalize(raw);
+          if (Array.isArray(raw))
+            return raw.map((s) => (typeof s === "string" ? normalize(s) : s));
+          return raw;
+        },
+      }),
+    [items],
+  );
+
   const collection = useMemo(() => {
-    const q = inputValue.toLowerCase().trim();
-    const filtered = q
-      ? items.filter(
-          (item) =>
-            item.label?.toLowerCase().includes(q) ||
-            item.value?.toLowerCase().includes(q),
-        )
-      : items;
+    const q = inputValue.trim();
+    const filtered = q ? fuse.search(normalize(q)).map((r) => r.item) : items;
     return createListCollection({ items: filtered });
-  }, [items, inputValue]);
+  }, [items, inputValue, fuse]);
 
   const selectedLabel = items.find((i) => i.value === value)?.label;
 
