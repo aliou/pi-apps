@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, assert, beforeAll, describe, expect, it } from "vitest";
 import { DockerSandboxProvider } from "./docker";
 
 /**
@@ -132,6 +132,7 @@ describe("DockerSandboxProvider", () => {
         const handle = await provider.createSandbox({ sessionId });
 
         const result = await handle.exec?.("echo hello");
+        assert(result);
         expect(result.exitCode).toBe(0);
         expect(result.output).toContain("hello");
 
@@ -149,6 +150,7 @@ describe("DockerSandboxProvider", () => {
         const handle = await provider.createSandbox({ sessionId });
 
         const result = await handle.exec?.("exit 42");
+        assert(result);
         expect(result.exitCode).toBe(42);
 
         await handle.terminate();
@@ -165,6 +167,7 @@ describe("DockerSandboxProvider", () => {
         const handle = await provider.createSandbox({ sessionId });
 
         const result = await handle.exec?.("echo error >&2");
+        assert(result);
         expect(result.output).toContain("error");
 
         await handle.terminate();
