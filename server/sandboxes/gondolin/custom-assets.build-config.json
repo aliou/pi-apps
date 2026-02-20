@@ -11,12 +11,21 @@
       "bash",
       "ca-certificates",
       "curl",
+      "fd",
       "git",
+      "github-cli",
+      "jq",
+      "make",
       "nodejs",
       "npm",
-      "uv",
+      "openssh",
       "python3",
-      "openssh"
+      "ripgrep",
+      "sqlite",
+      "unzip",
+      "uv",
+      "wget",
+      "zip"
     ],
     "initramfsPackages": []
   },

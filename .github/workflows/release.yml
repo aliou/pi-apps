@@ -175,6 +175,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
 
       - name: Resolve commit SHA
         id: sha
@@ -220,14 +221,15 @@ jobs:
           echo "Updated nix/release.nix:"
           cat nix/release.nix
 
-      - name: Commit nix/release.nix
+      - name: Commit nix/release.nix to release branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B release
           git add nix/release.nix
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "release: update nix hashes for ${{ steps.sha.outputs.short }}"
-          git push
+          git push --force origin release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
