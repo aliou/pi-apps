@@ -116,3 +116,8 @@
     display: none;
   }
 }
+
+/* Hide empty trailing line in code blocks (outside @layer so it wins over utility classes) */
+[data-streamdown="code-block-body"] code > span.block:last-child:empty {
+  display: none !important;
+}

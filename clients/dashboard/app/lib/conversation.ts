@@ -254,8 +254,9 @@ export function parseEventsToConversation(
           const tool = toolCalls.get(p.toolCallId);
           if (tool) {
             tool.status = p.isError ? "error" : "success";
-            const outputText =
-              p.result?.content?.map((c) => c.text).join("\n") ?? "";
+            const outputText = (
+              p.result?.content?.map((c) => c.text).join("\n") ?? ""
+            ).replace(/\n+$/, "");
             tool.output = outputText;
             toolCalls.set(p.toolCallId, tool);
 
