@@ -172,9 +172,54 @@ jobs:
           name: gondolin-assets-aarch64-linux
           path: ${{ runner.temp }}/gondolin-assets-aarch64-linux.tar.gz
 
+  build-dashboard-oci:
+    name: Pull Dashboard OCI Image
+    runs-on: ubuntu-24.04-arm
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Resolve short SHA
+        id: sha
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "short=${SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Install podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and export dashboard image
+        run: |
+          IMAGE_TAG="${{ steps.sha.outputs.short }}"
+          # Try commit SHA tag first, fall back to latest
+          if podman pull "ghcr.io/aliou/pi-dashboard:$IMAGE_TAG" 2>/dev/null; then
+            podman tag "ghcr.io/aliou/pi-dashboard:$IMAGE_TAG" pi-dashboard:latest
+          else
+            echo "Commit SHA tag not found, pulling latest"
+            podman pull ghcr.io/aliou/pi-dashboard:latest
+            podman tag ghcr.io/aliou/pi-dashboard:latest pi-dashboard:latest
+          fi
+          podman save pi-dashboard:latest -o "${{ runner.temp }}/pi-dashboard-oci.tar"
+          gzip "${{ runner.temp }}/pi-dashboard-oci.tar"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-dashboard-oci
+          path: ${{ runner.temp }}/pi-dashboard-oci.tar.gz
+
   release:
     name: Create Release
-    needs: [build-relay, build-gondolin-assets]
+    needs: [build-relay, build-gondolin-assets, build-dashboard-oci]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -205,6 +250,12 @@ jobs:
           name: gondolin-assets-aarch64-linux
           path: artifacts/
 
+      - name: Download dashboard OCI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pi-dashboard-oci
+          path: artifacts/
+
       - name: Compute SRI hashes and update nix/release.nix
         run: |
           # Convert raw sha256 hex to SRI format (sha256-<base64>)
@@ -214,6 +265,7 @@ jobs:
 
           relay_hash=$(sri_hash artifacts/pi-relay-aarch64-linux.tar.gz)
           gondolin_hash=$(sri_hash artifacts/gondolin-assets-aarch64-linux.tar.gz)
+          dashboard_hash=$(sri_hash artifacts/pi-dashboard-oci.tar.gz)
           short="${{ steps.sha.outputs.short }}"
 
           cat > nix/release.nix << EOF
@@ -223,6 +275,7 @@ jobs:
             rev = "$short";
             relay.aarch64-linux.hash = "$relay_hash";
             gondolin-assets.aarch64-linux.hash = "$gondolin_hash";
+            dashboard-oci.aarch64-linux.hash = "$dashboard_hash";
           }
           EOF
 
@@ -249,3 +302,4 @@ jobs:
           files: |
             artifacts/pi-relay-aarch64-linux.tar.gz
             artifacts/gondolin-assets-aarch64-linux.tar.gz
+            artifacts/pi-dashboard-oci.tar.gz
