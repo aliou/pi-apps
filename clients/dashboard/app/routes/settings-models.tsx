@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Select } from "../components/ui";
+import { Button, SearchableSelect } from "../components/ui";
 import { api, type ModelInfo } from "../lib/api";
 
 interface SessionDefaults {
@@ -30,9 +30,9 @@ function ModeModelForm({ title, models, value, onChange }: ModeModelFormProps) {
       <h3 className="mb-3 text-sm font-semibold text-fg">{title}</h3>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div>
-          <span className="mb-1 block text-xs text-muted">Provider</span>
-          <Select
+        <div className="space-y-1">
+          <span className="block text-xs text-muted">Provider</span>
+          <SearchableSelect
             value={value.modelProvider}
             onValueChange={(modelProvider) => onChange({ modelProvider, modelId: "" })}
             placeholder="Select provider"
@@ -40,37 +40,21 @@ function ModeModelForm({ title, models, value, onChange }: ModeModelFormProps) {
               value: provider,
               label: provider,
             }))}
-            renderItem={(item) => (
-              <div>
-                <p className="truncate">{item.label}</p>
-              </div>
-            )}
           />
         </div>
 
-        <div>
-          <span className="mb-1 block text-xs text-muted">Model</span>
-          <Select
+        <div className="space-y-1">
+          <span className="block text-xs text-muted">Model</span>
+          <SearchableSelect
             value={value.modelId}
             onValueChange={(modelId) =>
               onChange({ modelProvider: value.modelProvider, modelId })
             }
-            disabled={!value.modelProvider}
             placeholder="Select model"
             items={modelsForProvider.map((model) => ({
-              value: model.modelId,
-              label: model.name ?? model.modelId,
-              description:
-                model.name && model.name !== model.modelId ? model.modelId : undefined,
+              value: model.id,
+              label: model.name ?? model.id,
             }))}
-            renderItem={(item) => (
-              <div>
-                <p className="truncate">{item.label}</p>
-                {item.description && (
-                  <p className="truncate text-xs text-muted">{item.description}</p>
-                )}
-              </div>
-            )}
           />
         </div>
       </div>

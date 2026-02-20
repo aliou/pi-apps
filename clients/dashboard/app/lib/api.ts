@@ -137,8 +137,8 @@ export interface GitHubRepo {
 }
 
 export interface ModelInfo {
+  id: string;
   provider: string;
-  modelId: string;
   name?: string;
   contextWindow?: number;
   maxOutput?: number;

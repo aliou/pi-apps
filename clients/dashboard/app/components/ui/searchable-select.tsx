@@ -40,8 +40,8 @@ export function SearchableSelect({
     const filtered = q
       ? items.filter(
           (item) =>
-            item.label.toLowerCase().includes(q) ||
-            item.value.toLowerCase().includes(q),
+            item.label?.toLowerCase().includes(q) ||
+            item.value?.toLowerCase().includes(q),
         )
       : items;
     return createListCollection({ items: filtered });
