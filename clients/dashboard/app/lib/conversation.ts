@@ -222,6 +222,22 @@ export function parseEventsToConversation(
 
       case "message_end": {
         flushAll(false);
+        // Show error if assistant message ended with an error
+        const endPayload = payload as {
+          message?: { role?: string; stopReason?: string; errorMessage?: string };
+        };
+        if (
+          endPayload.message?.role === "assistant" &&
+          endPayload.message?.stopReason === "error" &&
+          endPayload.message?.errorMessage
+        ) {
+          items.push({
+            type: "system",
+            id: `error-${event.seq}`,
+            text: endPayload.message.errorMessage.trim(),
+            timestamp: event.createdAt,
+          });
+        }
         break;
       }
 
@@ -296,12 +312,12 @@ export function parseEventsToConversation(
       }
 
       case "response": {
-        const p = payload as { command?: string; success?: boolean };
+        const p = payload as { command?: string; success?: boolean; error?: string };
         if (p.command === "prompt" && p.success === false) {
           items.push({
             type: "system",
             id: `system-${event.seq}`,
-            text: `Error: ${p.command} failed`,
+            text: p.error || `Error: ${p.command} failed`,
             timestamp: event.createdAt,
           });
         }

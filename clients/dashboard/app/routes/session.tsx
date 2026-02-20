@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, WarningIcon } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
   useLocation,
@@ -56,6 +56,8 @@ export default function SessionPage() {
   useEffect(() => {
     navigate({ search: `?tab=${viewMode}` }, { replace: true });
   }, [viewMode, navigate]);
+
+  const scrollToBottomRef = useRef<(() => void) | null>(null);
 
   const conversationItems = useMemo(
     () => parseEventsToConversation(events),
@@ -163,7 +165,7 @@ export default function SessionPage() {
         )}
       >
         <div className="max-w-4xl mx-auto w-full flex-1 overflow-hidden">
-          <ConversationView items={conversationItems} />
+          <ConversationView items={conversationItems} scrollToBottomRef={scrollToBottomRef} />
         </div>
       </div>
       <div
@@ -191,7 +193,11 @@ export default function SessionPage() {
         <ChatInput
           connectionStatus={connectionStatus}
           session={session}
-          onSubmit={sendPrompt}
+          onSubmit={(msg) => {
+            sendPrompt(msg);
+            // Scroll to bottom after sending so user sees their message + response
+            requestAnimationFrame(() => scrollToBottomRef.current?.());
+          }}
           error={error}
         />
       )}

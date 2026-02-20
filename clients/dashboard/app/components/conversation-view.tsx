@@ -8,6 +8,8 @@ import { NativeToolCall } from "./session-ui";
 
 interface ConversationViewProps {
   items: ConversationItem[];
+  /** Expose scrollToBottom so parent can trigger it (e.g. on send) */
+  scrollToBottomRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 function safeParseJson(value: string): Record<string, unknown> | null {
@@ -55,9 +57,14 @@ const markdownStyles = cn(
   "[&_[data-streamdown=inline-code]]:whitespace-nowrap",
 );
 
-export function ConversationView({ items }: ConversationViewProps) {
+export function ConversationView({ items, scrollToBottomRef }: ConversationViewProps) {
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
     useStickToBottom();
+
+  // Expose scrollToBottom to parent
+  if (scrollToBottomRef) {
+    scrollToBottomRef.current = scrollToBottom;
+  }
 
   return (
     <div className="relative h-full">
