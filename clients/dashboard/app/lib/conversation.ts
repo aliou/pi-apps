@@ -20,7 +20,13 @@ export type ConversationItem =
       status: "running" | "success" | "error";
       timestamp: string;
     }
-  | { type: "system"; id: string; text: string; timestamp: string };
+  | {
+      type: "system";
+      id: string;
+      text: string;
+      timestamp: string;
+      level?: "info" | "error";
+    };
 
 interface ContentBlock {
   type: string;
@@ -236,6 +242,7 @@ export function parseEventsToConversation(
             id: `error-${event.seq}`,
             text: endPayload.message.errorMessage.trim(),
             timestamp: event.createdAt,
+            level: "error",
           });
         }
         break;
@@ -297,17 +304,48 @@ export function parseEventsToConversation(
       }
 
       case "agent_start": {
-        items.push({
-          type: "system",
-          id: `system-${event.seq}`,
-          text: "Agent started",
-          timestamp: event.createdAt,
-        });
+        // Intentionally ignored in chat timeline.
+        // A single prompt can produce multiple agent_start events during retries.
         break;
       }
 
       case "agent_end": {
         flushAll(false);
+        break;
+      }
+
+      case "auto_retry_start": {
+        const p = payload as {
+          attempt?: number;
+          maxAttempts?: number;
+          errorMessage?: string;
+        };
+        const retryLabel =
+          typeof p.attempt === "number" && typeof p.maxAttempts === "number"
+            ? `Retry ${p.attempt}/${p.maxAttempts}`
+            : "Retry";
+        items.push({
+          type: "system",
+          id: `retry-${event.seq}`,
+          text: `${retryLabel}: ${(p.errorMessage ?? "Model request failed").trim()}`,
+          timestamp: event.createdAt,
+          level: "error",
+        });
+        break;
+      }
+
+      case "auto_retry_end": {
+        const p = payload as { attempt?: number };
+        items.push({
+          type: "system",
+          id: `retry-end-${event.seq}`,
+          text:
+            typeof p.attempt === "number"
+              ? `Recovered after retry ${p.attempt}`
+              : "Recovered after retry",
+          timestamp: event.createdAt,
+          level: "info",
+        });
         break;
       }
 
@@ -319,6 +357,7 @@ export function parseEventsToConversation(
             id: `system-${event.seq}`,
             text: p.error || `Error: ${p.command} failed`,
             timestamp: event.createdAt,
+            level: "error",
           });
         }
         break;
