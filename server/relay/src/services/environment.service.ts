@@ -79,8 +79,11 @@ export class EnvironmentService {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
+    const existingCount = this.list().length;
+    const shouldDefault = params.isDefault ?? existingCount === 0;
+
     // If setting as default, clear other defaults first
-    if (params.isDefault) {
+    if (shouldDefault) {
       this.clearOtherDefaults();
     }
 
@@ -89,7 +92,7 @@ export class EnvironmentService {
       name: params.name,
       sandboxType: params.sandboxType,
       config: JSON.stringify(params.config),
-      isDefault: params.isDefault ?? false,
+      isDefault: shouldDefault,
       createdAt: now,
       updatedAt: now,
     };

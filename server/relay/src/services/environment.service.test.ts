@@ -35,7 +35,7 @@ describe("EnvironmentService", () => {
       expect(JSON.parse(env.config)).toEqual({
         image: "ghcr.io/aliou/pi-sandbox-codex-universal",
       });
-      expect(env.isDefault).toBe(false);
+      expect(env.isDefault).toBe(true);
       expect(env.createdAt).toBeDefined();
       expect(env.updatedAt).toBeDefined();
     });
@@ -56,6 +56,35 @@ describe("EnvironmentService", () => {
   });
 
   describe("isDefault", () => {
+    it("sets first environment as default when isDefault is omitted", () => {
+      const first = service.create({
+        name: "First",
+        sandboxType: "docker",
+        config: { image: "ghcr.io/aliou/pi-sandbox-codex-universal" },
+      });
+
+      expect(first.isDefault).toBe(true);
+      expect(service.getDefault()?.id).toBe(first.id);
+    });
+
+    it("does not steal default when creating a second environment without isDefault", () => {
+      const first = service.create({
+        name: "First",
+        sandboxType: "docker",
+        config: { image: "ghcr.io/aliou/pi-sandbox-codex-universal" },
+      });
+
+      const second = service.create({
+        name: "Second",
+        sandboxType: "docker",
+        config: { image: "ghcr.io/aliou/pi-sandbox-codex-universal" },
+      });
+
+      expect(service.get(first.id)?.isDefault).toBe(true);
+      expect(service.get(second.id)?.isDefault).toBe(false);
+      expect(service.getDefault()?.id).toBe(first.id);
+    });
+
     it("sets isDefault and clears others", () => {
       const env1 = service.create({
         name: "Env 1",
@@ -102,6 +131,7 @@ describe("EnvironmentService", () => {
         name: "Not Default",
         sandboxType: "docker",
         config: { image: "ghcr.io/aliou/pi-sandbox-codex-universal" },
+        isDefault: false,
       });
 
       expect(service.getDefault()).toBeUndefined();
