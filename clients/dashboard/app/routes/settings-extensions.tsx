@@ -1,9 +1,12 @@
 import { PackageIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { ActionSplitButton, Button, Tabs } from "../components/ui";
-import { api, type ExtensionConfig, type ExtensionScope } from "../lib/api";
+import { api, type ExtensionConfig } from "../lib/api";
 
 type ScopeTab = "global" | "chat" | "code";
+type ScopeCounts = Record<ScopeTab, number>;
+
+const ALL_SCOPES: ScopeTab[] = ["global", "chat", "code"];
 
 function AddPackageForm({
   scope,
@@ -203,25 +206,60 @@ export default function ExtensionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeTab>("global");
+  const [counts, setCounts] = useState<ScopeCounts>({
+    global: 0,
+    chat: 0,
+    code: 0,
+  });
 
-  const loadConfigs = useCallback(async (s: ExtensionScope) => {
+  const refreshScopeData = useCallback(async (activeScope: ScopeTab) => {
     setLoading(true);
-    const res = await api.get<ExtensionConfig[]>(
-      `/extension-configs?scope=${s}`,
+
+    const results = await Promise.all(
+      ALL_SCOPES.map(async (s) => ({
+        scope: s,
+        res: await api.get<ExtensionConfig[]>(`/extension-configs?scope=${s}`),
+      })),
     );
-    if (res.error) {
-      setError(res.error);
-      setConfigs([]);
-    } else if (res.data) {
-      setConfigs(res.data);
-      setError(null);
+
+    const nextCounts: ScopeCounts = {
+      global: 0,
+      chat: 0,
+      code: 0,
+    };
+
+    let activeConfigs: ExtensionConfig[] = [];
+    let activeError: string | null = null;
+
+    for (const { scope: resultScope, res } of results) {
+      if (res.data) {
+        nextCounts[resultScope] = res.data.length;
+        if (resultScope === activeScope) {
+          activeConfigs = res.data;
+        }
+      }
+
+      if (resultScope === activeScope && res.error) {
+        activeError = res.error;
+      }
     }
+
+    setCounts(nextCounts);
+
+    if (activeError) {
+      setError(activeError);
+      setConfigs([]);
+    } else {
+      setError(null);
+      setConfigs(activeConfigs);
+    }
+
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    loadConfigs(scope);
-  }, [scope, loadConfigs]);
+    void refreshScopeData(scope);
+  }, [scope, refreshScopeData]);
 
   const handleDelete = async (id: string) => {
     const res = await api.delete<{ ok: boolean }>(`/extension-configs/${id}`);
@@ -229,12 +267,8 @@ export default function ExtensionsPage() {
       alert(`Failed to remove: ${res.error}`);
       return;
     }
-    await loadConfigs(scope);
+    await refreshScopeData(scope);
   };
-
-  const globalCount = useCountForScope("global");
-  const chatCount = useCountForScope("chat");
-  const codeCount = useCountForScope("code");
 
   return (
     <div>
@@ -259,21 +293,21 @@ export default function ExtensionsPage() {
             className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
           >
             Global
-            <span className="ml-0.5 text-muted">{globalCount}</span>
+            <span className="ml-0.5 text-muted">{counts.global}</span>
           </Tabs.Trigger>
           <Tabs.Trigger
             value="chat"
             className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
           >
             Chat
-            <span className="ml-0.5 text-muted">{chatCount}</span>
+            <span className="ml-0.5 text-muted">{counts.chat}</span>
           </Tabs.Trigger>
           <Tabs.Trigger
             value="code"
             className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
           >
             Code
-            <span className="ml-0.5 text-muted">{codeCount}</span>
+            <span className="ml-0.5 text-muted">{counts.code}</span>
           </Tabs.Trigger>
           <Tabs.Indicator className="top-1 bottom-1 rounded-md bg-surface" />
         </Tabs.List>
@@ -306,35 +340,11 @@ export default function ExtensionsPage() {
             <AddPackageForm
               key={scope}
               scope={scope}
-              onAdded={() => loadConfigs(scope)}
+              onAdded={() => void refreshScopeData(scope)}
             />
           </div>
         </>
       )}
     </div>
   );
-}
-
-/**
- * Small hook that fetches count for a scope independently so we can show
- * counts on all tabs without re-fetching the active list.
- */
-function useCountForScope(scope: ExtensionScope): number {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .get<ExtensionConfig[]>(`/extension-configs?scope=${scope}`)
-      .then((res) => {
-        if (!cancelled && res.data) {
-          setCount(res.data.length);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [scope]);
-
-  return count;
 }

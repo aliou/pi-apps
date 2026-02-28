@@ -669,6 +669,7 @@ export default function EnvironmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEnv, setEditingEnv] = useState<Environment | undefined>();
+  const [createDialogVersion, setCreateDialogVersion] = useState(0);
 
   const loadData = useCallback(async () => {
     const [envsRes, imagesRes] = await Promise.all([
@@ -702,6 +703,8 @@ export default function EnvironmentsPage() {
       return;
     }
     setDialogOpen(false);
+    setEditingEnv(undefined);
+    setCreateDialogVersion((v) => v + 1);
     await loadData();
   };
 
@@ -717,6 +720,7 @@ export default function EnvironmentsPage() {
       alert(`Failed to update: ${res.error}`);
       return;
     }
+    setDialogOpen(false);
     setEditingEnv(undefined);
     await loadData();
   };
@@ -732,6 +736,7 @@ export default function EnvironmentsPage() {
 
   const openCreate = () => {
     setEditingEnv(undefined);
+    setCreateDialogVersion((v) => v + 1);
     setDialogOpen(true);
   };
 
@@ -797,7 +802,7 @@ export default function EnvironmentsPage() {
 
       {/* Create/Edit Dialog */}
       <EnvironmentDialog
-        key={editingEnv?.id ?? "create"}
+        key={editingEnv?.id ?? `create-${createDialogVersion}`}
         environment={editingEnv}
         images={images}
         open={dialogOpen}
