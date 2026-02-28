@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const BOTTOM_THRESHOLD_PX = 50;
+const BOTTOM_THRESHOLD_PX = 80;
 
 /**
  * Minimal stick-to-bottom hook for chat views.
@@ -61,6 +61,7 @@ export function useStickToBottom() {
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
+      const wasAtBottom = isAtBottomRef.current;
       const height = entry.contentRect.height;
       const grew = previousHeight !== undefined && height > previousHeight;
       previousHeight = height;
@@ -73,9 +74,9 @@ export function useStickToBottom() {
       // Update isAtBottom state on resize
       checkAndUpdate();
 
-      // Only auto-scroll if content grew, user was at bottom, and we've
-      // seen overflow before (not first paint).
-      if (grew && isAtBottomRef.current && hasOverflowedRef.current) {
+      // Only auto-scroll if content grew, user was near bottom before growth,
+      // and we've seen overflow before (not first paint).
+      if (grew && wasAtBottom && hasOverflowedRef.current) {
         requestAnimationFrame(() => {
           scrollRef.current?.scrollTo({
             top: scrollRef.current.scrollHeight,

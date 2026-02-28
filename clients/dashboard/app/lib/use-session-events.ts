@@ -19,6 +19,32 @@ export type ConnectionStatus =
   | "error";
 
 const ALL_EVENTS_FETCH_CHUNK = 1000;
+const COMMAND_TIMEOUT_MS = 10_000;
+
+type PendingCommand = {
+  command: string;
+  resolve: (event: Record<string, unknown>) => void;
+  reject: (error: Error) => void;
+};
+
+function extractModelSelection(data: unknown):
+  | { provider: string; modelId: string }
+  | null {
+  if (!data || typeof data !== "object") return null;
+
+  const state = data as { model?: unknown };
+  if (!state.model || typeof state.model !== "object") return null;
+
+  const model = state.model as Record<string, unknown>;
+  const provider = model.provider;
+  const modelId = model.id;
+
+  if (typeof provider !== "string" || typeof modelId !== "string") {
+    return null;
+  }
+
+  return { provider, modelId };
+}
 
 async function fetchAllEventsUntilSeq(
   sessionId: string,
@@ -53,6 +79,10 @@ export function useSessionEvents(
   error: string | null;
   setError: (e: string | null) => void;
   sendPrompt: (message: string) => boolean;
+  setModel: (provider: string, modelId: string) => Promise<{
+    ok: boolean;
+    error?: string;
+  }>;
   session: Session | null;
 } {
   const navigate = useNavigate();
@@ -71,6 +101,7 @@ export function useSessionEvents(
   const wsReadyRef = useRef(false);
   const pendingInitialPromptRef = useRef<string | null>(null);
   const readinessProbeIdRef = useRef<string | null>(null);
+  const pendingCommandsRef = useRef<Map<string, PendingCommand>>(new Map());
 
   const pendingPromptKey = sessionId ? `pendingPrompt:${sessionId}` : null;
 
@@ -130,6 +161,109 @@ export function useSessionEvents(
     lastSeqRef.current = seq;
     return true;
   }, []);
+
+  const waitForCommandResponse = useCallback(
+    (id: string, command: string) =>
+      new Promise<Record<string, unknown>>((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+          pendingCommandsRef.current.delete(id);
+          reject(new Error(`${command} timed out`));
+        }, COMMAND_TIMEOUT_MS);
+
+        pendingCommandsRef.current.set(id, {
+          command,
+          resolve: (event) => {
+            clearTimeout(timeout);
+            resolve(event);
+          },
+          reject: (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          },
+        });
+      }),
+    [],
+  );
+
+  const setModel = useCallback(
+    async (provider: string, modelId: string) => {
+      const ws = wsRef.current;
+      if (!ws || !wsReadyRef.current) {
+        return { ok: false, error: "Session not connected" };
+      }
+
+      const previous = {
+        provider: session?.currentModelProvider,
+        modelId: session?.currentModelId,
+      };
+
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentModelProvider: provider,
+              currentModelId: modelId,
+            }
+          : prev,
+      );
+
+      const setModelId = crypto.randomUUID();
+
+      try {
+        ws.send(
+          JSON.stringify({
+            type: "set_model",
+            id: setModelId,
+            provider,
+            modelId,
+          }),
+        );
+
+        await waitForCommandResponse(setModelId, "set_model");
+
+        const getStateId = crypto.randomUUID();
+        ws.send(
+          JSON.stringify({
+            type: "get_state",
+            id: getStateId,
+          }),
+        );
+
+        const stateResponse = await waitForCommandResponse(getStateId, "get_state");
+        const modelSelection = extractModelSelection(stateResponse.data);
+
+        if (modelSelection) {
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  currentModelProvider: modelSelection.provider,
+                  currentModelId: modelSelection.modelId,
+                }
+              : prev,
+          );
+        }
+
+        return { ok: true };
+      } catch (err) {
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentModelProvider: previous.provider,
+                currentModelId: previous.modelId,
+              }
+            : prev,
+        );
+
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Failed to set model",
+        };
+      }
+    },
+    [session?.currentModelId, session?.currentModelProvider, waitForCommandResponse],
+  );
 
   const flushPendingInitialPrompt = useCallback(() => {
     const pending = pendingInitialPromptRef.current;
@@ -203,6 +337,10 @@ export function useSessionEvents(
     ws.onclose = (evt) => {
       wsReadyRef.current = false;
       readinessProbeIdRef.current = null;
+      for (const [id, pending] of pendingCommandsRef.current) {
+        pending.reject(new Error("WebSocket closed"));
+        pendingCommandsRef.current.delete(id);
+      }
       setConnectionStatus("disconnected");
       wsRef.current = null;
 
@@ -254,6 +392,24 @@ export function useSessionEvents(
           return;
         }
 
+        if (event.type === "response" && typeof event.id === "string") {
+          const pending = pendingCommandsRef.current.get(event.id);
+          if (pending) {
+            pendingCommandsRef.current.delete(event.id);
+            if (event.success === true && event.command === pending.command) {
+              pending.resolve(event);
+            } else {
+              pending.reject(
+                new Error(
+                  typeof event.error === "string"
+                    ? event.error
+                    : `${pending.command} failed`,
+                ),
+              );
+            }
+          }
+        }
+
         if (event.type === "replay_start" || event.type === "replay_end") {
           return;
         }
@@ -293,6 +449,7 @@ export function useSessionEvents(
     error,
     setError,
     sendPrompt,
+    setModel,
     session,
   };
 }

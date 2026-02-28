@@ -15,6 +15,7 @@ import { SessionHeader, type ViewMode } from "../components/session-header";
 
 import {
   api,
+  type ModelInfo,
   type SandboxRestartResponse,
 } from "../lib/api";
 import { parseEventsToConversation } from "../lib/conversation";
@@ -37,8 +38,15 @@ export default function SessionPage() {
   const locationState = (location.state as LocationState | null) ?? null;
   const initialPrompt = locationState?.initialPrompt?.trim();
 
-  const { events, connectionStatus, error, setError, sendPrompt, session } =
-    useSessionEvents(id, initialPrompt);
+  const {
+    events,
+    connectionStatus,
+    error,
+    setError,
+    sendPrompt,
+    setModel,
+    session,
+  } = useSessionEvents(id, initialPrompt);
 
   const sandboxStatus = useSandboxStatus(id);
 
@@ -52,10 +60,30 @@ export default function SessionPage() {
   const [isArchiving, setIsArchiving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [modelsError, setModelsError] = useState<string | null>(null);
 
   useEffect(() => {
     navigate({ search: `?tab=${viewMode}` }, { replace: true });
   }, [viewMode, navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api.get<ModelInfo[]>("/models").then((res) => {
+      if (cancelled) return;
+      if (res.error) {
+        setModelsError(res.error);
+        return;
+      }
+      setModels(res.data ?? []);
+      setModelsError(null);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const scrollToBottomRef = useRef<(() => void) | null>(null);
 
@@ -193,6 +221,9 @@ export default function SessionPage() {
         <ChatInput
           connectionStatus={connectionStatus}
           session={session}
+          models={models}
+          modelsError={modelsError}
+          onSetModel={setModel}
           onSubmit={(msg) => {
             sendPrompt(msg);
             // Scroll to bottom after sending so user sees their message + response
