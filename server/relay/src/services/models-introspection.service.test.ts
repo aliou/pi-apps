@@ -25,15 +25,18 @@ function makeMockExtensionConfigService(): ExtensionConfigService {
 describe("ModelsIntrospectionService", () => {
   it.skip("returns models from an ephemeral sandbox via RPC", async () => {
     const mockSecrets = makeMockSecretsService();
-    const manager = new SandboxManager({
-      docker: {
-        sessionDataDir: "/tmp/pi-test-sessions",
-        secretsBaseDir: "/tmp/pi-test-secrets",
+    const manager = new SandboxManager(
+      {
+        docker: {
+          sessionDataDir: "/tmp/pi-test-sessions",
+          secretsBaseDir: "/tmp/pi-test-secrets",
+        },
+        gondolin: {
+          sessionDataDir: "/tmp/pi-test-sessions",
+        },
       },
-      gondolin: {
-        sessionDataDir: "/tmp/pi-test-sessions",
-      },
-    }, mockSecrets);
+      mockSecrets,
+    );
 
     const envConfig: EnvironmentSandboxConfig = {
       sandboxType: "gondolin",

@@ -24,15 +24,18 @@ describe("WebSocket Handler", () => {
     deps = {
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
-      sandboxManager: new SandboxManager({
-        docker: {
-          sessionDataDir: "/tmp/pi-test-sessions",
-          secretsBaseDir: "/tmp/pi-test-secrets",
+      sandboxManager: new SandboxManager(
+        {
+          docker: {
+            sessionDataDir: "/tmp/pi-test-sessions",
+            secretsBaseDir: "/tmp/pi-test-secrets",
+          },
+          gondolin: {
+            sessionDataDir: "/tmp/pi-test-sessions",
+          },
         },
-        gondolin: {
-          sessionDataDir: "/tmp/pi-test-sessions",
-        },
-      }, secretsService),
+        secretsService,
+      ),
       environmentService: new EnvironmentService(db),
       secretsService,
       sessionHubManager: createTestSessionHubManager(db),

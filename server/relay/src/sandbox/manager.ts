@@ -258,7 +258,10 @@ export class SandboxManager {
   async createForSession(
     sessionId: string,
     envConfig: EnvironmentSandboxConfig,
-    options?: Omit<CreateSandboxOptions, "sessionId" | "secrets" | "secretMaterial">,
+    options?: Omit<
+      CreateSandboxOptions,
+      "sessionId" | "secrets" | "secretMaterial"
+    >,
   ): Promise<SandboxHandle> {
     const provider = this.getProvider(envConfig);
     const material = await this.resolveSecretMaterial(
@@ -277,7 +280,10 @@ export class SandboxManager {
    */
   async createMockForSession(
     sessionId: string,
-    options?: Omit<CreateSandboxOptions, "sessionId" | "secrets" | "secretMaterial">,
+    options?: Omit<
+      CreateSandboxOptions,
+      "sessionId" | "secrets" | "secretMaterial"
+    >,
   ): Promise<SandboxHandle> {
     const provider = this.getMockProvider();
     const material = await this.resolveSecretMaterial("mock");

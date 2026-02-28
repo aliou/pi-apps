@@ -3,9 +3,7 @@ import type { AppEnv } from "../app";
 import { createLogger } from "../lib/logger";
 import type { SecretKind, SecretsService } from "../services/secrets.service";
 
-export function secretsRoutes(
-  secretsService: SecretsService,
-): Hono<AppEnv> {
+export function secretsRoutes(secretsService: SecretsService): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const logger = createLogger("secrets");
 

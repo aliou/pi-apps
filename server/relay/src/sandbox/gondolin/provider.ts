@@ -9,12 +9,11 @@ import {
 import { join, resolve } from "node:path";
 import process from "node:process";
 import {
+  createHttpHooks,
   VM as GondolinVM,
   RealFSProvider,
-  createHttpHooks,
   type VM,
 } from "@earendil-works/gondolin";
-import type { SandboxSecretMaterial } from "../types";
 import { createLogger } from "../../lib/logger";
 import { writeGitConfig } from "../git-config";
 import type { SandboxLogStore } from "../log-store";
@@ -28,6 +27,7 @@ import type {
   SandboxInfo,
   SandboxProvider,
   SandboxProviderCapabilities,
+  SandboxSecretMaterial,
   SandboxStatus,
 } from "../types";
 import { GondolinSandboxChannel } from "./channel";

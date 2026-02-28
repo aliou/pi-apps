@@ -111,10 +111,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
   app.route("/api/github", githubRoutes());
   app.route("/api/models", modelsRoutes());
   app.route("/api/settings", settingsRoutes());
-  app.route(
-    "/api/secrets",
-    secretsRoutes(services.secretsService),
-  );
+  app.route("/api/secrets", secretsRoutes(services.secretsService));
   app.route("/api/environments", environmentsRoutes());
   app.route("/api/extension-configs", extensionConfigsRoutes());
 

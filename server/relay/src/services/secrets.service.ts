@@ -82,9 +82,7 @@ function validateDomainPattern(pattern: string): string {
     throw new Error("Domain pattern must not be empty");
   }
   if (trimmed.includes("://")) {
-    throw new Error(
-      `Domain pattern must not contain URL scheme: "${trimmed}"`,
-    );
+    throw new Error(`Domain pattern must not contain URL scheme: "${trimmed}"`);
   }
   if (trimmed.includes("/")) {
     throw new Error(`Domain pattern must not contain slash: "${trimmed}"`);
