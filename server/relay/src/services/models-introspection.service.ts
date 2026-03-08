@@ -16,9 +16,33 @@ export interface IntrospectedModel {
   [key: string]: unknown;
 }
 
+export enum IntrospectionErrorReason {
+  MISSING_PROVIDER = "missing_provider",
+  SANDBOX_UNAVAILABLE = "sandbox_unavailable",
+  TIMEOUT = "timeout",
+  EXEC_FAILED = "exec_failed",
+  CHANNEL_CLOSED = "channel_closed",
+  RPC_FAILED = "rpc_failed",
+  RESPONSE_INVALID = "response_invalid",
+  UNKNOWN = "unknown",
+}
+
+export class IntrospectionError extends Error {
+  constructor(
+    message: string,
+    public readonly reason: IntrospectionErrorReason,
+    cause?: Error,
+  ) {
+    super(message);
+    this.name = "IntrospectionError";
+    if (cause) this.cause = cause;
+  }
+}
+
 export interface ModelsIntrospectionResult {
   models: IntrospectedModel[];
   error: string | null;
+  errorReason?: IntrospectionErrorReason;
 }
 
 /**
@@ -49,6 +73,7 @@ export class ModelsIntrospectionService {
           resolve({
             models: [],
             error: `Models introspection timed out after ${ModelsIntrospectionService.TIMEOUT_MS}ms`,
+            errorReason: IntrospectionErrorReason.TIMEOUT,
           });
         }, ModelsIntrospectionService.TIMEOUT_MS),
       ),
@@ -89,7 +114,10 @@ export class ModelsIntrospectionService {
       log.debug({ sessionId }, "testing pi executable");
       const exec = handle.exec;
       if (!exec) {
-        throw new Error("Sandbox provider does not support exec");
+        throw new IntrospectionError(
+          "Sandbox provider does not support exec",
+          IntrospectionErrorReason.MISSING_PROVIDER,
+        );
       }
       const piTest = await exec("which pi && pi --version");
       log.debug(
@@ -101,7 +129,10 @@ export class ModelsIntrospectionService {
         "pi test result",
       );
       if (piTest.exitCode !== 0) {
-        throw new Error(`pi not available: ${piTest.output}`);
+        throw new IntrospectionError(
+          `pi not available: ${piTest.output}`,
+          IntrospectionErrorReason.EXEC_FAILED,
+        );
       }
 
       // Attach and send RPC
@@ -121,9 +152,20 @@ export class ModelsIntrospectionService {
       );
       return { models, error: null };
     } catch (err) {
+      if (err instanceof IntrospectionError) {
+        log.error(
+          { sessionId, reason: err.reason, err: err.message },
+          "model introspection failed",
+        );
+        return { models: [], error: err.message, errorReason: err.reason };
+      }
       const message = err instanceof Error ? err.message : String(err);
       log.error({ sessionId, err: message }, "model introspection failed");
-      return { models: [], error: message };
+      return {
+        models: [],
+        error: message,
+        errorReason: IntrospectionErrorReason.UNKNOWN,
+      };
     } finally {
       // Tear down
       channel?.close();
@@ -192,7 +234,12 @@ export class ModelsIntrospectionService {
         clearTimeout(timeout);
         unsubMessage();
         log.error({ sessionId, reason }, "channel closed while waiting for pi");
-        reject(new Error(`Channel closed: ${reason ?? "unknown reason"}`));
+        reject(
+          new IntrospectionError(
+            `Channel closed: ${reason ?? "unknown reason"}`,
+            IntrospectionErrorReason.CHANNEL_CLOSED,
+          ),
+        );
       });
     });
   }
@@ -229,7 +276,10 @@ export class ModelsIntrospectionService {
           "timeout waiting for response",
         );
         reject(
-          new Error("Timed out waiting for get_available_models response"),
+          new IntrospectionError(
+            "Timed out waiting for get_available_models response",
+            IntrospectionErrorReason.TIMEOUT,
+          ),
         );
       }, ModelsIntrospectionService.TIMEOUT_MS);
 
@@ -255,13 +305,29 @@ export class ModelsIntrospectionService {
                 "received successful response",
               );
               resolve(event.data.models as IntrospectedModel[]);
-            } else {
+            } else if (!event.success) {
               const errorMsg = event.error ?? "get_available_models failed";
               log.error(
                 { sessionId, commandId, error: errorMsg },
                 "command failed",
               );
-              reject(new Error(errorMsg));
+              reject(
+                new IntrospectionError(
+                  errorMsg,
+                  IntrospectionErrorReason.RPC_FAILED,
+                ),
+              );
+            } else {
+              log.error(
+                { sessionId, commandId },
+                "invalid response: missing models data",
+              );
+              reject(
+                new IntrospectionError(
+                  "Invalid response: missing models data",
+                  IntrospectionErrorReason.RESPONSE_INVALID,
+                ),
+              );
             }
           }
         } catch {
@@ -277,7 +343,12 @@ export class ModelsIntrospectionService {
           { sessionId, commandId, reason },
           "channel closed before response received",
         );
-        reject(new Error(`Channel closed: ${reason ?? "unknown reason"}`));
+        reject(
+          new IntrospectionError(
+            `Channel closed: ${reason ?? "unknown reason"}`,
+            IntrospectionErrorReason.CHANNEL_CLOSED,
+          ),
+        );
       });
 
       // Send the RPC command

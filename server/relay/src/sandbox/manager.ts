@@ -40,6 +40,8 @@ export interface EnvironmentSandboxConfig {
   apiToken?: string;
   /** Optional custom guest assets directory for Gondolin (for gondolin type) */
   imagePath?: string;
+  /** Non-secret environment variables resolved from the environment config. */
+  env?: Record<string, string>;
 }
 
 export interface SandboxManagerConfig {
@@ -267,11 +269,17 @@ export class SandboxManager {
     const material = await this.resolveSecretMaterial(
       envConfig.sandboxType as "docker" | "cloudflare" | "gondolin" | "mock",
     );
+    const mergedEnv = { ...(envConfig.env ?? {}), ...(options?.env ?? {}) };
+    const mergedDirectEnv = { ...material.directEnv, ...mergedEnv };
     return provider.createSandbox({
       sessionId,
       ...options,
-      secrets: material.directEnv,
-      secretMaterial: material,
+      env: mergedEnv,
+      secrets: mergedDirectEnv,
+      secretMaterial: {
+        ...material,
+        directEnv: mergedDirectEnv,
+      },
     });
   }
 
@@ -345,7 +353,14 @@ export class SandboxManager {
     const material = await this.resolveSecretMaterial(
       providerType as "docker" | "cloudflare" | "gondolin" | "mock",
     );
-    await handle.resume(material.directEnv, githubToken, material);
+    const mergedDirectEnv = {
+      ...material.directEnv,
+      ...(envConfig?.env ?? {}),
+    };
+    await handle.resume(mergedDirectEnv, githubToken, {
+      ...material,
+      directEnv: mergedDirectEnv,
+    });
     return handle;
   }
 
@@ -445,6 +460,7 @@ export async function resolveEnvConfig(
     workerUrl?: string;
     secretId?: string;
     imagePath?: string;
+    envVars?: Array<{ key: string; value: string }>;
   };
 
   const result: EnvironmentSandboxConfig = {
@@ -452,6 +468,12 @@ export async function resolveEnvConfig(
     image: config.image,
     workerUrl: config.workerUrl,
     imagePath: config.imagePath,
+    env:
+      config.envVars && config.envVars.length > 0
+        ? Object.fromEntries(
+            config.envVars.map((entry) => [entry.key, entry.value]),
+          )
+        : undefined,
   };
 
   if (env.sandboxType === "cloudflare" && config.secretId) {

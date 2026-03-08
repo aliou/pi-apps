@@ -29,6 +29,11 @@ export interface EnvironmentConfig {
   resourceTier?: SandboxResourceTier;
   /** Idle timeout in seconds before the reaper idles the session. Default: 3600 (1 hour). */
   idleTimeoutSeconds?: number;
+  /**
+   * Non-secret environment variables to pass to the sandbox.
+   * Keys must match /^[A-Z_][A-Z0-9_]*$/ and must be unique.
+   */
+  envVars?: Array<{ key: string; value: string }>;
 }
 
 export type SandboxType = "docker" | "cloudflare" | "gondolin";
@@ -68,6 +73,53 @@ export const AVAILABLE_DOCKER_IMAGES = [
 ] as const;
 
 export type AvailableImage = (typeof AVAILABLE_DOCKER_IMAGES)[number];
+
+/**
+ * Validate environment variable keys and values.
+ * Returns an error message or null if valid.
+ */
+export function validateEnvVars(
+  envVars?: Array<{ key: string; value: string }>,
+): string | null {
+  if (!envVars || envVars.length === 0) {
+    return null;
+  }
+
+  // Key validation pattern: uppercase letters, digits, underscore, must start with letter or underscore
+  const keyPattern = /^[A-Z_][A-Z0-9_]*$/;
+
+  const seenKeys = new Set<string>();
+
+  for (let i = 0; i < envVars.length; i++) {
+    const entry = envVars[i];
+    if (!entry) {
+      return `envVars[${i}]: entry is required`;
+    }
+    const { key, value } = entry;
+
+    // Validate key format
+    if (!key || typeof key !== "string") {
+      return `envVars[${i}]: key is required and must be a string`;
+    }
+
+    if (!keyPattern.test(key)) {
+      return `envVars[${i}]: key "${key}" must match pattern /^[A-Z_][A-Z0-9_]*$/ (uppercase letters, digits, underscore, must start with letter or underscore)`;
+    }
+
+    // Check for duplicates
+    if (seenKeys.has(key)) {
+      return `envVars: duplicate key "${key}" found`;
+    }
+    seenKeys.add(key);
+
+    // Validate value
+    if (value !== undefined && typeof value !== "string") {
+      return `envVars[${i}]: value must be a string when provided`;
+    }
+  }
+
+  return null;
+}
 
 export class EnvironmentService {
   constructor(private db: AppDatabase) {}

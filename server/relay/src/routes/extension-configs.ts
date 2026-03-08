@@ -2,6 +2,16 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import type { ExtensionScope } from "../services/extension-config.service";
 
+/**
+ * Check if a Gondolin environment is available for validation.
+ */
+function hasGondolinEnvironment(environmentService: {
+  list: () => Array<{ sandboxType: string }>;
+}): boolean {
+  const allEnvs = environmentService.list();
+  return allEnvs.some((e) => e.sandboxType === "gondolin");
+}
+
 const VALID_SCOPES: ExtensionScope[] = ["global", "chat", "code", "session"];
 
 interface AddPackageRequest {
@@ -77,6 +87,7 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
     const extensionConfigService = c.get("extensionConfigService");
     const sessionService = c.get("sessionService");
     const sandboxManager = c.get("sandboxManager");
+    const environmentService = c.get("environmentService");
 
     let body: AddPackageRequest;
     try {
@@ -117,23 +128,29 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
     }
 
     // Validate package by installing in an ephemeral Gondolin VM.
-    // If Gondolin is unavailable, skip validation (result is null).
+    // Pre-check Gondolin availability - if validate=true but Gondolin unavailable,
+    // skip validation cleanly and return meta.validationSkipped=true.
     const pkg = body.package.trim();
     const shouldValidate = body.validate !== false;
 
     let validation: { valid: boolean; error?: string } | null = null;
     if (shouldValidate) {
-      validation = await sandboxManager.validateExtensionPackage(pkg, {
-        ignoreScripts: body.ignoreScripts,
-      });
-      if (validation && !validation.valid) {
-        return c.json(
-          {
-            data: null,
-            error: `package validation failed: ${validation.error ?? "unknown error"}`,
-          },
-          400,
-        );
+      if (!hasGondolinEnvironment(environmentService)) {
+        // Gondolin unavailable, skip validation
+        validation = null;
+      } else {
+        validation = await sandboxManager.validateExtensionPackage(pkg, {
+          ignoreScripts: body.ignoreScripts,
+        });
+        if (validation && !validation.valid) {
+          return c.json(
+            {
+              data: null,
+              error: `package validation failed: ${validation.error ?? "unknown error"}`,
+            },
+            400,
+          );
+        }
       }
     }
 

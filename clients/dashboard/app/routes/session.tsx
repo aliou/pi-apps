@@ -7,21 +7,22 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
+import { ChatInput } from "../components/chat-input";
 import { ConversationView } from "../components/conversation-view";
 import { DebugView } from "../components/debug-view";
 import { SandboxTerminal } from "../components/sandbox-terminal";
-import { ChatInput } from "../components/chat-input";
 import { SessionHeader, type ViewMode } from "../components/session-header";
 
 import {
   api,
   type ModelInfo,
+  type ModelsResponse,
   type SandboxRestartResponse,
 } from "../lib/api";
 import { parseEventsToConversation } from "../lib/conversation";
+import { useSidebar } from "../lib/sidebar";
 import { useSandboxStatus } from "../lib/use-sandbox-status";
 import { useSessionEvents } from "../lib/use-session-events";
-import { useSidebar } from "../lib/sidebar";
 import { cn } from "../lib/utils";
 
 type LocationState = {
@@ -70,20 +71,20 @@ export default function SessionPage() {
   useEffect(() => {
     let cancelled = false;
 
-    api.get<ModelInfo[]>("/models").then((res) => {
+    api.get<ModelsResponse>("/models").then((res) => {
       if (cancelled) return;
       if (res.error) {
         setModelsError(res.error);
         return;
       }
-      setModels(res.data ?? []);
+      setModels(res.data?.models ?? []);
       setModelsError(null);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, []);
 
   const scrollToBottomRef = useRef<(() => void) | null>(null);
 
@@ -193,7 +194,10 @@ export default function SessionPage() {
         )}
       >
         <div className="max-w-4xl mx-auto w-full flex-1 overflow-hidden">
-          <ConversationView items={conversationItems} scrollToBottomRef={scrollToBottomRef} />
+          <ConversationView
+            items={conversationItems}
+            scrollToBottomRef={scrollToBottomRef}
+          />
         </div>
       </div>
       <div
@@ -209,10 +213,7 @@ export default function SessionPage() {
       {viewMode === "terminal" && id && (
         <div className="flex-1 overflow-y-auto bg-bg px-6 md:px-10">
           <div className="max-w-4xl mx-auto py-4 h-full">
-            <SandboxTerminal
-              sessionId={id}
-              sandboxStatus={sandboxStatus}
-            />
+            <SandboxTerminal sessionId={id} sandboxStatus={sandboxStatus} />
           </div>
         </div>
       )}

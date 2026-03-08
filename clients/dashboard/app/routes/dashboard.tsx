@@ -1,13 +1,20 @@
-import { ArrowUpIcon, ChatCircleIcon, CodeIcon, CloudIcon, GithubLogoIcon } from "@phosphor-icons/react";
+import {
+  ArrowUpIcon,
+  ChatCircleIcon,
+  CloudIcon,
+  CodeIcon,
+  GithubLogoIcon,
+} from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { SearchableSelect, Tabs } from "../components/ui";
 import type { SearchableSelectItem } from "../components/ui";
+import { SearchableSelect, Tabs } from "../components/ui";
 import {
   api,
   type Environment,
   type GitHubRepo,
   type ModelInfo,
+  type ModelsResponse,
 } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -142,7 +149,8 @@ export default function DashboardPage() {
   const [defaults, setDefaults] = useState<SessionDefaults>({});
 
   const [selectedRepoId, setSelectedRepoId] = useState<string>("");
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>("");
+  const [selectedEnvironmentId, setSelectedEnvironmentId] =
+    useState<string>("");
   const [message, setMessage] = useState("");
 
   const [isLoading, setIsLoading] = useState(true);
@@ -155,9 +163,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setGreeting(
-      mode === "chat"
-        ? randomFrom(CHAT_GREETINGS)
-        : randomFrom(CODE_GREETINGS),
+      mode === "chat" ? randomFrom(CHAT_GREETINGS) : randomFrom(CODE_GREETINGS),
     );
   }, [mode]);
 
@@ -167,7 +173,7 @@ export default function DashboardPage() {
       const [reposRes, envsRes, modelsRes, settingsRes] = await Promise.all([
         api.get<GitHubRepo[]>("/github/repos"),
         api.get<Environment[]>("/environments"),
-        api.get<ModelInfo[]>("/models"),
+        api.get<ModelsResponse>("/models"),
         api.get<Record<string, unknown>>("/settings"),
       ]);
 
@@ -178,7 +184,7 @@ export default function DashboardPage() {
           envsRes.data.find((env) => env.isDefault) ?? envsRes.data[0];
         if (defaultEnv) setSelectedEnvironmentId(defaultEnv.id);
       }
-      if (modelsRes.data) setModels(modelsRes.data);
+      if (modelsRes.data) setModels(modelsRes.data.models);
       if (settingsRes.data) {
         const configured = settingsRes.data.session_defaults as
           | SessionDefaults
@@ -285,7 +291,7 @@ export default function DashboardPage() {
           >
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-xs text-muted">Repository</label>
+                <span className="text-xs text-muted">Repository</span>
                 <SearchableSelect
                   items={repoItems}
                   value={selectedRepoId}
@@ -296,7 +302,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs text-muted">Environment</label>
+                <span className="text-xs text-muted">Environment</span>
                 <SearchableSelect
                   items={environmentItems}
                   value={selectedEnvironmentId}
@@ -308,10 +314,12 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className={cn(
-            "rounded-2xl border border-border bg-surface/50 transition-colors",
-            "focus-within:border-accent/50",
-          )}>
+          <div
+            className={cn(
+              "rounded-2xl border border-border bg-surface/50 transition-colors",
+              "focus-within:border-accent/50",
+            )}
+          >
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}

@@ -144,6 +144,13 @@ export interface ModelInfo {
   maxOutput?: number;
 }
 
+export interface ModelsResponse {
+  models: ModelInfo[];
+  source: "introspected" | "fallback-cache" | "fallback-static";
+  degraded?: boolean;
+  message?: string;
+}
+
 export interface JournalEvent {
   seq: number;
   type: string;
@@ -213,6 +220,7 @@ export interface EnvironmentConfig {
   secretId?: string;
   imagePath?: string;
   idleTimeoutSeconds?: number;
+  envVars?: Array<{ key: string; value: string }>;
   resources?: {
     cpuShares?: number;
     memoryMB?: number;
@@ -248,6 +256,20 @@ export interface ProbeResult {
   available: boolean;
   sandboxType?: string;
   error?: string;
+}
+
+export interface GondolinMetadata {
+  defaultInstallBaseDir: string;
+  checkedPath: string;
+  assetsExist: boolean;
+  installCommand: string;
+  installedAssetDirs: string[];
+}
+
+export interface GondolinInstallResponse {
+  ok: boolean;
+  destination: string;
+  output?: string;
 }
 
 // Sandbox

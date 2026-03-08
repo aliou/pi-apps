@@ -1,6 +1,10 @@
+import { spawn } from "node:child_process";
+import { mkdir, readdir } from "node:fs/promises";
+import { relative, resolve } from "node:path";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { createLogger } from "../lib/logger";
+import { hasAssets } from "../sandbox/gondolin/paths";
 import type { EnvironmentSandboxConfig } from "../sandbox/manager";
 import {
   AVAILABLE_DOCKER_IMAGES,
@@ -22,10 +26,16 @@ interface UpdateEnvironmentRequest {
   isDefault?: boolean;
 }
 
-/**
- * Build an EnvironmentSandboxConfig from environment type + config.
- * For cloudflare, apiToken must be resolved separately from the secrets table.
- */
+interface GondolinMetadataResponse {
+  defaultInstallBaseDir: string;
+  installCommand: string;
+  checkedPath: string;
+  assetsExist: boolean;
+  installedAssetDirs: string[];
+}
+
+const ENV_VAR_KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
+
 function toSandboxConfig(
   sandboxType: SandboxType,
   config: EnvironmentConfig,
@@ -37,13 +47,55 @@ function toSandboxConfig(
     workerUrl: config.workerUrl,
     apiToken,
     imagePath: config.imagePath,
+    env: config.envVars
+      ? Object.fromEntries(
+          config.envVars.map((entry) => [entry.key, entry.value]),
+        )
+      : undefined,
   };
 }
 
-/**
- * Validate environment config for a given sandbox type.
- * Returns error message or null if valid.
- */
+function validateEnvVars(envVars: EnvironmentConfig["envVars"]): string | null {
+  if (envVars === undefined) {
+    return null;
+  }
+  if (!Array.isArray(envVars)) {
+    return "config.envVars must be an array when provided";
+  }
+
+  const seen = new Set<string>();
+  for (const [index, entry] of envVars.entries()) {
+    if (!entry || typeof entry !== "object") {
+      return `config.envVars[${index}] must be an object`;
+    }
+    if (typeof entry.key !== "string" || !entry.key.trim()) {
+      return `config.envVars[${index}].key is required`;
+    }
+    if (!ENV_VAR_KEY_RE.test(entry.key.trim())) {
+      return `Invalid env var key: ${entry.key}`;
+    }
+    if (typeof entry.value !== "string") {
+      return `config.envVars[${index}].value must be a string`;
+    }
+    const key = entry.key.trim();
+    if (seen.has(key)) {
+      return `Duplicate env var key: ${key}`;
+    }
+    seen.add(key);
+  }
+
+  return null;
+}
+
+function normalizeConfig(config: EnvironmentConfig): EnvironmentConfig {
+  return {
+    ...config,
+    envVars: config.envVars
+      ?.map((entry) => ({ key: entry.key.trim(), value: entry.value }))
+      .filter((entry) => entry.key.length > 0),
+  };
+}
+
 function validateConfig(
   sandboxType: SandboxType,
   config: EnvironmentConfig,
@@ -52,8 +104,7 @@ function validateConfig(
     if (!config.image) {
       return "config.image is required for docker environments";
     }
-    // Validate image is in allowed list (ignore tag)
-    const stripTag = (s: string) => s.replace(/:[\w.-]+$/, "");
+    const stripTag = (value: string) => value.replace(/:[\w.-]+$/, "");
     const validBases = AVAILABLE_DOCKER_IMAGES.map((img) =>
       stripTag(img.image),
     );
@@ -81,7 +132,6 @@ function validateConfig(
     }
   }
 
-  // Validate idleTimeoutSeconds if provided
   if (config.idleTimeoutSeconds !== undefined) {
     if (
       !Number.isInteger(config.idleTimeoutSeconds) ||
@@ -92,19 +142,165 @@ function validateConfig(
     }
   }
 
+  return validateEnvVars(config.envVars);
+}
+
+function getRelayCacheDir(): string {
+  return process.env.PI_RELAY_CACHE_DIR
+    ? resolve(process.env.PI_RELAY_CACHE_DIR)
+    : resolve(process.cwd(), ".dev", "relay", "cache");
+}
+
+function getDefaultGondolinInstallBaseDir(): string {
+  return resolve(getRelayCacheDir(), "gondolin-custom");
+}
+
+function buildInstallCommand(dest: string): string {
+  return `pnpm exec tsx server/scripts/install-gondolin-assets.ts --release latest --dest ${JSON.stringify(dest)}`;
+}
+
+function assertAllowedInstallBase(dest: string): string | null {
+  const baseDir = getDefaultGondolinInstallBaseDir();
+  const resolved = resolve(dest);
+  const rel = relative(baseDir, resolved);
+  if (rel === "") {
+    return null;
+  }
+  if (rel.startsWith("..") || rel === "..") {
+    return `Destination must stay within ${baseDir}`;
+  }
   return null;
+}
+
+async function listInstalledAssetDirs(baseDir: string): Promise<string[]> {
+  const entries = await readdir(baseDir, { withFileTypes: true }).catch(
+    () => [],
+  );
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => resolve(baseDir, entry.name))
+    .filter((dir) => hasAssets(dir))
+    .sort((a, b) => b.localeCompare(a));
 }
 
 export function environmentsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const logger = createLogger("environments");
 
-  // List available Docker images (hardcoded)
   app.get("/images", (c) => {
     return c.json({ data: AVAILABLE_DOCKER_IMAGES, error: null });
   });
 
-  // Probe provider availability for a given config
+  app.get("/gondolin", async (c) => {
+    const requestedPath = c.req.query("imagePath")?.trim();
+    const defaultInstallBaseDir = getDefaultGondolinInstallBaseDir();
+    const installedAssetDirs = await listInstalledAssetDirs(
+      defaultInstallBaseDir,
+    );
+    const checkedPath = requestedPath
+      ? resolve(requestedPath)
+      : (installedAssetDirs[0] ?? defaultInstallBaseDir);
+
+    const data: GondolinMetadataResponse = {
+      defaultInstallBaseDir,
+      installCommand: buildInstallCommand(defaultInstallBaseDir),
+      checkedPath,
+      assetsExist: hasAssets(checkedPath),
+      installedAssetDirs,
+    };
+
+    return c.json({ data, error: null });
+  });
+
+  app.post("/gondolin/install", async (c) => {
+    let body: { destination?: string; release?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ data: null, error: "Invalid JSON body" }, 400);
+    }
+
+    const destination = resolve(
+      body.destination?.trim() || getDefaultGondolinInstallBaseDir(),
+    );
+    const destinationError = assertAllowedInstallBase(destination);
+    if (destinationError) {
+      return c.json({ data: null, error: destinationError }, 400);
+    }
+
+    await mkdir(destination, { recursive: true });
+
+    const scriptPath = resolve(
+      process.cwd(),
+      "..",
+      "scripts",
+      "install-gondolin-assets.ts",
+    );
+    const command = [
+      "exec",
+      "tsx",
+      scriptPath,
+      "--release",
+      body.release?.trim() || "latest",
+      "--dest",
+      destination,
+    ];
+
+    const result = await new Promise<{
+      exitCode: number | null;
+      stdout: string;
+      stderr: string;
+    }>((resolvePromise) => {
+      const child = spawn("pnpm", command, {
+        cwd: resolve(process.cwd(), ".."),
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+      child.stdout?.on("data", (chunk) => {
+        stdout += chunk.toString();
+      });
+      child.stderr?.on("data", (chunk) => {
+        stderr += chunk.toString();
+      });
+      child.on("close", (exitCode) => {
+        resolvePromise({ exitCode, stdout, stderr });
+      });
+      child.on("error", (error) => {
+        resolvePromise({ exitCode: 1, stdout, stderr: error.message });
+      });
+    });
+
+    if (result.exitCode !== 0) {
+      logger.error({ destination, ...result }, "gondolin asset install failed");
+      return c.json(
+        {
+          data: null,
+          error: result.stderr || "Failed to install Gondolin assets",
+        },
+        500,
+      );
+    }
+
+    let parsedOutput: { destination?: string } | null = null;
+    try {
+      parsedOutput = JSON.parse(result.stdout);
+    } catch {
+      parsedOutput = null;
+    }
+
+    return c.json({
+      data: {
+        ok: true,
+        destination: parsedOutput?.destination ?? destination,
+        output: result.stdout,
+      },
+      error: null,
+    });
+  });
+
   app.post("/probe", async (c) => {
     const sandboxManager = c.get("sandboxManager");
 
@@ -126,17 +322,17 @@ export function environmentsRoutes(): Hono<AppEnv> {
       );
     }
 
-    const configError = validateConfig(body.sandboxType, body.config ?? {});
+    const normalizedConfig = normalizeConfig(body.config ?? {});
+    const configError = validateConfig(body.sandboxType, normalizedConfig);
     if (configError) {
       return c.json({ data: null, error: configError }, 400);
     }
 
     try {
-      // For cloudflare, resolve the shared secret from the secrets table
       let apiToken: string | undefined;
-      if (body.sandboxType === "cloudflare" && body.config.secretId) {
+      if (body.sandboxType === "cloudflare" && normalizedConfig.secretId) {
         const secretsService = c.get("secretsService");
-        const value = await secretsService.getValue(body.config.secretId);
+        const value = await secretsService.getValue(normalizedConfig.secretId);
         if (!value) {
           return c.json({
             data: { available: false, error: "Referenced secret not found" },
@@ -148,7 +344,7 @@ export function environmentsRoutes(): Hono<AppEnv> {
 
       const envConfig = toSandboxConfig(
         body.sandboxType,
-        body.config,
+        normalizedConfig,
         apiToken,
       );
       const available = await sandboxManager.isProviderAvailable(envConfig);
@@ -165,21 +361,15 @@ export function environmentsRoutes(): Hono<AppEnv> {
     }
   });
 
-  // List all environments
   app.get("/", (c) => {
     const environmentService = c.get("environmentService");
     const envs = environmentService.list();
-
-    // Parse config JSON for response
-    const data = envs.map((env) => ({
-      ...env,
-      config: JSON.parse(env.config),
-    }));
-
-    return c.json({ data, error: null });
+    return c.json({
+      data: envs.map((env) => ({ ...env, config: JSON.parse(env.config) })),
+      error: null,
+    });
   });
 
-  // Create new environment
   app.post("/", async (c) => {
     const environmentService = c.get("environmentService");
 
@@ -190,7 +380,6 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    // Validate required fields
     if (!body.name?.trim()) {
       return c.json({ data: null, error: "name is required" }, 400);
     }
@@ -210,16 +399,15 @@ export function environmentsRoutes(): Hono<AppEnv> {
       );
     }
 
-    const configError = validateConfig(body.sandboxType, body.config ?? {});
+    const normalizedConfig = normalizeConfig(body.config ?? {});
+    const configError = validateConfig(body.sandboxType, normalizedConfig);
     if (configError) {
       return c.json({ data: null, error: configError }, 400);
     }
 
     try {
-      // Apply idleTimeoutSeconds defaults
-      const configToStore = { ...body.config };
+      const configToStore = { ...normalizedConfig };
       if (body.sandboxType === "cloudflare") {
-        // Cloudflare manages its own idle timeout; force default
         configToStore.idleTimeoutSeconds = 3600;
       } else if (configToStore.idleTimeoutSeconds === undefined) {
         configToStore.idleTimeoutSeconds = 3600;
@@ -244,7 +432,6 @@ export function environmentsRoutes(): Hono<AppEnv> {
     }
   });
 
-  // Get single environment
   app.get("/:id", (c) => {
     const environmentService = c.get("environmentService");
     const id = c.req.param("id");
@@ -260,7 +447,6 @@ export function environmentsRoutes(): Hono<AppEnv> {
     });
   });
 
-  // Update environment
   app.put("/:id", async (c) => {
     const environmentService = c.get("environmentService");
     const id = c.req.param("id");
@@ -277,21 +463,20 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    // Use existing sandboxType if not provided in update
     const sandboxType =
       body.sandboxType ?? (existing.sandboxType as SandboxType);
-
-    // Validate config if provided
-    if (body.config) {
-      const configError = validateConfig(sandboxType, body.config);
+    const normalizedConfig = body.config
+      ? normalizeConfig(body.config)
+      : undefined;
+    if (normalizedConfig) {
+      const configError = validateConfig(sandboxType, normalizedConfig);
       if (configError) {
         return c.json({ data: null, error: configError }, 400);
       }
     }
 
     try {
-      // Strip idleTimeoutSeconds changes for Cloudflare environments
-      let configToUpdate = body.config;
+      let configToUpdate = normalizedConfig;
       if (configToUpdate && sandboxType === "cloudflare") {
         const { idleTimeoutSeconds: _, ...rest } = configToUpdate;
         configToUpdate = rest;
@@ -303,10 +488,11 @@ export function environmentsRoutes(): Hono<AppEnv> {
         isDefault: body.isDefault,
       });
 
-      // biome-ignore lint/style/noNonNullAssertion: just validated existence
-      const updated = environmentService.get(id)!;
+      const updated = environmentService.get(id);
       return c.json({
-        data: { ...updated, config: JSON.parse(updated.config) },
+        data: updated
+          ? { ...updated, config: JSON.parse(updated.config) }
+          : null,
         error: null,
       });
     } catch (err) {
@@ -317,7 +503,6 @@ export function environmentsRoutes(): Hono<AppEnv> {
     }
   });
 
-  // Delete environment
   app.delete("/:id", (c) => {
     const environmentService = c.get("environmentService");
     const id = c.req.param("id");
@@ -327,7 +512,6 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Environment not found" }, 404);
     }
 
-    // TODO: Check for active sessions using this environment
     environmentService.delete(id);
     return c.json({ data: { ok: true }, error: null });
   });

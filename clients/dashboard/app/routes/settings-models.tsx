@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, SearchableSelect } from "../components/ui";
-import { api, type ModelInfo } from "../lib/api";
+import { api, type ModelInfo, type ModelsResponse } from "../lib/api";
 
 interface SessionDefaults {
   chat?: { modelProvider?: string; modelId?: string };
@@ -34,7 +34,9 @@ function ModeModelForm({ title, models, value, onChange }: ModeModelFormProps) {
           <span className="block text-xs text-muted">Provider</span>
           <SearchableSelect
             value={value.modelProvider}
-            onValueChange={(modelProvider) => onChange({ modelProvider, modelId: "" })}
+            onValueChange={(modelProvider) =>
+              onChange({ modelProvider, modelId: "" })
+            }
             placeholder="Select provider"
             items={providers.map((provider) => ({
               value: provider,
@@ -81,14 +83,14 @@ export default function SettingsModelsPage() {
     const load = async () => {
       setLoading(true);
       const [modelsRes, settingsRes] = await Promise.all([
-        api.get<ModelInfo[]>("/models"),
+        api.get<ModelsResponse>("/models"),
         api.get<Record<string, unknown>>("/settings"),
       ]);
 
       if (modelsRes.error) {
         setError(modelsRes.error);
       } else {
-        setModels(modelsRes.data ?? []);
+        setModels(modelsRes.data?.models ?? []);
       }
 
       if (settingsRes.error) {

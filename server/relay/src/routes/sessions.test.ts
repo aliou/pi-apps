@@ -225,6 +225,49 @@ describe("Sessions Routes", () => {
       const json = await res.json();
       expect(json.error).toBe("Invalid JSON body");
     });
+
+    it("passes environment env vars into sandbox creation", async () => {
+      const env = services.environmentService.create({
+        name: "Env Vars",
+        sandboxType: "docker",
+        config: {
+          image: "ghcr.io/aliou/pi-sandbox-codex-universal:latest",
+          envVars: [
+            { key: "FOO_BAR", value: "baz" },
+            { key: "HELLO", value: "world" },
+          ],
+        },
+        isDefault: true,
+      });
+
+      let capturedEnvConfig:
+        | import("../sandbox/manager").EnvironmentSandboxConfig
+        | undefined;
+      const originalCreateForSession =
+        services.sandboxManager.createForSession.bind(services.sandboxManager);
+      services.sandboxManager.createForSession = async (
+        sessionId,
+        envConfig,
+        options,
+      ) => {
+        capturedEnvConfig = envConfig;
+        return originalCreateForSession(sessionId, envConfig, options);
+      };
+
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "chat", environmentId: env.id }),
+      });
+
+      expect(res.status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(capturedEnvConfig?.env).toEqual({
+        FOO_BAR: "baz",
+        HELLO: "world",
+      });
+    });
   });
 
   describe("POST /api/sessions/:id/activate", () => {

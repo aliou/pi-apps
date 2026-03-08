@@ -1,7 +1,10 @@
 import {
   CheckCircleIcon,
   CloudIcon,
+  CopyIcon,
   CubeIcon,
+  DownloadSimpleIcon,
+  InfoIcon,
   PencilSimpleIcon,
   PlusIcon,
   StarIcon,
@@ -16,6 +19,8 @@ import {
   api,
   type CreateEnvironmentRequest,
   type Environment,
+  type GondolinInstallResponse,
+  type GondolinMetadata,
   type ProbeResult,
   type UpdateEnvironmentRequest,
 } from "../lib/api";
@@ -60,7 +65,12 @@ function EnvironmentDialog({
     environment?.config.workerUrl ?? "",
   );
   const [secretId, setSecretId] = useState(environment?.config.secretId ?? "");
-  const [imagePath, setImagePath] = useState(environment?.config.imagePath ?? "");
+  const [imagePath, setImagePath] = useState(
+    environment?.config.imagePath ?? "",
+  );
+  const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>(
+    environment?.config.envVars ?? [],
+  );
   const [isDefault, setIsDefault] = useState(environment?.isDefault ?? false);
   const [idleTimeout, setIdleTimeout] = useState(
     environment?.config.idleTimeoutSeconds ?? 3600,
@@ -72,6 +82,13 @@ function EnvironmentDialog({
   const [probeError, setProbeError] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<SecretInfo[]>([]);
   const dialogLayerRef = useRef<HTMLDivElement | null>(null);
+
+  // Gondolin-specific state
+  const [gondolinMetadata, setGondolinMetadata] =
+    useState<GondolinMetadata | null>(null);
+  const [gondolinLoading, setGondolinLoading] = useState(false);
+  const [installingAssets, setInstallingAssets] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState(false);
 
   const imageOptions = useMemo(
     () =>
@@ -103,6 +120,27 @@ function EnvironmentDialog({
     };
     fetchSecrets();
   }, []);
+
+  // Fetch Gondolin metadata when dialog opens and sandbox type is gondolin
+  useEffect(() => {
+    if (!open || sandboxType !== "gondolin") {
+      setGondolinMetadata(null);
+      return;
+    }
+
+    const fetchGondolinMetadata = async () => {
+      setGondolinLoading(true);
+      const query = imagePath.trim()
+        ? `/environments/gondolin?imagePath=${encodeURIComponent(imagePath.trim())}`
+        : "/environments/gondolin";
+      const res = await api.get<GondolinMetadata>(query);
+      if (res.data) {
+        setGondolinMetadata(res.data);
+      }
+      setGondolinLoading(false);
+    };
+    fetchGondolinMetadata();
+  }, [open, sandboxType, imagePath]);
 
   // Auto-probe availability when config changes (debounced)
   useEffect(() => {
@@ -162,14 +200,20 @@ function EnvironmentDialog({
 
     setSaving(true);
     try {
+      const normalizedEnvVars = envVars.filter(
+        (entry) => entry.key.trim() || entry.value,
+      );
+      const sharedConfig =
+        normalizedEnvVars.length > 0 ? { envVars: normalizedEnvVars } : {};
       const config =
         sandboxType === "docker"
-          ? { image, idleTimeoutSeconds: idleTimeout }
+          ? { image, idleTimeoutSeconds: idleTimeout, ...sharedConfig }
           : sandboxType === "cloudflare"
-            ? { workerUrl, secretId }
+            ? { workerUrl, secretId, ...sharedConfig }
             : {
                 idleTimeoutSeconds: idleTimeout,
                 ...(imagePath.trim() ? { imagePath: imagePath.trim() } : {}),
+                ...sharedConfig,
               };
 
       if (isEdit) {
@@ -193,346 +237,576 @@ function EnvironmentDialog({
     }
   };
 
+  const handleCopyCommand = async () => {
+    if (!gondolinMetadata?.installCommand) return;
+    try {
+      await navigator.clipboard.writeText(gondolinMetadata.installCommand);
+      setCopiedCommand(true);
+      setTimeout(() => setCopiedCommand(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy command:", err);
+    }
+  };
+
+  const handleInstallAssets = async () => {
+    setInstallingAssets(true);
+    try {
+      const res = await api.post<GondolinInstallResponse>(
+        "/environments/gondolin/install",
+        {
+          destination:
+            imagePath.trim() ||
+            gondolinMetadata?.defaultInstallBaseDir ||
+            undefined,
+        },
+      );
+      if (res.error) {
+        alert(`Failed to install assets: ${res.error}`);
+      } else if (res.data?.ok) {
+        // Refresh metadata to update assetsExist status
+        const metaRes = await api.get<GondolinMetadata>(
+          `/environments/gondolin?imagePath=${encodeURIComponent(res.data.destination)}`,
+        );
+        if (metaRes.data) {
+          setGondolinMetadata(metaRes.data);
+        }
+        // Update imagePath field if it was empty
+        if (!imagePath && res.data.destination) {
+          setImagePath(res.data.destination);
+        }
+      }
+    } finally {
+      setInstallingAssets(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(e) => !e.open && onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner ref={dialogLayerRef}>
           <Dialog.Content>
-          <div className="mb-5 flex items-center justify-between">
-            <Dialog.Title>
-              {isEdit ? "Edit Environment" : "Create Environment"}
-            </Dialog.Title>
-            <Dialog.CloseTrigger>
-              <XIcon className="size-4" />
-            </Dialog.CloseTrigger>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Name */}
-            <div>
-              <label
-                htmlFor="env-name"
-                className="mb-1.5 block text-xs font-medium text-muted"
-              >
-                Name
-              </label>
-              <input
-                id="env-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Default, Python Dev, Node.js"
-                className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
-                required
-              />
+            <div className="mb-5 flex items-center justify-between">
+              <Dialog.Title>
+                {isEdit ? "Edit Environment" : "Create Environment"}
+              </Dialog.Title>
+              <Dialog.CloseTrigger>
+                <XIcon className="size-4" />
+              </Dialog.CloseTrigger>
             </div>
 
-            {/* Sandbox Type */}
-            <div>
-              <span className="mb-2.5 block text-xs font-medium text-muted">
-                Sandbox Type
-              </span>
-              <div className="flex gap-3">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    value="docker"
-                    checked={sandboxType === "docker"}
-                    onChange={(e) =>
-                      setSandboxType(
-                        e.target.value as
-                          | "docker"
-                          | "cloudflare"
-                          | "gondolin",
-                      )
-                    }
-                    className="size-4 border-border accent-accent"
-                  />
-                  <span className="text-sm text-fg">Docker</span>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Name */}
+              <div>
+                <label
+                  htmlFor="env-name"
+                  className="mb-1.5 block text-xs font-medium text-muted"
+                >
+                  Name
                 </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    value="cloudflare"
-                    checked={sandboxType === "cloudflare"}
-                    onChange={(e) =>
-                      setSandboxType(
-                        e.target.value as
-                          | "docker"
-                          | "cloudflare"
-                          | "gondolin",
-                      )
-                    }
-                    className="size-4 border-border accent-accent"
-                  />
-                  <span className="text-sm text-fg">Cloudflare</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    value="gondolin"
-                    checked={sandboxType === "gondolin"}
-                    onChange={(e) =>
-                      setSandboxType(
-                        e.target.value as
-                          | "docker"
-                          | "cloudflare"
-                          | "gondolin",
-                      )
-                    }
-                    className="size-4 border-border accent-accent"
-                  />
-                  <span className="text-sm text-fg">Gondolin</span>
-                </label>
+                <input
+                  id="env-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Default, Python Dev, Node.js"
+                  className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                  required
+                />
               </div>
-            </div>
 
-            {/* Image (Docker only) */}
-            {sandboxType === "docker" && (
-              <>
-                <div>
-                  <div className="mb-1.5 flex h-4 items-center gap-2">
-                    <span className="text-xs font-medium leading-4 text-muted">
-                      Docker Image
-                    </span>
-                    {probeStatus === "probing" && (
-                      <span className="text-xs leading-4 text-muted">
-                        Checking...
-                      </span>
-                    )}
-                    {probeStatus === "available" && (
-                      <span className="flex items-center gap-1 text-xs leading-4 text-green-500">
-                        <CheckCircleIcon className="size-3" weight="fill" />
-                        Available
-                      </span>
-                    )}
-                    {probeStatus === "unavailable" && (
-                      <span className="flex items-center gap-1 text-xs leading-4 text-red-500">
-                        <WarningCircleIcon className="size-3" weight="fill" />
-                        {probeError ?? "Not available"}
-                      </span>
-                    )}
-                  </div>
-                  <Select
-                    value={image}
-                    onValueChange={setImage}
-                    portalContainer={dialogLayerRef}
-                    items={imageOptions}
-                    renderItem={(item) => (
-                      <div>
-                        <p className="truncate">{item.label}</p>
-                        {item.description && (
-                          <p className="truncate text-xs text-muted">{item.description}</p>
-                        )}
-                      </div>
-                    )}
-                  />
-                  {images.find((img) => img.image === image)?.description && (
-                    <p className="mt-1 text-xs text-muted">
-                      {images.find((img) => img.image === image)?.description}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="env-idle-timeout"
-                    className="mb-1.5 block text-xs font-medium text-muted"
-                  >
-                    Idle Timeout
-                  </label>
-                  <div className="flex items-center gap-2">
+              {/* Sandbox Type */}
+              <div>
+                <span className="mb-2.5 block text-xs font-medium text-muted">
+                  Sandbox Type
+                </span>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2">
                     <input
-                      id="env-idle-timeout"
-                      type="number"
-                      min="1"
-                      max="1440"
-                      value={Math.round(idleTimeout / 60)}
+                      type="radio"
+                      value="docker"
+                      checked={sandboxType === "docker"}
                       onChange={(e) =>
-                        setIdleTimeout(Number(e.target.value) * 60)
+                        setSandboxType(
+                          e.target.value as
+                            | "docker"
+                            | "cloudflare"
+                            | "gondolin",
+                        )
                       }
-                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                      className="size-4 border-border accent-accent"
                     />
-                    <span className="shrink-0 text-xs text-muted">minutes</span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted">
-                    Suspend session after this period of inactivity.
-                  </p>
-                </div>
-              </>
-            )}
-
-            {/* Gondolin options */}
-            {sandboxType === "gondolin" && (
-              <div className="space-y-4">
-                <div>
-                  <label
-                    htmlFor="env-gondolin-image-path"
-                    className="mb-1.5 block text-xs font-medium text-muted"
-                  >
-                    Guest Assets Path (optional)
+                    <span className="text-sm text-fg">Docker</span>
                   </label>
-                  <input
-                    id="env-gondolin-image-path"
-                    type="text"
-                    value={imagePath}
-                    onChange={(e) => setImagePath(e.target.value)}
-                    placeholder="/absolute/path/to/gondolin/assets"
-                    className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
-                  />
-                  <p className="mt-1 text-xs text-muted">
-                    Leave empty to use Gondolin default asset discovery/download.
-                  </p>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="env-idle-timeout-gondolin"
-                    className="mb-1.5 block text-xs font-medium text-muted"
-                  >
-                    Idle Timeout
-                  </label>
-                  <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2">
                     <input
-                      id="env-idle-timeout-gondolin"
-                      type="number"
-                      min="1"
-                      max="1440"
-                      value={Math.round(idleTimeout / 60)}
+                      type="radio"
+                      value="cloudflare"
+                      checked={sandboxType === "cloudflare"}
                       onChange={(e) =>
-                        setIdleTimeout(Number(e.target.value) * 60)
+                        setSandboxType(
+                          e.target.value as
+                            | "docker"
+                            | "cloudflare"
+                            | "gondolin",
+                        )
                       }
-                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                      className="size-4 border-border accent-accent"
                     />
-                    <span className="shrink-0 text-xs text-muted">minutes</span>
-                  </div>
+                    <span className="text-sm text-fg">Cloudflare</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      value="gondolin"
+                      checked={sandboxType === "gondolin"}
+                      onChange={(e) =>
+                        setSandboxType(
+                          e.target.value as
+                            | "docker"
+                            | "cloudflare"
+                            | "gondolin",
+                        )
+                      }
+                      className="size-4 border-border accent-accent"
+                    />
+                    <span className="text-sm text-fg">Gondolin</span>
+                  </label>
                 </div>
-
-                {probeStatus === "probing" && (
-                  <p className="text-xs text-muted">Checking availability...</p>
-                )}
-                {probeStatus === "available" && (
-                  <p className="flex items-center gap-1 text-xs text-green-500">
-                    <CheckCircleIcon className="size-3" weight="fill" />
-                    Available
-                  </p>
-                )}
-                {probeStatus === "unavailable" && (
-                  <p className="flex items-center gap-1 text-xs text-red-500">
-                    <WarningCircleIcon className="size-3" weight="fill" />
-                    {probeError ?? "Not available"}
-                  </p>
-                )}
               </div>
-            )}
 
-            {/* Worker URL (Cloudflare only) */}
-            {sandboxType === "cloudflare" && (
-              <div className="space-y-4">
-                <div>
-                  <label
-                    htmlFor="env-worker-url"
-                    className="mb-1.5 block text-xs font-medium text-muted"
-                  >
-                    Worker URL
-                  </label>
-                  <input
-                    id="env-worker-url"
-                    type="text"
-                    value={workerUrl}
-                    onChange={(e) => setWorkerUrl(e.target.value)}
-                    placeholder="https://your-worker.example.com"
-                    className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <span className="mb-1.5 block text-xs font-medium text-muted">
-                    Shared Secret
-                  </span>
-                  {secrets.length === 0 ? (
-                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-500">
-                      No secrets configured. Add one in Settings first.
+              {/* Image (Docker only) */}
+              {sandboxType === "docker" && (
+                <>
+                  <div>
+                    <div className="mb-1.5 flex h-4 items-center gap-2">
+                      <span className="text-xs font-medium leading-4 text-muted">
+                        Docker Image
+                      </span>
+                      {probeStatus === "probing" && (
+                        <span className="text-xs leading-4 text-muted">
+                          Checking...
+                        </span>
+                      )}
+                      {probeStatus === "available" && (
+                        <span className="flex items-center gap-1 text-xs leading-4 text-green-500">
+                          <CheckCircleIcon className="size-3" weight="fill" />
+                          Available
+                        </span>
+                      )}
+                      {probeStatus === "unavailable" && (
+                        <span className="flex items-center gap-1 text-xs leading-4 text-red-500">
+                          <WarningCircleIcon className="size-3" weight="fill" />
+                          {probeError ?? "Not available"}
+                        </span>
+                      )}
                     </div>
-                  ) : (
                     <Select
-                      value={secretId}
-                      onValueChange={setSecretId}
+                      value={image}
+                      onValueChange={setImage}
                       portalContainer={dialogLayerRef}
-                      placeholder="Select a secret..."
-                      items={secretOptions}
+                      items={imageOptions}
                       renderItem={(item) => (
                         <div>
                           <p className="truncate">{item.label}</p>
-                          <p className="truncate text-xs text-muted">{item.description}</p>
+                          {item.description && (
+                            <p className="truncate text-xs text-muted">
+                              {item.description}
+                            </p>
+                          )}
                         </div>
                       )}
                     />
+                    {images.find((img) => img.image === image)?.description && (
+                      <p className="mt-1 text-xs text-muted">
+                        {images.find((img) => img.image === image)?.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="env-idle-timeout"
+                      className="mb-1.5 block text-xs font-medium text-muted"
+                    >
+                      Idle Timeout
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="env-idle-timeout"
+                        type="number"
+                        min="1"
+                        max="1440"
+                        value={Math.round(idleTimeout / 60)}
+                        onChange={(e) =>
+                          setIdleTimeout(Number(e.target.value) * 60)
+                        }
+                        className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                      />
+                      <span className="shrink-0 text-xs text-muted">
+                        minutes
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted">
+                      Suspend session after this period of inactivity.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Gondolin options */}
+              {sandboxType === "gondolin" && (
+                <div className="space-y-4">
+                  {/* Asset setup info */}
+                  <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 p-3">
+                    <div className="flex items-start gap-2">
+                      <InfoIcon className="mt-0.5 shrink-0 size-4 text-violet-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-violet-500">
+                          Guest assets required
+                        </p>
+                        <p className="mt-1 text-xs text-muted">
+                          Gondolin requires guest VM assets (kernel, initrd,
+                          etc.). Assets are downloaded from GitHub release
+                          artifacts.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Assets status */}
+                  {!gondolinLoading && gondolinMetadata && (
+                    <div className="rounded-lg border border-border bg-surface/30 p-3">
+                      <div className="flex items-center gap-2">
+                        {gondolinMetadata.assetsExist ? (
+                          <CheckCircleIcon
+                            className="size-4 text-green-500"
+                            weight="fill"
+                          />
+                        ) : (
+                          <WarningCircleIcon
+                            className="size-4 text-amber-500"
+                            weight="fill"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-fg">
+                            {gondolinMetadata.assetsExist
+                              ? "Assets installed"
+                              : "Assets not found"}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-muted">
+                            {gondolinMetadata.checkedPath}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Install command */}
+                  {gondolinMetadata && !gondolinMetadata.assetsExist && (
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted">
+                          Install command
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyCommand}
+                          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted transition-colors hover:bg-surface hover:text-fg"
+                        >
+                          <CopyIcon className="size-3" />
+                          {copiedCommand ? "Copied!" : "Copy"}
+                        </button>
+                      </div>
+                      <pre className="overflow-x-auto rounded-lg border border-border bg-surface/50 p-2.5 text-xs text-muted">
+                        <code>{gondolinMetadata.installCommand}</code>
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Install button */}
+                  {gondolinMetadata && !gondolinMetadata.assetsExist && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleInstallAssets}
+                      loading={installingAssets}
+                      disabled={installingAssets}
+                      className="w-full"
+                    >
+                      <DownloadSimpleIcon className="size-4" weight="bold" />
+                      Install Assets Now
+                    </Button>
+                  )}
+
+                  <div>
+                    <label
+                      htmlFor="env-gondolin-image-path"
+                      className="mb-1.5 block text-xs font-medium text-muted"
+                    >
+                      Guest Assets Path (optional)
+                    </label>
+                    <input
+                      id="env-gondolin-image-path"
+                      type="text"
+                      value={imagePath}
+                      onChange={(e) => setImagePath(e.target.value)}
+                      placeholder={
+                        gondolinMetadata?.defaultInstallBaseDir ||
+                        "/absolute/path/to/gondolin/assets"
+                      }
+                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                    />
+                    <p className="mt-1 text-xs text-muted">
+                      Leave empty to use default path:{" "}
+                      <code className="rounded bg-surface/50 px-1 py-0.5">
+                        {gondolinMetadata?.defaultInstallBaseDir ||
+                          "gondolin/assets"}
+                      </code>
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="env-idle-timeout-gondolin"
+                      className="mb-1.5 block text-xs font-medium text-muted"
+                    >
+                      Idle Timeout
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="env-idle-timeout-gondolin"
+                        type="number"
+                        min="1"
+                        max="1440"
+                        value={Math.round(idleTimeout / 60)}
+                        onChange={(e) =>
+                          setIdleTimeout(Number(e.target.value) * 60)
+                        }
+                        className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                      />
+                      <span className="shrink-0 text-xs text-muted">
+                        minutes
+                      </span>
+                    </div>
+                  </div>
+
+                  {probeStatus === "probing" && (
+                    <p className="text-xs text-muted">
+                      Checking availability...
+                    </p>
+                  )}
+                  {probeStatus === "available" && (
+                    <p className="flex items-center gap-1 text-xs text-green-500">
+                      <CheckCircleIcon className="size-3" weight="fill" />
+                      Available
+                    </p>
+                  )}
+                  {probeStatus === "unavailable" && (
+                    <p className="flex items-center gap-1 text-xs text-red-500">
+                      <WarningCircleIcon className="size-3" weight="fill" />
+                      {probeError ?? "Not available"}
+                    </p>
                   )}
                 </div>
+              )}
 
-                {probeStatus === "probing" && (
-                  <p className="text-xs text-muted">Checking availability...</p>
-                )}
-                {probeStatus === "available" && (
-                  <p className="flex items-center gap-1 text-xs text-green-500">
-                    <CheckCircleIcon className="size-3" weight="fill" />
-                    Available
-                  </p>
-                )}
-                {probeStatus === "unavailable" && (
-                  <p className="flex items-center gap-1 text-xs text-red-500">
-                    <WarningCircleIcon className="size-3" weight="fill" />
-                    {probeError ?? "Not available"}
-                  </p>
-                )}
-              </div>
-            )}
+              {/* Worker URL (Cloudflare only) */}
+              {sandboxType === "cloudflare" && (
+                <div className="space-y-4">
+                  <div>
+                    <label
+                      htmlFor="env-worker-url"
+                      className="mb-1.5 block text-xs font-medium text-muted"
+                    >
+                      Worker URL
+                    </label>
+                    <input
+                      id="env-worker-url"
+                      type="text"
+                      value={workerUrl}
+                      onChange={(e) => setWorkerUrl(e.target.value)}
+                      placeholder="https://your-worker.example.com"
+                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                      required
+                    />
+                  </div>
 
-            {/* Default */}
-            <label
-              htmlFor="env-default"
-              className="flex items-center gap-2.5 rounded-lg border border-border bg-surface/30 px-3 py-2.5"
-            >
-              <input
-                id="env-default"
-                type="checkbox"
-                checked={isDefault}
-                onChange={(e) => setIsDefault(e.target.checked)}
-                className="size-4 rounded border-border accent-accent"
-              />
-              <div>
-                <span className="text-sm font-medium text-fg">
-                  Set as default
-                </span>
+                  <div>
+                    <span className="mb-1.5 block text-xs font-medium text-muted">
+                      Shared Secret
+                    </span>
+                    {secrets.length === 0 ? (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-500">
+                        No secrets configured. Add one in Settings first.
+                      </div>
+                    ) : (
+                      <Select
+                        value={secretId}
+                        onValueChange={setSecretId}
+                        portalContainer={dialogLayerRef}
+                        placeholder="Select a secret..."
+                        items={secretOptions}
+                        renderItem={(item) => (
+                          <div>
+                            <p className="truncate">{item.label}</p>
+                            <p className="truncate text-xs text-muted">
+                              {item.description}
+                            </p>
+                          </div>
+                        )}
+                      />
+                    )}
+                  </div>
+
+                  {probeStatus === "probing" && (
+                    <p className="text-xs text-muted">
+                      Checking availability...
+                    </p>
+                  )}
+                  {probeStatus === "available" && (
+                    <p className="flex items-center gap-1 text-xs text-green-500">
+                      <CheckCircleIcon className="size-3" weight="fill" />
+                      Available
+                    </p>
+                  )}
+                  {probeStatus === "unavailable" && (
+                    <p className="flex items-center gap-1 text-xs text-red-500">
+                      <WarningCircleIcon className="size-3" weight="fill" />
+                      {probeError ?? "Not available"}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted">
+                    Environment Variables
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEnvVars((current) => [
+                        ...current,
+                        { key: "", value: "" },
+                      ])
+                    }
+                    className="text-xs text-accent hover:underline"
+                  >
+                    Add variable
+                  </button>
+                </div>
+                {envVars.length === 0 ? (
+                  <p className="text-xs text-muted">
+                    Plain env vars shared with the sandbox. Values are visible
+                    here.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {envVars.map((entry, index) => (
+                      <div
+                        key={`${index}-${entry.key}`}
+                        className="grid grid-cols-[1fr_1fr_auto] gap-2"
+                      >
+                        <input
+                          type="text"
+                          value={entry.key}
+                          onChange={(e) =>
+                            setEnvVars((current) =>
+                              current.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      key: e.target.value.toUpperCase(),
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                          placeholder="FOO_BAR"
+                          className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                        />
+                        <input
+                          type="text"
+                          value={entry.value}
+                          onChange={(e) =>
+                            setEnvVars((current) =>
+                              current.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, value: e.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                          placeholder="value"
+                          className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEnvVars((current) =>
+                              current.filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
+                            )
+                          }
+                          className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-surface hover:text-fg"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <p className="text-xs text-muted">
-                  Used when no environment is specified for new sessions.
+                  Keys must be uppercase and match shell-safe env var names.
                 </p>
               </div>
-            </label>
 
-            {/* Actions */}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="secondary" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  !name.trim() ||
-                  (sandboxType === "docker" && !image) ||
-                  (sandboxType === "cloudflare" &&
-                    (!workerUrl.trim() || !secretId)) ||
-                  probeStatus !== "available"
-                }
-                loading={saving}
+              {/* Default */}
+              <label
+                htmlFor="env-default"
+                className="flex items-center gap-2.5 rounded-lg border border-border bg-surface/30 px-3 py-2.5"
               >
-                {isEdit ? "Update" : "Create"}
-              </Button>
-            </div>
-          </form>
+                <input
+                  id="env-default"
+                  type="checkbox"
+                  checked={isDefault}
+                  onChange={(e) => setIsDefault(e.target.checked)}
+                  className="size-4 rounded border-border accent-accent"
+                />
+                <div>
+                  <span className="text-sm font-medium text-fg">
+                    Set as default
+                  </span>
+                  <p className="text-xs text-muted">
+                    Used when no environment is specified for new sessions.
+                  </p>
+                </div>
+              </label>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="secondary" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    !name.trim() ||
+                    (sandboxType === "docker" && !image) ||
+                    (sandboxType === "cloudflare" &&
+                      (!workerUrl.trim() || !secretId)) ||
+                    probeStatus !== "available"
+                  }
+                  loading={saving}
+                >
+                  {isEdit ? "Update" : "Create"}
+                </Button>
+              </div>
+            </form>
           </Dialog.Content>
         </Dialog.Positioner>
       </Dialog.Portal>
