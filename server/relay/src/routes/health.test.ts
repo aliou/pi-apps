@@ -6,6 +6,8 @@ import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { ExtensionConfigService } from "../services/extension-config.service";
 import { GitHubService } from "../services/github.service";
+import { ExtensionManifestService } from "../services/extension-manifest.service";
+import { PackageCatalogService } from "../services/package-catalog.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
 import {
@@ -37,6 +39,7 @@ describe("Health Routes", () => {
       sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
       sessionHubManager: createTestSessionHubManager(db),
+      packageCatalogService: new PackageCatalogService(new ExtensionManifestService()),
     };
   });
 

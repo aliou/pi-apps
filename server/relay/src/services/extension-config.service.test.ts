@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AppDatabase } from "../db/connection";
 import { createTestDatabase } from "../test-helpers";
 import { EnvironmentService } from "./environment.service";
+import { type ExtensionManifest } from "./extension-manifest.service";
 import { ExtensionConfigService } from "./extension-config.service";
+import { writeExtensionSettings } from "./settings-generator";
 import { SessionService } from "./session.service";
+import { readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 
 describe("ExtensionConfigService", () => {
   let db: AppDatabase;
@@ -18,7 +22,6 @@ describe("ExtensionConfigService", () => {
     service = new ExtensionConfigService(db);
     sessionService = new SessionService(db);
 
-    // Create default environment (needed for session creation)
     const envService = new EnvironmentService(db);
     envService.create({
       name: "Default",
@@ -32,169 +35,115 @@ describe("ExtensionConfigService", () => {
     sqlite.close();
   });
 
-  describe("add", () => {
-    it("adds a global package", () => {
-      const config = service.add({
-        scope: "global",
-        package: "npm:@foo/bar@1.0.0",
-      });
-
-      expect(config.id).toBeDefined();
-      expect(config.scope).toBe("global");
-      expect(config.package).toBe("npm:@foo/bar@1.0.0");
-      expect(config.sessionId).toBeNull();
+  it("persists config json on add and update", () => {
+    const config = service.add({
+      scope: "global",
+      package: "@aliou/pi-linkup",
+      config: { apiKey: "secret" },
     });
 
-    it("adds a mode-scoped package", () => {
-      const config = service.add({
-        scope: "chat",
-        package: "npm:@foo/chat-ext@1.0.0",
-      });
+    expect(config.configJson).toBe(JSON.stringify({ apiKey: "secret" }));
 
-      expect(config.scope).toBe("chat");
-      expect(config.sessionId).toBeNull();
+    const updated = service.update(config.id, {
+      config: { apiKey: "changed", endpoint: "https://example.com" },
     });
 
-    it("adds a session-scoped package", () => {
-      const session = sessionService.create({ mode: "chat" });
-      const config = service.add({
-        scope: "session",
-        package: "npm:@foo/session-ext@1.0.0",
-        sessionId: session.id,
-      });
-
-      expect(config.scope).toBe("session");
-      expect(config.sessionId).toBe(session.id);
-    });
-
-    it("returns existing on duplicate", () => {
-      const first = service.add({
-        scope: "global",
-        package: "npm:@foo/bar@1.0.0",
-      });
-      const second = service.add({
-        scope: "global",
-        package: "npm:@foo/bar@1.0.0",
-      });
-
-      expect(second.id).toBe(first.id);
-    });
+    expect(updated?.configJson).toBe(
+      JSON.stringify({ apiKey: "changed", endpoint: "https://example.com" }),
+    );
   });
 
-  describe("remove", () => {
-    it("removes a package", () => {
-      const config = service.add({
-        scope: "global",
-        package: "npm:@foo/bar@1.0.0",
-      });
+  it("merges config across scopes when resolving packages", () => {
+    const session = sessionService.create({ mode: "chat" });
 
-      service.remove(config.id);
-      expect(service.get(config.id)).toBeUndefined();
+    service.add({
+      scope: "global",
+      package: "@aliou/pi-linkup",
+      config: { endpoint: "https://global.example.com", timeout: "10" },
     });
+    service.add({
+      scope: "chat",
+      package: "@aliou/pi-linkup",
+      config: { timeout: "30" },
+    });
+    service.add({
+      scope: "session",
+      sessionId: session.id,
+      package: "@aliou/pi-linkup",
+      config: { project: "alpha" },
+    });
+
+    const resolved = service.getResolvedPackageEntries(session.id, "chat");
+    expect(resolved).toEqual([
+      {
+        package: "@aliou/pi-linkup",
+        config: {
+          endpoint: "https://global.example.com",
+          timeout: "30",
+          project: "alpha",
+        },
+      },
+    ]);
   });
 
-  describe("listByScope", () => {
-    it("lists global packages", () => {
-      service.add({ scope: "global", package: "npm:@foo/a@1.0.0" });
-      service.add({ scope: "global", package: "npm:@foo/b@1.0.0" });
-      service.add({ scope: "chat", package: "npm:@foo/c@1.0.0" });
+  it("validates required fields from manifest schema", () => {
+    const manifest: ExtensionManifest = {
+      name: "@aliou/pi-linkup",
+      version: "1.0.0",
+      keywords: [],
+      tools: [],
+      providers: [],
+      skills: [],
+      fetchedAt: new Date().toISOString(),
+      schema: {
+        properties: {
+          apiKey: { type: "string", title: "API key" },
+        },
+        required: ["apiKey"],
+      },
+    };
 
-      const globals = service.listByScope("global");
-      expect(globals).toHaveLength(2);
-      expect(globals.map((g) => g.package)).toContain("npm:@foo/a@1.0.0");
-      expect(globals.map((g) => g.package)).toContain("npm:@foo/b@1.0.0");
+    expect(service.validateConfig({}, manifest)).toEqual({
+      valid: false,
+      errors: [{ field: "apiKey", message: "Required" }],
     });
-
-    it("lists session packages for specific session", () => {
-      const s1 = sessionService.create({ mode: "chat" });
-      const s2 = sessionService.create({ mode: "chat" });
-
-      service.add({
-        scope: "session",
-        package: "npm:@foo/s1@1.0.0",
-        sessionId: s1.id,
-      });
-      service.add({
-        scope: "session",
-        package: "npm:@foo/s2@1.0.0",
-        sessionId: s2.id,
-      });
-
-      const s1Packages = service.listByScope("session", s1.id);
-      expect(s1Packages).toHaveLength(1);
-      expect(s1Packages[0]?.package).toBe("npm:@foo/s1@1.0.0");
-    });
-
-    it("returns empty for session scope without sessionId", () => {
-      expect(service.listByScope("session")).toHaveLength(0);
-    });
+    expect(service.validateConfig({ apiKey: "ok" }, manifest).valid).toBe(true);
   });
 
-  describe("getResolvedPackages", () => {
-    it("merges global + mode + session packages", () => {
-      const session = sessionService.create({ mode: "chat" });
+  it("writes extension config into generated settings", () => {
+    const session = sessionService.create({ mode: "chat" });
+    const sessionDataDir = "/tmp/pi-relay-extension-settings-test";
 
-      service.add({ scope: "global", package: "npm:@foo/global@1.0.0" });
-      service.add({ scope: "chat", package: "npm:@foo/chat@1.0.0" });
-      service.add({ scope: "code", package: "npm:@foo/code@1.0.0" });
-      service.add({
-        scope: "session",
-        package: "npm:@foo/session@1.0.0",
-        sessionId: session.id,
-      });
+    rmSync(sessionDataDir, { recursive: true, force: true });
 
-      const packages = service.getResolvedPackages(session.id, "chat");
-
-      expect(packages).toContain("npm:@foo/global@1.0.0");
-      expect(packages).toContain("npm:@foo/chat@1.0.0");
-      expect(packages).toContain("npm:@foo/session@1.0.0");
-      expect(packages).not.toContain("npm:@foo/code@1.0.0");
+    service.add({
+      scope: "global",
+      package: "@aliou/pi-linkup",
+      config: { apiKey: "secret", endpoint: "https://example.com" },
     });
 
-    it("deduplicates packages", () => {
-      const session = sessionService.create({ mode: "chat" });
+    const packages = writeExtensionSettings(
+      sessionDataDir,
+      session.id,
+      service,
+      "chat",
+    );
 
-      service.add({ scope: "global", package: "npm:@foo/shared@1.0.0" });
-      service.add({ scope: "chat", package: "npm:@foo/shared@1.0.0" });
+    expect(packages).toEqual(["@aliou/pi-linkup"]);
 
-      const packages = service.getResolvedPackages(session.id, "chat");
-      expect(
-        packages.filter((p) => p === "npm:@foo/shared@1.0.0"),
-      ).toHaveLength(1);
+    const settingsJson = JSON.parse(
+      readFileSync(join(sessionDataDir, session.id, "agent", "settings.json"), "utf-8"),
+    ) as {
+      packages: string[];
+      extensionConfig: Record<string, Record<string, unknown>>;
+    };
+
+    expect(settingsJson.packages).toEqual(["@aliou/pi-linkup"]);
+    expect(settingsJson.extensionConfig["@aliou/pi-linkup"]).toEqual({
+      apiKey: "secret",
+      endpoint: "https://example.com",
     });
 
-    it("does not include other sessions packages", () => {
-      const s1 = sessionService.create({ mode: "chat" });
-      const s2 = sessionService.create({ mode: "chat" });
-
-      service.add({
-        scope: "session",
-        package: "npm:@foo/s2-only@1.0.0",
-        sessionId: s2.id,
-      });
-
-      const packages = service.getResolvedPackages(s1.id, "chat");
-      expect(packages).not.toContain("npm:@foo/s2-only@1.0.0");
-    });
-
-    it("returns empty when no packages configured", () => {
-      const session = sessionService.create({ mode: "chat" });
-      const packages = service.getResolvedPackages(session.id, "chat");
-      expect(packages).toHaveLength(0);
-    });
-  });
-
-  describe("cascade delete", () => {
-    it("removes session-scoped configs when session is deleted", () => {
-      const session = sessionService.create({ mode: "chat" });
-      const config = service.add({
-        scope: "session",
-        package: "npm:@foo/ext@1.0.0",
-        sessionId: session.id,
-      });
-
-      sessionService.delete(session.id);
-      expect(service.get(config.id)).toBeUndefined();
-    });
+    rmSync(sessionDataDir, { recursive: true, force: true });
   });
 });

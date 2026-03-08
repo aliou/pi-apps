@@ -298,10 +298,61 @@ export interface SandboxExecResponse {
 // Extension configs
 export type ExtensionScope = "global" | "chat" | "code" | "session";
 
+export interface ExtensionManifestFieldSchema {
+  type?: string;
+  title?: string;
+  description?: string;
+  default?: unknown;
+  enum?: unknown[];
+}
+
+export interface ExtensionManifest {
+  name: string;
+  version: string;
+  description?: string;
+  keywords: string[];
+  homepage?: string;
+  repository?: string;
+  tools: string[];
+  providers: string[];
+  skills: string[];
+  fetchedAt: string;
+  schema?: {
+    type?: string;
+    properties?: Record<string, ExtensionManifestFieldSchema>;
+    required?: string[];
+  };
+}
+
 export interface ExtensionConfig {
   id: string;
   scope: ExtensionScope;
   sessionId: string | null;
   package: string;
+  configJson?: string | null;
   createdAt: string;
+}
+
+export interface ExtensionConfigRecord extends ExtensionConfig {
+  manifest?: ExtensionManifest | null;
+}
+
+export interface CatalogPackage {
+  name: string;
+  version: string;
+  description?: string;
+  keywords: string[];
+  homepage?: string;
+  repository?: string;
+  extensionMeta?: {
+    tools?: string[];
+    providers?: string[];
+    skills?: string[];
+  };
+}
+
+export interface PackageCatalogResponse {
+  packages: CatalogPackage[];
+  fetchedAt: string | null;
+  stale: boolean;
 }

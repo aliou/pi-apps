@@ -9,6 +9,7 @@ import { extensionConfigsRoutes } from "./routes/extension-configs";
 import { githubRoutes } from "./routes/github";
 import { healthRoutes } from "./routes/health";
 import { modelsRoutes } from "./routes/models";
+import { packagesRoutes } from "./routes/packages";
 import { secretsRoutes } from "./routes/secrets";
 import { sessionsRoutes } from "./routes/sessions";
 import { settingsRoutes } from "./routes/settings";
@@ -18,6 +19,7 @@ import type { EnvironmentService } from "./services/environment.service";
 import type { EventJournal } from "./services/event-journal";
 import type { ExtensionConfigService } from "./services/extension-config.service";
 import type { GitHubService } from "./services/github.service";
+import type { PackageCatalogService } from "./services/package-catalog.service";
 import type { RepoService } from "./services/repo.service";
 import type { SecretsService } from "./services/secrets.service";
 import type { SessionService } from "./services/session.service";
@@ -37,6 +39,7 @@ export type AppEnv = PinoEnv & {
     sandboxLogStore: SandboxLogStore;
     sessionDataDir: string;
     sessionHubManager: SessionHubManager;
+    packageCatalogService: PackageCatalogService;
   };
 };
 
@@ -53,6 +56,7 @@ export interface AppServices {
   sandboxLogStore: SandboxLogStore;
   sessionDataDir: string;
   sessionHubManager: SessionHubManager;
+  packageCatalogService: PackageCatalogService;
 }
 
 export interface CreateAppOptions {
@@ -77,6 +81,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     c.set("sandboxLogStore", services.sandboxLogStore);
     c.set("sessionDataDir", services.sessionDataDir);
     c.set("sessionHubManager", services.sessionHubManager);
+    c.set("packageCatalogService", services.packageCatalogService);
     await next();
   });
 
@@ -114,6 +119,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
   app.route("/api/secrets", secretsRoutes(services.secretsService));
   app.route("/api/environments", environmentsRoutes());
   app.route("/api/extension-configs", extensionConfigsRoutes());
+  app.route("/api/packages", packagesRoutes());
 
   return app;
 }

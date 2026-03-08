@@ -141,6 +141,7 @@ export const extensionConfigs = sqliteTable(
       onDelete: "cascade",
     }),
     package: text("package").notNull(),
+    configJson: text("config_json"),
     createdAt: text("created_at").notNull(),
   },
   (table) => [

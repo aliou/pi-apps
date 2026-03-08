@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { AppDatabase } from "../db/connection";
 import { type ExtensionConfig, extensionConfigs } from "../db/schema";
+import type { ExtensionManifest } from "./extension-manifest.service";
 
 export type ExtensionScope = "global" | "chat" | "code" | "session";
 
@@ -8,26 +9,47 @@ export interface AddExtensionPackageParams {
   scope: ExtensionScope;
   package: string;
   sessionId?: string;
+  config?: Record<string, unknown>;
+}
+
+export interface UpdateExtensionConfigParams {
+  config?: Record<string, unknown>;
+}
+
+export interface ExtensionFieldError {
+  field: string;
+  message: string;
+}
+
+export interface ExtensionConfigValidationResult {
+  valid: boolean;
+  errors: ExtensionFieldError[];
+}
+
+export interface ResolvedExtensionPackage {
+  package: string;
+  config: Record<string, unknown>;
 }
 
 export class ExtensionConfigService {
   constructor(private db: AppDatabase) {}
 
-  /**
-   * Add a package to a scope.
-   * Returns the created record, or the existing one if it already exists.
-   */
   add(params: AddExtensionPackageParams): ExtensionConfig {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Check for existing entry first (SQLite unique indexes treat NULLs as distinct)
     const existing = this.findExact(
       params.scope,
       params.package,
       params.sessionId,
     );
-    if (existing) return existing;
+    if (existing) {
+      if (params.config) {
+        this.update(existing.id, { config: params.config });
+        return this.get(existing.id) ?? existing;
+      }
+      return existing;
+    }
 
     this.db
       .insert(extensionConfigs)
@@ -36,17 +58,14 @@ export class ExtensionConfigService {
         scope: params.scope,
         sessionId: params.sessionId ?? null,
         package: params.package,
+        configJson: params.config ? JSON.stringify(params.config) : null,
         createdAt: now,
       })
       .run();
 
-    // biome-ignore lint/style/noNonNullAssertion: just inserted
     return this.get(id)!;
   }
 
-  /**
-   * Get a single extension config by ID.
-   */
   get(id: string): ExtensionConfig | undefined {
     return this.db
       .select()
@@ -55,18 +74,26 @@ export class ExtensionConfigService {
       .get();
   }
 
-  /**
-   * Remove by ID.
-   */
   remove(id: string): void {
     this.db.delete(extensionConfigs).where(eq(extensionConfigs.id, id)).run();
   }
 
-  /**
-   * List packages for a given scope.
-   * For "session" scope, sessionId is required.
-   * For "global", "chat", "code" scopes, sessionId is ignored.
-   */
+  update(id: string, params: UpdateExtensionConfigParams): ExtensionConfig | undefined {
+    const existing = this.get(id);
+    if (!existing) return undefined;
+
+    this.db
+      .update(extensionConfigs)
+      .set({
+        configJson:
+          params.config === undefined ? existing.configJson : JSON.stringify(params.config),
+      })
+      .where(eq(extensionConfigs.id, id))
+      .run();
+
+    return this.get(id);
+  }
+
   listByScope(scope: ExtensionScope, sessionId?: string): ExtensionConfig[] {
     if (scope === "session") {
       if (!sessionId) return [];
@@ -94,32 +121,81 @@ export class ExtensionConfigService {
       .all();
   }
 
-  /**
-   * Resolve the merged, deduplicated list of packages for a session.
-   * Merges: global + mode-level (chat or code) + session-level.
-   */
   getResolvedPackages(sessionId: string, mode: "chat" | "code"): string[] {
+    return this.getResolvedPackageEntries(sessionId, mode).map((entry) => entry.package);
+  }
+
+  getResolvedPackageEntries(
+    sessionId: string,
+    mode: "chat" | "code",
+  ): ResolvedExtensionPackage[] {
     const rows = this.db
       .select()
       .from(extensionConfigs)
       .where(inArray(extensionConfigs.scope, ["global", mode, "session"]))
-      .all();
+      .all()
+      .sort(
+        (a, b) =>
+          scopePriority(a.scope as ExtensionScope, mode) -
+          scopePriority(b.scope as ExtensionScope, mode),
+      );
 
-    // Filter session-scoped rows to only this session
-    const packages = new Set<string>();
+    const packages = new Map<string, Record<string, unknown>>();
     for (const row of rows) {
       if (row.scope === "session" && row.sessionId !== sessionId) {
         continue;
       }
-      packages.add(row.package);
+
+      const prev = packages.get(row.package) ?? {};
+      const next = { ...prev, ...this.parseConfig(row.configJson) };
+      packages.set(row.package, next);
     }
 
-    return [...packages];
+    return [...packages.entries()].map(([pkg, config]) => ({
+      package: pkg,
+      config,
+    }));
   }
 
-  /**
-   * Find exact match for deduplication.
-   */
+  validateConfig(
+    config: Record<string, unknown> | undefined,
+    manifest: ExtensionManifest | null,
+  ): ExtensionConfigValidationResult {
+    if (!manifest?.schema?.properties) {
+      return { valid: true, errors: [] };
+    }
+
+    const value = config ?? {};
+    const required = new Set(manifest.schema.required ?? []);
+    const errors: ExtensionFieldError[] = [];
+
+    for (const field of required) {
+      const fieldValue = value[field];
+      if (
+        fieldValue === undefined ||
+        fieldValue === null ||
+        (typeof fieldValue === "string" && fieldValue.trim() === "")
+      ) {
+        errors.push({ field, message: "Required" });
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  private parseConfig(configJson: string | null): Record<string, unknown> {
+    if (!configJson) return {};
+
+    try {
+      const parsed = JSON.parse(configJson) as Record<string, unknown>;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
   private findExact(
     scope: ExtensionScope,
     pkg: string,
@@ -151,4 +227,11 @@ export class ExtensionConfigService {
       )
       .get();
   }
+}
+
+function scopePriority(scope: ExtensionScope, mode: "chat" | "code"): number {
+  if (scope === "global") return 0;
+  if (scope === mode) return 1;
+  if (scope === "session") return 2;
+  return 3;
 }

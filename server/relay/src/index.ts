@@ -20,6 +20,8 @@ import { EventJournal } from "./services/event-journal";
 import { ExtensionConfigService } from "./services/extension-config.service";
 import { GitHubService } from "./services/github.service";
 import { IdleReaper } from "./services/idle-reaper";
+import { ExtensionManifestService } from "./services/extension-manifest.service";
+import { PackageCatalogService } from "./services/package-catalog.service";
 import { RepoService } from "./services/repo.service";
 import { SecretsService } from "./services/secrets.service";
 import { SessionService } from "./services/session.service";
@@ -105,9 +107,13 @@ async function main() {
   const environmentService = new EnvironmentService(db);
   log.info("environment service initialized");
 
-  // Initialize extension config service
+  // Initialize extension services
   const extensionConfigService = new ExtensionConfigService(db);
-  log.info("extension config service initialized");
+  const extensionManifestService = new ExtensionManifestService();
+  const packageCatalogService = new PackageCatalogService(
+    extensionManifestService,
+  );
+  log.info("extension services initialized");
 
   // Initialize session hub manager for multi-client streaming
   const eventHooks = buildEventHooks(sessionService);
@@ -145,6 +151,7 @@ async function main() {
       sandboxLogStore,
       sessionDataDir,
       sessionHubManager,
+      packageCatalogService,
     },
   });
 
