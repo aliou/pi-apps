@@ -30,7 +30,9 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
 
   app.get("/", async (c) => {
     const extensionConfigService = c.get("extensionConfigService");
-    const extensionManifestService = c.get("packageCatalogService").manifestService;
+    const extensionManifestService = c.get(
+      "packageCatalogService",
+    ).manifestService;
 
     const scope = c.req.query("scope") as ExtensionScope | undefined;
     const sessionId = c.req.query("sessionId");
@@ -92,7 +94,9 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
 
   app.post("/", async (c) => {
     const extensionConfigService = c.get("extensionConfigService");
-    const extensionManifestService = c.get("packageCatalogService").manifestService;
+    const extensionManifestService = c.get(
+      "packageCatalogService",
+    ).manifestService;
     const sessionService = c.get("sessionService");
     const sandboxManager = c.get("sandboxManager");
     const environmentService = c.get("environmentService");
@@ -104,19 +108,34 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const scopeError = validateScopeAndSession(body.scope, body.sessionId, sessionService);
+    const scopeError = validateScopeAndSession(
+      body.scope,
+      body.sessionId,
+      sessionService,
+    );
     if (scopeError) return scopeError;
 
-    if (!body.package || typeof body.package !== "string" || !body.package.trim()) {
+    if (
+      !body.package ||
+      typeof body.package !== "string" ||
+      !body.package.trim()
+    ) {
       return c.json({ data: null, error: "package is required" }, 400);
     }
 
     const pkg = body.package.trim();
     const manifest = await extensionManifestService.getManifest(pkg);
-    const configValidation = extensionConfigService.validateConfig(body.config, manifest);
+    const configValidation = extensionConfigService.validateConfig(
+      body.config,
+      manifest,
+    );
     if (!configValidation.valid) {
       return c.json(
-        { data: null, error: "Invalid config values", meta: { fieldErrors: configValidation.errors } },
+        {
+          data: null,
+          error: "Invalid config values",
+          meta: { fieldErrors: configValidation.errors },
+        },
         400,
       );
     }
@@ -149,7 +168,15 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
       config: body.config,
     });
 
-    const staleSessionIds = getAffectedSessionIds(sessionService, body.scope, body.sessionId);
+    if (!config) {
+      return c.json({ data: null, error: `Failed to add extension` }, 400);
+    }
+
+    const staleSessionIds = getAffectedSessionIds(
+      sessionService,
+      body.scope,
+      body.sessionId,
+    );
     for (const sid of staleSessionIds) {
       sessionService.update(sid, { extensionsStale: true });
     }
@@ -172,7 +199,9 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
 
   app.put("/:id", async (c) => {
     const extensionConfigService = c.get("extensionConfigService");
-    const extensionManifestService = c.get("packageCatalogService").manifestService;
+    const extensionManifestService = c.get(
+      "packageCatalogService",
+    ).manifestService;
     const sessionService = c.get("sessionService");
     const id = c.req.param("id");
     const existing = extensionConfigService.get(id);
@@ -188,16 +217,27 @@ export function extensionConfigsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const manifest = await extensionManifestService.getManifest(existing.package);
-    const configValidation = extensionConfigService.validateConfig(body.config, manifest);
+    const manifest = await extensionManifestService.getManifest(
+      existing.package,
+    );
+    const configValidation = extensionConfigService.validateConfig(
+      body.config,
+      manifest,
+    );
     if (!configValidation.valid) {
       return c.json(
-        { data: null, error: "Invalid config values", meta: { fieldErrors: configValidation.errors } },
+        {
+          data: null,
+          error: "Invalid config values",
+          meta: { fieldErrors: configValidation.errors },
+        },
         400,
       );
     }
 
-    const updated = extensionConfigService.update(id, { config: body.config ?? {} });
+    const updated = extensionConfigService.update(id, {
+      config: body.config ?? {},
+    });
     if (!updated) {
       return c.json({ data: null, error: "Extension config not found" }, 404);
     }

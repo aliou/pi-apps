@@ -1,13 +1,13 @@
+import { readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AppDatabase } from "../db/connection";
 import { createTestDatabase } from "../test-helpers";
 import { EnvironmentService } from "./environment.service";
-import { type ExtensionManifest } from "./extension-manifest.service";
 import { ExtensionConfigService } from "./extension-config.service";
-import { writeExtensionSettings } from "./settings-generator";
+import type { ExtensionManifest } from "./extension-manifest.service";
 import { SessionService } from "./session.service";
-import { readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { writeExtensionSettings } from "./settings-generator";
 
 describe("ExtensionConfigService", () => {
   let db: AppDatabase;
@@ -132,7 +132,10 @@ describe("ExtensionConfigService", () => {
     expect(packages).toEqual(["@aliou/pi-linkup"]);
 
     const settingsJson = JSON.parse(
-      readFileSync(join(sessionDataDir, session.id, "agent", "settings.json"), "utf-8"),
+      readFileSync(
+        join(sessionDataDir, session.id, "agent", "settings.json"),
+        "utf-8",
+      ),
     ) as {
       packages: string[];
       extensionConfig: Record<string, Record<string, unknown>>;

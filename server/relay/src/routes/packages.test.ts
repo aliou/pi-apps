@@ -4,8 +4,8 @@ import type { AppDatabase } from "../db/connection";
 import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
-import { ExtensionManifestService } from "../services/extension-manifest.service";
 import { ExtensionConfigService } from "../services/extension-config.service";
+import { ExtensionManifestService } from "../services/extension-manifest.service";
 import { GitHubService } from "../services/github.service";
 import { PackageCatalogService } from "../services/package-catalog.service";
 import { RepoService } from "../services/repo.service";
@@ -52,7 +52,10 @@ describe("Packages Routes", () => {
         });
       }
 
-      if (url.includes("%40aliou%2Fpi-linkup") || url.includes("@aliou%2Fpi-linkup")) {
+      if (
+        url.includes("%40aliou%2Fpi-linkup") ||
+        url.includes("@aliou%2Fpi-linkup")
+      ) {
         return jsonResponse({
           name: "@aliou/pi-linkup",
           "dist-tags": { latest: "0.7.3" },
@@ -63,7 +66,11 @@ describe("Packages Routes", () => {
               description: "Linkup integration",
               keywords: ["pi-package", "pi-extension"],
               repository: { url: "https://github.com/aliou/pi-linkup" },
-              pi: { skills: ["./skills"], tools: ["linkup_search"], providers: [] },
+              pi: {
+                skills: ["./skills"],
+                tools: ["linkup_search"],
+                providers: [],
+              },
             },
           },
         });
@@ -82,7 +89,9 @@ describe("Packages Routes", () => {
       return new Response("not found", { status: 404 });
     };
 
-    const manifestService = new ExtensionManifestService({ fetchImpl: fakeFetch });
+    const manifestService = new ExtensionManifestService({
+      fetchImpl: fakeFetch,
+    });
 
     services = {
       db,
@@ -109,7 +118,9 @@ describe("Packages Routes", () => {
 
   it("returns normalized package catalog data", async () => {
     const app = createApp({ services });
-    const res = await app.request("/api/packages?tag=pi-package&query=linkup&limit=10");
+    const res = await app.request(
+      "/api/packages?tag=pi-package&query=linkup&limit=10",
+    );
 
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
@@ -127,6 +138,8 @@ describe("Packages Routes", () => {
     expect(json.data.stale).toBe(false);
     expect(json.data.packages[0]?.name).toBe("@aliou/pi-linkup");
     expect(json.data.packages[0]?.extensionMeta?.skills).toEqual(["./skills"]);
-    expect(json.data.packages[0]?.extensionMeta?.tools).toEqual(["linkup_search"]);
+    expect(json.data.packages[0]?.extensionMeta?.tools).toEqual([
+      "linkup_search",
+    ]);
   });
 });

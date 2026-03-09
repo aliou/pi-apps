@@ -34,7 +34,7 @@ export interface ResolvedExtensionPackage {
 export class ExtensionConfigService {
   constructor(private db: AppDatabase) {}
 
-  add(params: AddExtensionPackageParams): ExtensionConfig {
+  add(params: AddExtensionPackageParams) {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
@@ -63,7 +63,7 @@ export class ExtensionConfigService {
       })
       .run();
 
-    return this.get(id)!;
+    return this.get(id);
   }
 
   get(id: string): ExtensionConfig | undefined {
@@ -78,7 +78,10 @@ export class ExtensionConfigService {
     this.db.delete(extensionConfigs).where(eq(extensionConfigs.id, id)).run();
   }
 
-  update(id: string, params: UpdateExtensionConfigParams): ExtensionConfig | undefined {
+  update(
+    id: string,
+    params: UpdateExtensionConfigParams,
+  ): ExtensionConfig | undefined {
     const existing = this.get(id);
     if (!existing) return undefined;
 
@@ -86,7 +89,9 @@ export class ExtensionConfigService {
       .update(extensionConfigs)
       .set({
         configJson:
-          params.config === undefined ? existing.configJson : JSON.stringify(params.config),
+          params.config === undefined
+            ? existing.configJson
+            : JSON.stringify(params.config),
       })
       .where(eq(extensionConfigs.id, id))
       .run();
@@ -122,7 +127,9 @@ export class ExtensionConfigService {
   }
 
   getResolvedPackages(sessionId: string, mode: "chat" | "code"): string[] {
-    return this.getResolvedPackageEntries(sessionId, mode).map((entry) => entry.package);
+    return this.getResolvedPackageEntries(sessionId, mode).map(
+      (entry) => entry.package,
+    );
   }
 
   getResolvedPackageEntries(

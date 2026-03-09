@@ -14,7 +14,10 @@ export function writeExtensionSettings(
   extensionConfigService: ExtensionConfigService,
   mode: "chat" | "code",
 ): string[] {
-  const resolved = extensionConfigService.getResolvedPackageEntries(sessionId, mode);
+  const resolved = extensionConfigService.getResolvedPackageEntries(
+    sessionId,
+    mode,
+  );
   const packages = resolved.map((entry) => entry.package);
   const extensionConfig = Object.fromEntries(
     resolved
@@ -67,7 +70,10 @@ function buildSettings(options: {
   if (options.extensions && options.extensions.length > 0) {
     settings.extensions = options.extensions;
   }
-  if (options.extensionConfig && Object.keys(options.extensionConfig).length > 0) {
+  if (
+    options.extensionConfig &&
+    Object.keys(options.extensionConfig).length > 0
+  ) {
     settings.extensionConfig = options.extensionConfig;
   }
   return settings;

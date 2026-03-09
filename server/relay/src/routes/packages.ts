@@ -25,7 +25,9 @@ export function packagesRoutes(): Hono<AppEnv> {
         {
           data: null,
           error:
-            error instanceof Error ? error.message : "Package catalog unavailable",
+            error instanceof Error
+              ? error.message
+              : "Package catalog unavailable",
         },
         503,
       );

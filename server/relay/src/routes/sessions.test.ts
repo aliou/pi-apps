@@ -5,8 +5,8 @@ import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { ExtensionConfigService } from "../services/extension-config.service";
-import { GitHubService } from "../services/github.service";
 import { ExtensionManifestService } from "../services/extension-manifest.service";
+import { GitHubService } from "../services/github.service";
 import { PackageCatalogService } from "../services/package-catalog.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
@@ -40,7 +40,9 @@ describe("Sessions Routes", () => {
       sandboxLogStore: new SandboxLogStore(),
       sessionDataDir: "/tmp/test-session-data",
       sessionHubManager: createTestSessionHubManager(db),
-      packageCatalogService: new PackageCatalogService(new ExtensionManifestService()),
+      packageCatalogService: new PackageCatalogService(
+        new ExtensionManifestService(),
+      ),
     };
 
     // All session creation requires a default environment

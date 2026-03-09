@@ -89,7 +89,9 @@ export class ExtensionManifestService {
     const latestVersion = packument["dist-tags"]?.latest;
     const pkg =
       (latestVersion ? packument.versions?.[latestVersion] : undefined) ??
-      (packument.versions ? Object.values(packument.versions).at(-1) : undefined);
+      (packument.versions
+        ? Object.values(packument.versions).at(-1)
+        : undefined);
 
     if (!pkg?.name || !pkg.version) {
       this.cache.set(packageName, { manifest: null, fetchedAt: now });

@@ -81,7 +81,8 @@ export class PackageCatalogService {
       await this.throttle();
       const fetchImpl = this.options.fetchImpl ?? fetch;
       const registrySearchUrl =
-        this.options.registrySearchUrl ?? "https://registry.npmjs.org/-/v1/search";
+        this.options.registrySearchUrl ??
+        "https://registry.npmjs.org/-/v1/search";
       const text = [`keywords:${tag}`, query].filter(Boolean).join(" ");
       const response = await fetchImpl(
         `${registrySearchUrl}?text=${encodeURIComponent(text)}&size=${limit}`,
@@ -107,8 +108,8 @@ export class PackageCatalogService {
             extensionMeta:
               manifest &&
               (manifest.tools.length > 0 ||
-              manifest.providers.length > 0 ||
-              manifest.skills.length > 0)
+                manifest.providers.length > 0 ||
+                manifest.skills.length > 0)
                 ? {
                     tools: manifest.tools,
                     providers: manifest.providers,
