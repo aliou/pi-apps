@@ -1,6 +1,6 @@
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it } from "vitest";
 import type { AppDatabase } from "../db/connection";
 import { createTestDatabase } from "../test-helpers";
 import { EnvironmentService } from "./environment.service";
@@ -42,13 +42,17 @@ describe("ExtensionConfigService", () => {
       config: { apiKey: "secret" },
     });
 
+    assert(config, "expected config to be created");
+
     expect(config.configJson).toBe(JSON.stringify({ apiKey: "secret" }));
 
     const updated = service.update(config.id, {
       config: { apiKey: "changed", endpoint: "https://example.com" },
     });
 
-    expect(updated?.configJson).toBe(
+    assert(updated, "expected config to be updated");
+
+    expect(updated.configJson).toBe(
       JSON.stringify({ apiKey: "changed", endpoint: "https://example.com" }),
     );
   });
