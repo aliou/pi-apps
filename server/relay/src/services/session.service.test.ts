@@ -47,10 +47,11 @@ describe("SessionService", () => {
       expect(session.branchName).toBe("session-xyz");
     });
 
-    it("throws if code mode without repoId", () => {
-      expect(() => {
-        service.create({ mode: "code" });
-      }).toThrow("repoId is required for code mode sessions");
+    it("allows code mode without repoId when route validation already handled it", () => {
+      const session = service.create({ mode: "code" });
+      expect(session.mode).toBe("code");
+      expect(session.repoId).toBeNull();
+      expect(session.repoPath).toBeNull();
     });
 
     it("stores model preferences", () => {

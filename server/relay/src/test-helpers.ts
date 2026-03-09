@@ -87,6 +87,9 @@ export function createTestSandboxManager(
       gondolin: {
         sessionDataDir: "/tmp/pi-test-sessions",
       },
+      local: {
+        sessionDataDir: "/tmp/pi-test-sessions",
+      },
     },
     svc,
   );

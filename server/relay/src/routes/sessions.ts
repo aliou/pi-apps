@@ -3,9 +3,10 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
@@ -242,6 +243,27 @@ function getSessionExportPath(
   );
 }
 
+function resolveLocalWorkspacePath(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("Local workspace path is empty");
+  }
+
+  const expanded = trimmed.startsWith("~/")
+    ? join(process.env.HOME ?? "", trimmed.slice(2))
+    : trimmed;
+  const resolved = resolve(expanded);
+
+  if (!existsSync(resolved)) {
+    throw new Error(`Local workspace does not exist: ${resolved}`);
+  }
+  if (!statSync(resolved).isDirectory()) {
+    throw new Error(`Local workspace is not a directory: ${resolved}`);
+  }
+
+  return resolved;
+}
+
 export function sessionsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const logger = createLogger("sessions");
@@ -282,19 +304,13 @@ export function sessionsRoutes(): Hono<AppEnv> {
       );
     }
 
-    // Code mode requires repoId
-    if (body.mode === "code" && !body.repoId) {
-      return c.json(
-        { data: null, error: "repoId is required for code mode" },
-        400,
-      );
-    }
 
     // Resolve environment, repo, and sandbox provider
     let environmentId: string | undefined;
     let sandboxProvider: SandboxProviderType;
     let repoUrl: string | undefined;
     let repoBranch: string | undefined;
+    let repoPath: string | undefined;
     let desiredBranchName: string | undefined;
     let githubToken: string | undefined;
     let resolvedGitAuthorName: string | undefined;
@@ -342,9 +358,33 @@ export function sessionsRoutes(): Hono<AppEnv> {
     const resolvedSystemPrompt = body.systemPrompt ?? chatOnlyPromptProfile;
 
     if (body.mode === "code") {
-      const githubService = c.get("githubService");
+      if (sandboxProvider === "local") {
+        if (body.repoId) {
+          try {
+            repoPath = resolveLocalWorkspacePath(body.repoId);
+          } catch (err) {
+            return c.json(
+              {
+                data: null,
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : "Invalid local workspace path",
+              },
+              400,
+            );
+          }
+        }
+      } else {
+        const githubService = c.get("githubService");
 
-      if (body.repoId) {
+        if (!body.repoId) {
+          return c.json(
+            { data: null, error: "repoId is required for code mode" },
+            400,
+          );
+        }
+
         let repo = repoService.get(body.repoId);
         if (!repo) {
           try {
@@ -404,7 +444,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
       // Create session in database
       const session = sessionService.create({
         mode: body.mode,
-        repoId: body.repoId,
+        repoId: sandboxProvider === "local" ? undefined : body.repoId,
+        repoPath,
         branchName: repoBranch,
         environmentId,
         modelProvider: body.modelProvider,
@@ -456,7 +497,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
                 sandboxType: sandboxProvider as
                   | "docker"
                   | "cloudflare"
-                  | "gondolin",
+                  | "gondolin"
+                  | "local",
               },
               {
                 repoUrl,

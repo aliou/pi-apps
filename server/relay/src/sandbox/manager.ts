@@ -4,6 +4,7 @@ import type { SecretsService } from "../services/secrets.service";
 import { CloudflareSandboxProvider } from "./cloudflare";
 import { DockerSandboxProvider } from "./docker";
 import { GondolinSandboxProvider } from "./gondolin";
+import { LocalSandboxProvider } from "./local";
 import type { SandboxLogStore } from "./log-store";
 import { MockSandboxProvider } from "./mock";
 import type { SandboxProviderType } from "./provider-types";
@@ -31,7 +32,7 @@ const log = createLogger("sandbox");
  * Callers resolve secrets before passing this to the manager.
  */
 export interface EnvironmentSandboxConfig {
-  sandboxType: "docker" | "cloudflare" | "gondolin";
+  sandboxType: "docker" | "cloudflare" | "gondolin" | "local";
   /** Docker image name (for docker type) */
   image?: string;
   /** Cloudflare Worker URL (for cloudflare type) */
@@ -42,6 +43,8 @@ export interface EnvironmentSandboxConfig {
   imagePath?: string;
   /** Non-secret environment variables resolved from the environment config. */
   env?: Record<string, string>;
+  /** Optional explicit path to the pi executable for local sandboxes. */
+  piBinaryPath?: string;
 }
 
 export interface SandboxManagerConfig {
@@ -54,6 +57,9 @@ export interface SandboxManagerConfig {
     secretsBaseDir: string;
   };
   gondolin: {
+    sessionDataDir: string;
+  };
+  local: {
     sessionDataDir: string;
   };
   /** Optional log store for buffering sandbox stderr lines. */
@@ -138,6 +144,24 @@ export class SandboxManager {
           {
             sessionDataDir: this.config.gondolin.sessionDataDir,
             imagePath,
+          },
+          this.config.logStore,
+        );
+        this.providerCache.set(cacheKey, provider);
+      }
+      return provider;
+    }
+
+    if (envConfig.sandboxType === "local") {
+      const piBinaryPath = envConfig.piBinaryPath?.trim() || "pi";
+      const cacheKey = `local:${piBinaryPath}`;
+
+      let provider = this.providerCache.get(cacheKey);
+      if (!provider) {
+        provider = new LocalSandboxProvider(
+          {
+            sessionDataDir: this.config.local.sessionDataDir,
+            piBinaryPath,
           },
           this.config.logStore,
         );
@@ -240,7 +264,7 @@ export class SandboxManager {
    * Fetches fresh secrets from the secrets service.
    */
   async resolveSecretMaterial(
-    providerType: "docker" | "cloudflare" | "gondolin" | "mock",
+    providerType: "docker" | "cloudflare" | "gondolin" | "mock" | "local",
   ): Promise<SandboxSecretMaterial> {
     const material = await this.secretsService.getSecretMaterial(providerType);
     return {
@@ -267,7 +291,12 @@ export class SandboxManager {
   ): Promise<SandboxHandle> {
     const provider = this.getProvider(envConfig);
     const material = await this.resolveSecretMaterial(
-      envConfig.sandboxType as "docker" | "cloudflare" | "gondolin" | "mock",
+      envConfig.sandboxType as
+        | "docker"
+        | "cloudflare"
+        | "gondolin"
+        | "mock"
+        | "local",
     );
     const mergedEnv = { ...(envConfig.env ?? {}), ...(options?.env ?? {}) };
     const mergedDirectEnv = { ...material.directEnv, ...mergedEnv };
@@ -351,7 +380,7 @@ export class SandboxManager {
       envConfig,
     );
     const material = await this.resolveSecretMaterial(
-      providerType as "docker" | "cloudflare" | "gondolin" | "mock",
+      providerType as "docker" | "cloudflare" | "gondolin" | "mock" | "local",
     );
     const mergedDirectEnv = {
       ...material.directEnv,
@@ -461,13 +490,19 @@ export async function resolveEnvConfig(
     secretId?: string;
     imagePath?: string;
     envVars?: Array<{ key: string; value: string }>;
+    piBinaryPath?: string;
   };
 
   const result: EnvironmentSandboxConfig = {
-    sandboxType: env.sandboxType as "docker" | "cloudflare" | "gondolin",
+    sandboxType: env.sandboxType as
+      | "docker"
+      | "cloudflare"
+      | "gondolin"
+      | "local",
     image: config.image,
     workerUrl: config.workerUrl,
     imagePath: config.imagePath,
+    piBinaryPath: config.piBinaryPath,
     env:
       config.envVars && config.envVars.length > 0
         ? Object.fromEntries(

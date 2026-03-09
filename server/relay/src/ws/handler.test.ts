@@ -34,6 +34,9 @@ describe("WebSocket Handler", () => {
           gondolin: {
             sessionDataDir: "/tmp/pi-test-sessions",
           },
+          local: {
+            sessionDataDir: "/tmp/pi-test-sessions",
+          },
         },
         secretsService,
       ),

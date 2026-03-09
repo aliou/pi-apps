@@ -10,6 +10,8 @@ export interface GitConfigOptions {
   gitAuthorEmail?: string;
   /** Path prefix for the credential helper inside the sandbox (e.g. "/git" or "/data/git") */
   credentialHelperPath: string;
+  /** Git safe.directory entries to write to the config. Defaults to /workspace. */
+  safeDirectories?: string[];
 }
 
 /**
@@ -40,13 +42,13 @@ export function writeGitConfig(gitDir: string, opts: GitConfigOptions): void {
 
   const name = opts.gitAuthorName || DEFAULT_GIT_AUTHOR_NAME;
   const email = opts.gitAuthorEmail || DEFAULT_GIT_AUTHOR_EMAIL;
-  const lines = [
-    "[user]",
-    `\tname = "${name}"`,
-    `\temail = "${email}"`,
-    "[safe]",
-    "\tdirectory = /workspace",
-  ];
+  const safeDirectories = opts.safeDirectories?.length
+    ? opts.safeDirectories
+    : ["/workspace"];
+  const lines = ["[user]", `\tname = "${name}"`, `\temail = "${email}"`];
+  for (const safeDirectory of safeDirectories) {
+    lines.push("[safe]", `\tdirectory = ${safeDirectory}`);
+  }
   if (githubToken) {
     lines.push(
       "[credential]",

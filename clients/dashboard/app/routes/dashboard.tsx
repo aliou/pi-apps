@@ -150,6 +150,7 @@ export default function DashboardPage() {
   const [defaults, setDefaults] = useState<SessionDefaults>({});
 
   const [selectedRepoId, setSelectedRepoId] = useState<string>("");
+  const [localPath, setLocalPath] = useState<string>("");
   const [selectedEnvironmentId, setSelectedEnvironmentId] =
     useState<string>("");
   const [message, setMessage] = useState("");
@@ -209,9 +210,18 @@ export default function DashboardPage() {
     [environments],
   );
 
+  const selectedEnvironment = useMemo(
+    () => environments.find((e) => e.id === selectedEnvironmentId),
+    [environments, selectedEnvironmentId],
+  );
+
+  const isLocalEnvironment = selectedEnvironment?.sandboxType === "local";
+
   const canSubmit =
     message.trim().length > 0 &&
-    (mode === "chat" || (!!selectedRepoId && !!selectedEnvironmentId));
+    !!selectedEnvironmentId &&
+    (mode === "chat" ||
+      (isLocalEnvironment ? !!localPath.trim() : !!selectedRepoId));
 
   const handleSubmit = async () => {
     if (!canSubmit || isSubmitting) return;
@@ -225,8 +235,13 @@ export default function DashboardPage() {
 
     const res = await api.post<{ id: string }>("/sessions", {
       mode,
-      repoId: mode === "code" ? selectedRepoId : undefined,
-      environmentId: mode === "code" ? selectedEnvironmentId : undefined,
+      repoId:
+        mode === "code"
+          ? isLocalEnvironment
+            ? localPath.trim()
+            : selectedRepoId
+          : undefined,
+      environmentId: selectedEnvironmentId,
       modelProvider: modeDefaults?.modelProvider,
       modelId: modeDefaults?.modelId,
       firstPrompt,
@@ -293,29 +308,45 @@ export default function DashboardPage() {
                 : "mb-0 max-h-0 -translate-y-1 opacity-0 pointer-events-none",
             )}
           >
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <span className="text-xs text-muted">Repository</span>
-                <SearchableSelect
-                  items={repoItems}
-                  value={selectedRepoId}
-                  onValueChange={setSelectedRepoId}
-                  placeholder="Select repository"
-                  icon={<GithubLogoIcon className="size-4" />}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-xs text-muted">Environment</span>
-                <SearchableSelect
-                  items={environmentItems}
-                  value={selectedEnvironmentId}
-                  onValueChange={setSelectedEnvironmentId}
-                  placeholder="Select environment"
-                  icon={<CloudIcon className="size-4" />}
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-3">
+              {isLocalEnvironment ? (
+                <div className="space-y-2">
+                  <label htmlFor="local-path" className="text-xs text-muted">
+                    Local Path
+                  </label>
+                  <input
+                    id="local-path"
+                    type="text"
+                    value={localPath}
+                    onChange={(e) => setLocalPath(e.target.value)}
+                    placeholder="/path/to/your/project"
+                    className="w-full rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-sm text-fg placeholder:text-muted/50 focus:border-accent/50 focus:outline-none"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <span className="text-xs text-muted">Repository</span>
+                  <SearchableSelect
+                    items={repoItems}
+                    value={selectedRepoId}
+                    onValueChange={setSelectedRepoId}
+                    placeholder="Select repository"
+                    icon={<GithubLogoIcon className="size-4" />}
+                  />
+                </div>
+              )}
             </div>
+          </div>
+
+          <div className="mb-4 space-y-2">
+            <span className="text-xs text-muted">Environment</span>
+            <SearchableSelect
+              items={environmentItems}
+              value={selectedEnvironmentId}
+              onValueChange={setSelectedEnvironmentId}
+              placeholder="Select environment"
+              icon={<CloudIcon className="size-4" />}
+            />
           </div>
 
           <div
@@ -361,13 +392,16 @@ export default function DashboardPage() {
 
           {error && <p className="mt-3 text-sm text-status-err">{error}</p>}
 
-          {!isLoading && mode === "code" && repos.length === 0 && (
-            <p className="mt-3 text-xs text-muted">
-              No repositories found. Configure GitHub token in settings.
-            </p>
-          )}
+          {!isLoading &&
+            mode === "code" &&
+            !isLocalEnvironment &&
+            repos.length === 0 && (
+              <p className="mt-3 text-xs text-muted">
+                No repositories found. Configure GitHub token in settings.
+              </p>
+            )}
 
-          {!isLoading && mode === "code" && environments.length === 0 && (
+          {!isLoading && environments.length === 0 && (
             <p className="mt-1 text-xs text-muted">
               No environments found. Create one in settings.
             </p>

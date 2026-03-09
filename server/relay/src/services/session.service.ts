@@ -49,13 +49,9 @@ export class SessionService {
 
   /**
    * Create a new session.
-   * Code mode requires repoId.
+   * Route-level validation decides whether repoId or repoPath is required.
    */
   create(params: CreateSessionParams): SessionRecord {
-    if (params.mode === "code" && !params.repoId) {
-      throw new Error("repoId is required for code mode sessions");
-    }
-
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 

@@ -339,7 +339,7 @@ export class SecretsService {
    * For other providers, all secrets go into direct env.
    */
   async getSecretMaterial(
-    provider: "docker" | "cloudflare" | "gondolin" | "mock",
+    provider: "docker" | "cloudflare" | "gondolin" | "mock" | "local",
   ): Promise<ProviderSecretMaterial> {
     const rows = await this.db
       .select()
