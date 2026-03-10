@@ -3,7 +3,7 @@
 # Usage:
 #   RELAY_ENCRYPTION_KEY=$(openssl rand -base64 32) docker compose up -d
 #
-# Dashboard is served at :8080, relay API at :31415.
+# Dashboard is served at :31416, relay API at :31415.
 # Dashboard proxies API requests to relay internally.
 
 services:
@@ -34,7 +34,7 @@ services:
     build: clients/dashboard
     image: ghcr.io/aliou/pi-dashboard
     ports:
-      - "8080:8080"
+      - "31416:31416"
     environment:
       RELAY_URL: http://relay:31415
     depends_on:
