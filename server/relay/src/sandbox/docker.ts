@@ -281,16 +281,35 @@ export class DockerSandboxProvider implements SandboxProvider {
     });
 
     // Start container
-    await container.start();
+    try {
+      await container.start();
+    } catch (err) {
+      log.error({ err, containerId: container.id }, "failed to start container");
+      throw new Error(
+        `Failed to start container: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     // Wait briefly for container to be fully initialized
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Verify container is running before creating handle
-    const containerInfo = await container.inspect();
-    if (!containerInfo.State.Running) {
+    let containerInfo: Docker.ContainerInspectInfo;
+    try {
+      containerInfo = await container.inspect();
+    } catch (err) {
+      log.error(
+        { err, containerId: container.id },
+        "failed to inspect container after start",
+      );
       throw new Error(
-        `Container ${container.id} is not running (state: ${containerInfo.State.Status})`,
+        `Failed to inspect container: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    if (!containerInfo.State?.Running) {
+      throw new Error(
+        `Container ${container.id} is not running (state: ${containerInfo.State?.Status ?? "unknown"})`,
       );
     }
 
