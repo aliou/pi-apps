@@ -286,6 +286,14 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Wait briefly for container to be fully initialized
     await new Promise((resolve) => setTimeout(resolve, 100));
 
+    // Verify container is running before creating handle
+    const containerInfo = await container.inspect();
+    if (!containerInfo.State.Running) {
+      throw new Error(
+        `Container ${container.id} is not running (state: ${containerInfo.State.Status})`,
+      );
+    }
+
     // Capture image digest for reproducibility
     const imageInfo = await this.docker.getImage(this.config.image).inspect();
     const imageDigest = imageInfo.Id;
