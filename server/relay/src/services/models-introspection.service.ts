@@ -103,13 +103,14 @@ export class ModelsIntrospectionService {
           sessionId,
           this.envConfig,
         );
+        log.debug({ sessionId, providerId: handle.providerId }, "sandbox created successfully");
       } catch (err) {
+        log.error({ sessionId, err: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }, "sandbox create failed");
         throw new IntrospectionError(
           `sandbox create failed: ${err instanceof Error ? err.message : String(err)}`,
           IntrospectionErrorReason.SANDBOX_UNAVAILABLE,
         );
       }
-      log.debug({ sessionId }, "sandbox created");
 
       // Wait for it to be running
       log.debug({ sessionId }, "resuming sandbox");
