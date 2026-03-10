@@ -284,7 +284,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     try {
       await container.start();
     } catch (err) {
-      log.error({ err, containerId: container.id }, "failed to start container");
+      log.error(
+        { err, containerId: container.id },
+        "failed to start container",
+      );
       throw new Error(
         `Failed to start container: ${err instanceof Error ? err.message : String(err)}`,
       );

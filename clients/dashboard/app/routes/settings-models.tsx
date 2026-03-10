@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, SearchableSelect } from "../components/ui";
 import {
   api,
@@ -70,14 +70,37 @@ function ModeModelForm({ title, models, value, onChange }: ModeModelFormProps) {
   );
 }
 
+function formatSource(source: ModelsResponse["source"] | null): string {
+  if (!source) return "unknown";
+  switch (source) {
+    case "configured-environment":
+      return "configured env";
+    case "fallback-environment":
+      return "fallback env";
+    case "fallback-cache":
+      return "cache";
+    case "fallback-static":
+      return "static fallback";
+    default:
+      return source;
+  }
+}
+
 export default function SettingsModelsPage() {
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [modelsSource, setModelsSource] =
+    useState<ModelsResponse["source"] | null>(null);
+  const [modelsEnvironmentId, setModelsEnvironmentId] = useState<
+    string | undefined
+  >(undefined);
+
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [introspectionEnvironmentId, setIntrospectionEnvironmentId] =
     useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshingModels, setRefreshingModels] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [chatDefault, setChatDefault] = useState({
@@ -89,30 +112,34 @@ export default function SettingsModelsPage() {
     modelId: "",
   });
 
+  const loadModels = useCallback(async () => {
+    const modelsRes = await api.get<ModelsResponse>("/models");
+    if (modelsRes.data) {
+      setModels(modelsRes.data.models ?? []);
+      setModelsSource(modelsRes.data.source ?? null);
+      setModelsEnvironmentId(modelsRes.data.environmentId);
+    }
+    return modelsRes;
+  }, []);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       const [modelsRes, settingsRes, environmentsRes] = await Promise.all([
-        api.get<ModelsResponse>("/models"),
+        loadModels(),
         api.get<Record<string, unknown>>("/settings"),
         api.get<Environment[]>("/environments"),
       ]);
 
-      if (modelsRes.error) {
-        setError(modelsRes.error);
-      } else {
-        setModels(modelsRes.data?.models ?? []);
-      }
+      const nextError =
+        modelsRes.error ?? environmentsRes.error ?? settingsRes.error ?? null;
+      setError(nextError);
 
-      if (environmentsRes.error) {
-        setError(environmentsRes.error);
-      } else {
+      if (!environmentsRes.error) {
         setEnvironments(environmentsRes.data ?? []);
       }
 
-      if (settingsRes.error) {
-        setError(settingsRes.error);
-      } else if (settingsRes.data) {
+      if (settingsRes.data) {
         const defaults = settingsRes.data.session_defaults as
           | SessionDefaults
           | undefined;
@@ -139,7 +166,23 @@ export default function SettingsModelsPage() {
     };
 
     load();
-  }, []);
+  }, [loadModels]);
+
+  const handleRefreshModels = async () => {
+    setRefreshingModels(true);
+    setError(null);
+
+    const refreshRes = await api.post<{ ok: boolean }>("/models/refresh", {});
+    if (refreshRes.error) {
+      setError(refreshRes.error);
+      setRefreshingModels(false);
+      return;
+    }
+
+    const modelsRes = await loadModels();
+    setError(modelsRes.error);
+    setRefreshingModels(false);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -201,6 +244,13 @@ export default function SettingsModelsPage() {
         <p className="mt-1 text-sm text-muted">
           Set default model per mode for new sessions.
         </p>
+        <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+          <span>
+            Source: <strong>{formatSource(modelsSource)}</strong>
+          </span>
+          {modelsEnvironmentId && <span>Env: {modelsEnvironmentId}</span>}
+          {refreshingModels && <span>Refreshing models...</span>}
+        </div>
       </div>
 
       {loading ? (
@@ -214,14 +264,25 @@ export default function SettingsModelsPage() {
             <p className="mb-2 text-xs text-muted">
               Select the environment used by /api/models introspection.
             </p>
-            <SearchableSelect
-              value={introspectionEnvironmentId || "__auto__"}
-              onValueChange={(value) =>
-                setIntrospectionEnvironmentId(value === "__auto__" ? "" : value)
-              }
-              placeholder="Auto fallback (default + others)"
-              items={introspectionItems}
-            />
+            <div className="mb-3">
+              <SearchableSelect
+                value={introspectionEnvironmentId || "__auto__"}
+                onValueChange={(value) =>
+                  setIntrospectionEnvironmentId(
+                    value === "__auto__" ? "" : value,
+                  )
+                }
+                placeholder="Auto fallback (default + others)"
+                items={introspectionItems}
+              />
+            </div>
+            <Button
+              onClick={handleRefreshModels}
+              loading={refreshingModels}
+              variant="secondary"
+            >
+              Refresh models
+            </Button>
           </div>
 
           <ModeModelForm

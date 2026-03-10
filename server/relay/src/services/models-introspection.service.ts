@@ -103,9 +103,19 @@ export class ModelsIntrospectionService {
           sessionId,
           this.envConfig,
         );
-        log.debug({ sessionId, providerId: handle.providerId }, "sandbox created successfully");
+        log.debug(
+          { sessionId, providerId: handle.providerId },
+          "sandbox created successfully",
+        );
       } catch (err) {
-        log.error({ sessionId, err: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }, "sandbox create failed");
+        log.error(
+          {
+            sessionId,
+            err: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          },
+          "sandbox create failed",
+        );
         throw new IntrospectionError(
           `sandbox create failed: ${err instanceof Error ? err.message : String(err)}`,
           IntrospectionErrorReason.SANDBOX_UNAVAILABLE,
@@ -174,7 +184,10 @@ export class ModelsIntrospectionService {
       }
       const message = err instanceof Error ? err.message : String(err);
       const stack = err instanceof Error ? err.stack : undefined;
-      log.error({ sessionId, err: message, stack }, "model introspection failed");
+      log.error(
+        { sessionId, err: message, stack },
+        "model introspection failed",
+      );
       return {
         models: [],
         error: message,

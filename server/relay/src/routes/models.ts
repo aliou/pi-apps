@@ -68,6 +68,22 @@ export function modelsRoutes(): Hono<AppEnv> {
   let cachedIntrospection: IntrospectedModel[] | null = null;
   let cachedIntrospectionEnvironmentId: string | undefined;
 
+  const clearCaches = () => {
+    cachedFingerprint = null;
+    cachedModels = null;
+    cachedSource = null;
+    cachedEnvironmentId = undefined;
+    cachedIntrospection = null;
+    cachedIntrospectionEnvironmentId = undefined;
+  };
+
+  app.post("/refresh", (c) => {
+    const logger = c.get("logger");
+    clearCaches();
+    logger.info("models cache cleared via refresh endpoint");
+    return c.json({ data: { ok: true }, error: null });
+  });
+
   app.get("/", async (c) => {
     const logger = c.get("logger");
     const db = c.get("db");

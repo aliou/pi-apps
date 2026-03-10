@@ -338,6 +338,54 @@ describe("Models Routes", () => {
     expect(json.data.environmentId).toBe(defaultEnv.id);
   });
 
+  it("clears models cache via refresh endpoint", async () => {
+    environmentService.create({
+      name: "Gondolin",
+      sandboxType: "gondolin",
+      config: {},
+      isDefault: true,
+    });
+
+    let attempts = 0;
+    services.sandboxManager.isProviderAvailable = async () => true;
+    services.sandboxManager.createForSession = async () => {
+      attempts += 1;
+      return makeIntrospectionSandbox([
+        { provider: "openai", modelId: `gpt-4o-${attempts}` },
+      ]);
+    };
+
+    const app = createApp({ services });
+
+    const first = await app.request("/api/models");
+    const firstJson = (await first.json()) as {
+      data: { models: Array<{ id: string }> };
+      error: string | null;
+    };
+    expect(firstJson.data.models[0]?.id).toBe("gpt-4o-1");
+
+    const second = await app.request("/api/models");
+    const secondJson = (await second.json()) as {
+      data: { models: Array<{ id: string }> };
+      error: string | null;
+    };
+    expect(secondJson.data.models[0]?.id).toBe("gpt-4o-1");
+    expect(attempts).toBe(1);
+
+    const refresh = await app.request("/api/models/refresh", {
+      method: "POST",
+    });
+    expect(refresh.status).toBe(200);
+
+    const third = await app.request("/api/models");
+    const thirdJson = (await third.json()) as {
+      data: { models: Array<{ id: string }> };
+      error: string | null;
+    };
+    expect(thirdJson.data.models[0]?.id).toBe("gpt-4o-2");
+    expect(attempts).toBe(2);
+  });
+
   it("updates models_introspection setting via settings route", async () => {
     const app = createApp({ services });
 
