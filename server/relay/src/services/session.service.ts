@@ -16,6 +16,8 @@ export interface CreateSessionParams {
   repoId?: string;
   repoPath?: string;
   branchName?: string;
+  name?: string;
+  firstUserMessage?: string;
   systemPrompt?: string;
   modelProvider?: string;
   modelId?: string;
@@ -34,6 +36,7 @@ export interface UpdateSessionParams {
   currentModelId?: string;
   sandboxImageDigest?: string;
   sandboxProviderId?: string;
+  branchCreationDeferred?: boolean;
   extensionsStale?: boolean;
 }
 
@@ -67,11 +70,12 @@ export class SessionService {
       repoId: params.repoId ?? null,
       repoPath: params.repoPath ?? null,
       branchName: params.branchName ?? null,
+      branchCreationDeferred: false,
       systemPrompt: params.systemPrompt ?? null,
       currentModelProvider: params.modelProvider ?? null,
       currentModelId: params.modelId ?? null,
-      name: null,
-      firstUserMessage: null,
+      name: params.name ?? null,
+      firstUserMessage: params.firstUserMessage ?? null,
       createdAt: now,
       lastActivityAt: now,
     };
@@ -173,6 +177,9 @@ export class SessionService {
     }
     if (fields.sandboxProviderId !== undefined) {
       updates.sandboxProviderId = fields.sandboxProviderId;
+    }
+    if (fields.branchCreationDeferred !== undefined) {
+      updates.branchCreationDeferred = fields.branchCreationDeferred;
     }
     if (fields.extensionsStale !== undefined) {
       updates.extensionsStale = fields.extensionsStale;

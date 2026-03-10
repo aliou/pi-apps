@@ -11,21 +11,27 @@ interface ModelsIntrospectionSetting {
 }
 
 function validateSettingValue(key: string, value: unknown): string | null {
-  if (key !== "models_introspection") {
+  if (key === "models_introspection") {
+    if (!value || typeof value !== "object") {
+      return "models_introspection must be an object";
+    }
+
+    const payload = value as ModelsIntrospectionSetting;
+    if (
+      payload.environmentId !== undefined &&
+      (typeof payload.environmentId !== "string" ||
+        payload.environmentId.trim() === "")
+    ) {
+      return "models_introspection.environmentId must be a non-empty string when provided";
+    }
+
     return null;
   }
 
-  if (!value || typeof value !== "object") {
-    return "models_introspection must be an object";
-  }
-
-  const payload = value as ModelsIntrospectionSetting;
-  if (
-    payload.environmentId !== undefined &&
-    (typeof payload.environmentId !== "string" ||
-      payload.environmentId.trim() === "")
-  ) {
-    return "models_introspection.environmentId must be a non-empty string when provided";
+  if (key === "chat_mode_prompt_profile") {
+    if (typeof value !== "string") {
+      return "chat_mode_prompt_profile must be a string";
+    }
   }
 
   return null;

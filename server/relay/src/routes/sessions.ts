@@ -1,4 +1,11 @@
-import { join } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, extname, join } from "node:path";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
@@ -12,7 +19,12 @@ import {
 import type { SandboxProviderType } from "../sandbox/provider-types";
 import type { EnvironmentConfig } from "../services/environment.service";
 import type { SessionMode, SessionRecord } from "../services/session.service";
+import {
+  buildSessionBranchName,
+  buildSessionBranchRetryName,
+} from "../services/session-branch.service";
 import { readSessionHistory } from "../services/session-history";
+import { generateSessionTitle } from "../services/session-title.service";
 import {
   buildSettingsJson,
   writeExtensionSettings,
@@ -24,9 +36,29 @@ interface CreateSessionRequest {
   environmentId?: string;
   modelProvider?: string;
   modelId?: string;
+  sessionName?: string;
+  firstPrompt?: string;
   systemPrompt?: string;
   /** Enable native tools bridge extension in the sandbox. */
   nativeToolsEnabled?: boolean;
+}
+
+interface SessionFileRecord {
+  id: string;
+  sessionId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+  localPath: string;
+  sandboxPath?: string;
+  writeDeferred?: boolean;
+}
+
+interface SessionShareRecord {
+  token: string;
+  sessionId: string;
+  createdAt: string;
 }
 
 interface ActivateSessionRequest {
@@ -49,6 +81,157 @@ function readStringSetting(db: AppDatabase, key: string): string | undefined {
   } catch {
     return row.value;
   }
+}
+
+function readNumericSetting(
+  db: AppDatabase,
+  key: string,
+  fallback: number,
+): number {
+  const value = readStringSetting(db, key);
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getSessionFilesIndexPath(
+  sessionDataDir: string,
+  sessionId: string,
+): string {
+  return join(sessionDataDir, sessionId, "uploads", "index.json");
+}
+
+function readSessionFilesIndex(
+  sessionDataDir: string,
+  sessionId: string,
+): SessionFileRecord[] {
+  const indexPath = getSessionFilesIndexPath(sessionDataDir, sessionId);
+  try {
+    const raw = readFileSync(indexPath, "utf-8");
+    const data = JSON.parse(raw) as SessionFileRecord[];
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSessionFilesIndex(
+  sessionDataDir: string,
+  sessionId: string,
+  files: SessionFileRecord[],
+): void {
+  const uploadsDir = join(sessionDataDir, sessionId, "uploads");
+  mkdirSync(uploadsDir, { recursive: true });
+  const indexPath = getSessionFilesIndexPath(sessionDataDir, sessionId);
+  writeFileSync(indexPath, JSON.stringify(files, null, 2));
+}
+
+function sanitizeUploadFileName(name: string): string {
+  const base = basename(name).replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return base.slice(0, 128) || `upload-${Date.now()}`;
+}
+
+function getSessionSharePath(
+  sessionDataDir: string,
+  sessionId: string,
+): string {
+  return join(sessionDataDir, sessionId, "share.json");
+}
+
+function readSessionShare(
+  sessionDataDir: string,
+  sessionId: string,
+): SessionShareRecord | null {
+  const path = getSessionSharePath(sessionDataDir, sessionId);
+  try {
+    const raw = readFileSync(path, "utf-8");
+    return JSON.parse(raw) as SessionShareRecord;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionShare(
+  sessionDataDir: string,
+  sessionId: string,
+  share: SessionShareRecord,
+): void {
+  const sessionDir = join(sessionDataDir, sessionId);
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(
+    getSessionSharePath(sessionDataDir, sessionId),
+    JSON.stringify(share, null, 2),
+  );
+}
+
+function resolveShareToken(
+  sessionDataDir: string,
+  token: string,
+): SessionShareRecord | null {
+  try {
+    const sessionDirs = readdirSync(sessionDataDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+
+    for (const sessionId of sessionDirs) {
+      const share = readSessionShare(sessionDataDir, sessionId);
+      if (share?.token === token) {
+        return share;
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml",
+]);
+
+const ALLOWED_TEXT_DOC_MIME_TYPES = new Set([
+  "text/plain",
+  "text/markdown",
+  "text/x-markdown",
+  "application/json",
+  "application/yaml",
+  "application/x-yaml",
+  "text/yaml",
+  "text/x-python",
+  "text/x-typescript",
+  "text/x-c",
+  "application/xml",
+  "text/xml",
+  "application/pdf",
+]);
+
+function fileIsImage(mimeType: string): boolean {
+  return mimeType.startsWith("image/");
+}
+
+function isAllowedUploadMimeType(mimeType: string): boolean {
+  if (!mimeType) return false;
+  if (ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) return true;
+  if (ALLOWED_TEXT_DOC_MIME_TYPES.has(mimeType)) return true;
+  return mimeType.startsWith("text/");
+}
+
+function getSessionExportPath(
+  sessionDataDir: string,
+  sessionId: string,
+): string {
+  return join(
+    sessionDataDir,
+    sessionId,
+    "agent",
+    "exports",
+    `session-${sessionId}.html`,
+  );
 }
 
 export function sessionsRoutes(): Hono<AppEnv> {
@@ -106,6 +289,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
     let sandboxProvider: SandboxProviderType;
     let repoUrl: string | undefined;
     let repoBranch: string | undefined;
+    let desiredBranchName: string | undefined;
     let githubToken: string | undefined;
     let environmentConfig: EnvironmentConfig | undefined;
 
@@ -135,9 +319,22 @@ export function sessionsRoutes(): Hono<AppEnv> {
       environmentConfig = JSON.parse(environment.config);
     }
 
+    const generatedTitle = body.sessionName?.trim()
+      ? body.sessionName.trim()
+      : generateSessionTitle({
+          firstPrompt: body.firstPrompt ?? "",
+          mode: body.mode,
+        });
+
+    const db = c.get("db");
+    const chatOnlyPromptProfile =
+      body.mode === "chat"
+        ? readStringSetting(db, "chat_mode_prompt_profile")
+        : undefined;
+    const resolvedSystemPrompt = body.systemPrompt ?? chatOnlyPromptProfile;
+
     if (body.mode === "code") {
       // Read GitHub token for repo resolution and sandbox git auth
-      const db = c.get("db");
       githubToken = readStringSetting(db, "github_repos_access_token");
 
       // Resolve repo for cloning — fetch live from GitHub, persist on use
@@ -191,9 +388,16 @@ export function sessionsRoutes(): Hono<AppEnv> {
         environmentId,
         modelProvider: body.modelProvider,
         modelId: body.modelId,
-        systemPrompt: body.systemPrompt,
+        name: generatedTitle,
+        firstUserMessage: body.firstPrompt?.trim() || undefined,
+        systemPrompt: resolvedSystemPrompt,
         sandboxProvider,
       });
+
+      if (body.mode === "code") {
+        desiredBranchName = buildSessionBranchName(generatedTitle, session.id);
+        sessionService.update(session.id, { branchName: desiredBranchName });
+      }
 
       // Write settings.json for extension packages (before sandbox starts)
       const packages = writeExtensionSettings(
@@ -257,8 +461,38 @@ export function sessionsRoutes(): Hono<AppEnv> {
               );
             }
 
+            let finalBranchName = desiredBranchName;
+            let branchCreationDeferred = false;
+            if (body.mode === "code" && desiredBranchName) {
+              if (typeof handle.exec === "function") {
+                const exec = handle.exec;
+                const createBranch = async (branchName: string) => {
+                  const escapedBranch = branchName.replace(/'/g, "'\\''");
+                  return exec(
+                    `cd /workspace && git checkout -b '${escapedBranch}'`,
+                  );
+                };
+
+                const firstAttempt = await createBranch(desiredBranchName);
+                if (firstAttempt.exitCode !== 0) {
+                  const retryName =
+                    buildSessionBranchRetryName(desiredBranchName);
+                  const secondAttempt = await createBranch(retryName);
+                  if (secondAttempt.exitCode === 0) {
+                    finalBranchName = retryName;
+                  } else {
+                    branchCreationDeferred = true;
+                  }
+                }
+              } else {
+                branchCreationDeferred = true;
+              }
+            }
+
             sessionService.update(session.id, {
               status: "active",
+              branchName: finalBranchName,
+              branchCreationDeferred,
               sandboxProviderId: handle.providerId,
               sandboxImageDigest: handle.imageDigest,
             });
@@ -281,9 +515,10 @@ export function sessionsRoutes(): Hono<AppEnv> {
           }
         });
 
+      const createdSession = sessionService.get(session.id) ?? session;
       return c.json({
         data: {
-          ...session,
+          ...createdSession,
           wsEndpoint: `/ws/sessions/${session.id}`,
         },
         error: null,
@@ -307,6 +542,65 @@ export function sessionsRoutes(): Hono<AppEnv> {
     }
 
     return c.json({ data: session, error: null });
+  });
+
+  // Create or return session share link metadata
+  app.post("/:id/share", (c) => {
+    const sessionService = c.get("sessionService");
+    const sessionDataDir = c.get("sessionDataDir");
+    const id = c.req.param("id");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    const existing = readSessionShare(sessionDataDir, id);
+    const share =
+      existing ??
+      ({
+        token: crypto.randomUUID(),
+        sessionId: id,
+        createdAt: new Date().toISOString(),
+      } satisfies SessionShareRecord);
+
+    if (!existing) {
+      writeSessionShare(sessionDataDir, id, share);
+    }
+
+    return c.json({
+      data: {
+        ...share,
+        url: `/share/${share.token}`,
+      },
+      error: null,
+    });
+  });
+
+  // Resolve share token to session
+  app.get("/share/:token", (c) => {
+    const sessionDataDir = c.get("sessionDataDir");
+    const sessionService = c.get("sessionService");
+    const token = c.req.param("token");
+
+    const share = resolveShareToken(sessionDataDir, token);
+    if (!share) {
+      return c.json({ data: null, error: "Share not found" }, 404);
+    }
+
+    const session = sessionService.get(share.sessionId);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    return c.json({
+      data: {
+        token,
+        sessionId: session.id,
+        sessionName: session.name,
+      },
+      error: null,
+    });
   });
 
   // Activate session: ensure sandbox is running, block until ready.
@@ -974,6 +1268,199 @@ export function sessionsRoutes(): Hono<AppEnv> {
       const message = err instanceof Error ? err.message : "Exec failed";
       return c.json({ data: null, error: message }, 500);
     }
+  });
+
+  // Upload a file for a session
+  app.post("/:id/files", async (c) => {
+    const id = c.req.param("id");
+    const sessionService = c.get("sessionService");
+    const sandboxManager = c.get("sandboxManager");
+    const secretsService = c.get("secretsService");
+    const environmentService = c.get("environmentService");
+    const sessionDataDir = c.get("sessionDataDir");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    const db = c.get("db");
+    const maxFileBytes = readNumericSetting(
+      db,
+      "session_file_upload_max_bytes",
+      10 * 1024 * 1024,
+    );
+    const maxFilesPerSession = readNumericSetting(
+      db,
+      "session_file_upload_max_files",
+      50,
+    );
+
+    const form = await c.req.formData();
+    const file = form.get("file");
+
+    if (!(file instanceof File)) {
+      return c.json({ data: null, error: "file is required" }, 400);
+    }
+
+    if (file.size <= 0) {
+      return c.json({ data: null, error: "file is empty" }, 400);
+    }
+
+    if (file.size > maxFileBytes) {
+      return c.json(
+        { data: null, error: `file too large (max ${maxFileBytes} bytes)` },
+        400,
+      );
+    }
+
+    if (!isAllowedUploadMimeType(file.type)) {
+      return c.json(
+        {
+          data: null,
+          error:
+            "unsupported file type. allowed categories: images, text/code, docs",
+        },
+        400,
+      );
+    }
+
+    const files = readSessionFilesIndex(sessionDataDir, id);
+    if (files.length >= maxFilesPerSession) {
+      return c.json({ data: null, error: "session file quota reached" }, 400);
+    }
+
+    const safeName = sanitizeUploadFileName(file.name);
+    const fileId = crypto.randomUUID();
+    const uploadsDir = join(sessionDataDir, id, "uploads");
+    mkdirSync(uploadsDir, { recursive: true });
+
+    const ext = extname(safeName);
+    const localPath = join(uploadsDir, `${fileId}${ext}`);
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    writeFileSync(localPath, fileBuffer);
+
+    let sandboxPath: string | undefined;
+    let writeDeferred = false;
+
+    if (
+      !fileIsImage(file.type) &&
+      session.sandboxProvider &&
+      session.sandboxProviderId
+    ) {
+      try {
+        const envConfig = await resolveSessionEnvConfig(
+          session,
+          environmentService,
+          secretsService,
+        );
+        const handle = await sandboxManager.getHandleByType(
+          session.sandboxProvider as SandboxProviderType,
+          session.sandboxProviderId,
+          envConfig,
+        );
+
+        if (typeof handle.exec === "function") {
+          const base64 = fileBuffer.toString("base64");
+          const escapedName = safeName.replace(/'/g, "'\\''");
+          sandboxPath = `/workspace/.pi-uploads/${fileId}-${safeName}`;
+          const escapedSandboxPath = sandboxPath.replace(/'/g, "'\\''");
+          await handle.exec(
+            `mkdir -p /workspace/.pi-uploads && printf '%s' '${base64}' | base64 -d > '${escapedSandboxPath}' && chmod 600 '${escapedSandboxPath}' && echo '${escapedName}' >/dev/null`,
+          );
+        } else {
+          writeDeferred = true;
+        }
+      } catch {
+        writeDeferred = true;
+      }
+    }
+
+    const record: SessionFileRecord = {
+      id: fileId,
+      sessionId: id,
+      name: safeName,
+      mimeType: file.type || "application/octet-stream",
+      size: file.size,
+      uploadedAt: new Date().toISOString(),
+      localPath,
+      sandboxPath,
+      writeDeferred,
+    };
+
+    files.push(record);
+    writeSessionFilesIndex(sessionDataDir, id, files);
+
+    return c.json({ data: record, error: null });
+  });
+
+  // List uploaded files for a session
+  app.get("/:id/files", (c) => {
+    const id = c.req.param("id");
+    const sessionService = c.get("sessionService");
+    const sessionDataDir = c.get("sessionDataDir");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    const files = readSessionFilesIndex(sessionDataDir, id);
+    return c.json({ data: { files }, error: null });
+  });
+
+  // Read uploaded file content
+  app.get("/:id/files/:fileId/content", (c) => {
+    const id = c.req.param("id");
+    const fileId = c.req.param("fileId");
+    const sessionService = c.get("sessionService");
+    const sessionDataDir = c.get("sessionDataDir");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    const files = readSessionFilesIndex(sessionDataDir, id);
+    const file = files.find((entry) => entry.id === fileId);
+    if (!file) {
+      return c.json({ data: null, error: "File not found" }, 404);
+    }
+
+    const content = readFileSync(file.localPath);
+    return new Response(content, {
+      status: 200,
+      headers: {
+        "content-type": file.mimeType,
+        "content-disposition": `inline; filename="${file.name}"`,
+      },
+    });
+  });
+
+  // Download latest exported session HTML
+  app.get("/:id/export", (c) => {
+    const id = c.req.param("id");
+    const sessionService = c.get("sessionService");
+    const sessionDataDir = c.get("sessionDataDir");
+
+    const session = sessionService.get(id);
+    if (!session) {
+      return c.json({ data: null, error: "Session not found" }, 404);
+    }
+
+    const exportPath = getSessionExportPath(sessionDataDir, id);
+    if (!existsSync(exportPath)) {
+      return c.json({ data: null, error: "Export not found" }, 404);
+    }
+
+    const content = readFileSync(exportPath);
+    return new Response(content, {
+      status: 200,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-disposition": `inline; filename="session-${id}.html"`,
+      },
+    });
   });
 
   // Archive a session (stop sandbox, mark as archived)

@@ -213,5 +213,29 @@ describe("Settings Routes", () => {
       const json = await res.json();
       expect(json.error).toBe("Cannot modify protected setting");
     });
+
+    it("validates chat_mode_prompt_profile as string", async () => {
+      const app = createApp({ services });
+
+      const badRes = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "chat_mode_prompt_profile",
+          value: { nope: true },
+        }),
+      });
+      expect(badRes.status).toBe(400);
+
+      const okRes = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "chat_mode_prompt_profile",
+          value: "You are chat focused",
+        }),
+      });
+      expect(okRes.status).toBe(200);
+    });
   });
 });

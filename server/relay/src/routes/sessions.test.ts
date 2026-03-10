@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
@@ -272,6 +274,31 @@ describe("Sessions Routes", () => {
         FOO_BAR: "baz",
         HELLO: "world",
       });
+    });
+
+    it("marks branch creation deferred when provider has no exec", async () => {
+      services.sandboxManager.createForSession = async (sessionId) => {
+        const handle =
+          await services.sandboxManager.createMockForSession(sessionId);
+        return {
+          ...handle,
+          exec: undefined,
+        };
+      };
+
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "code", repoId: "owner/repo" }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const session = services.sessionService.get(json.data.id);
+      expect(session?.branchCreationDeferred).toBe(true);
     });
   });
 
@@ -561,6 +588,101 @@ describe("Sessions Routes", () => {
         body: JSON.stringify({ command: "echo hello" }),
       });
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe("POST /api/sessions/:id/files", () => {
+    it("rejects unsupported mime types", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      const app = createApp({ services });
+
+      const form = new FormData();
+      form.append(
+        "file",
+        new File(["MZ"], "malware.exe", {
+          type: "application/x-msdownload",
+        }),
+      );
+
+      const res = await app.request(`/api/sessions/${session.id}/files`, {
+        method: "POST",
+        body: form,
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(String(json.error)).toContain("unsupported file type");
+    });
+
+    it("uploads and lists session files", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      const app = createApp({ services });
+
+      const form = new FormData();
+      form.append(
+        "file",
+        new File(["hello"], "notes.txt", { type: "text/plain" }),
+      );
+
+      const uploadRes = await app.request(`/api/sessions/${session.id}/files`, {
+        method: "POST",
+        body: form,
+      });
+
+      expect(uploadRes.status).toBe(200);
+      const uploadJson = await uploadRes.json();
+      expect(uploadJson.data.name).toBe("notes.txt");
+
+      const listRes = await app.request(`/api/sessions/${session.id}/files`);
+      expect(listRes.status).toBe(200);
+      const listJson = await listRes.json();
+      expect(listJson.data.files).toHaveLength(1);
+    });
+  });
+
+  describe("POST /api/sessions/:id/share", () => {
+    it("creates and resolves a share token", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      const app = createApp({ services });
+
+      const createRes = await app.request(`/api/sessions/${session.id}/share`, {
+        method: "POST",
+      });
+      expect(createRes.status).toBe(200);
+      const createJson = await createRes.json();
+      expect(createJson.data.url).toContain("/share/");
+
+      const token = String(createJson.data.token);
+      const resolveRes = await app.request(`/api/sessions/share/${token}`);
+      expect(resolveRes.status).toBe(200);
+      const resolveJson = await resolveRes.json();
+      expect(resolveJson.data.sessionId).toBe(session.id);
+    });
+  });
+
+  describe("GET /api/sessions/:id/export", () => {
+    it("serves generated export html", async () => {
+      const session = services.sessionService.create({ mode: "chat" });
+      const app = createApp({ services });
+
+      const exportDir = join(
+        services.sessionDataDir,
+        session.id,
+        "agent",
+        "exports",
+      );
+      mkdirSync(exportDir, { recursive: true });
+      writeFileSync(
+        join(exportDir, `session-${session.id}.html`),
+        "<html><body>export</body></html>",
+      );
+
+      const res = await app.request(`/api/sessions/${session.id}/export`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/html");
+      expect(res.headers.get("content-disposition")).toContain("inline");
+      const text = await res.text();
+      expect(text).toContain("export");
     });
   });
 

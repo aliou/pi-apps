@@ -39,6 +39,11 @@ export const sessions = sqliteTable("sessions", {
   repoId: text("repo_id"),
   repoPath: text("repo_path"),
   branchName: text("branch_name"),
+  branchCreationDeferred: integer("branch_creation_deferred", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   name: text("name"),
   firstUserMessage: text("first_user_message"),
   currentModelProvider: text("current_model_provider"),
