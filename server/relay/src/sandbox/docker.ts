@@ -283,6 +283,9 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Start container
     await container.start();
 
+    // Wait briefly for container to be fully initialized
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     // Capture image digest for reproducibility
     const imageInfo = await this.docker.getImage(this.config.image).inspect();
     const imageDigest = imageInfo.Id;
