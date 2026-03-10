@@ -174,7 +174,8 @@ export class ModelsIntrospectionService {
         return { models: [], error: err.message, errorReason: err.reason };
       }
       const message = err instanceof Error ? err.message : String(err);
-      log.error({ sessionId, err: message }, "model introspection failed");
+      const stack = err instanceof Error ? err.stack : undefined;
+      log.error({ sessionId, err: message, stack }, "model introspection failed");
       return {
         models: [],
         error: message,
