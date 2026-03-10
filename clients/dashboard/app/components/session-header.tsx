@@ -4,14 +4,16 @@ import {
   ArrowLeftIcon,
   BugIcon,
   ChatCircleIcon,
+  DownloadSimpleIcon,
+  ShareNetworkIcon,
   TerminalWindowIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
 import { Link } from "react-router";
-import { Button } from "./ui/button";
 import type { SandboxStatusResponse, Session } from "../lib/api";
 import type { ConnectionStatus } from "../lib/use-session-events";
 import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
 
 export type ViewMode = "chat" | "debug" | "terminal";
 
@@ -139,6 +141,8 @@ export interface SessionHeaderProps {
   onArchive: () => void;
   onDelete: () => void;
   onRestart: () => void;
+  onShare: () => void;
+  onExport: () => void;
   isArchiving: boolean;
   isDeleting: boolean;
   isRestarting: boolean;
@@ -155,6 +159,8 @@ export function SessionHeader({
   onArchive,
   onDelete,
   onRestart,
+  onShare,
+  onExport,
   isArchiving,
   isDeleting,
   isRestarting,
@@ -192,6 +198,23 @@ export function SessionHeader({
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onShare}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-fg"
+          >
+            <ShareNetworkIcon className="size-4" />
+            Share
+          </button>
+          <button
+            type="button"
+            onClick={onExport}
+            disabled={!session || session.status === "archived"}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
+          >
+            <DownloadSimpleIcon className="size-4" />
+            Export
+          </button>
           <Button
             variant="secondary"
             size="sm"

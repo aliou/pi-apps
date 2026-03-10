@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import {
-  api,
   type ActivateResponse,
+  api,
   type EventsResponse,
   getClientId,
   type JournalEvent,
@@ -11,6 +11,7 @@ import {
   setClientCapabilities,
 } from "./api";
 import { mergeCanonicalEvents } from "./events";
+import { generateSessionTitle } from "./session-title";
 
 export type ConnectionStatus =
   | "connecting"
@@ -27,9 +28,9 @@ type PendingCommand = {
   reject: (error: Error) => void;
 };
 
-function extractModelSelection(data: unknown):
-  | { provider: string; modelId: string }
-  | null {
+function extractModelSelection(
+  data: unknown,
+): { provider: string; modelId: string } | null {
   if (!data || typeof data !== "object") return null;
 
   const state = data as { model?: unknown };
@@ -78,11 +79,23 @@ export function useSessionEvents(
   connectionStatus: ConnectionStatus;
   error: string | null;
   setError: (e: string | null) => void;
-  sendPrompt: (message: string) => boolean;
-  setModel: (provider: string, modelId: string) => Promise<{
+  sendPrompt: (message: string, options?: { images?: unknown[] }) => boolean;
+  setModel: (
+    provider: string,
+    modelId: string,
+  ) => Promise<{
     ok: boolean;
     error?: string;
   }>;
+  executeRpcCommand: (command: Record<string, unknown>) => Promise<{
+    ok: boolean;
+    data?: Record<string, unknown>;
+    error?: string;
+  }>;
+  getCommands: () => Promise<unknown[]>;
+  exportHtml: (
+    outputPath?: string,
+  ) => Promise<{ ok: boolean; path?: string; error?: string }>;
   session: Session | null;
 } {
   const navigate = useNavigate();
@@ -102,6 +115,7 @@ export function useSessionEvents(
   const pendingInitialPromptRef = useRef<string | null>(null);
   const readinessProbeIdRef = useRef<string | null>(null);
   const pendingCommandsRef = useRef<Map<string, PendingCommand>>(new Map());
+  const firstPromptSentRef = useRef(false);
 
   const pendingPromptKey = sessionId ? `pendingPrompt:${sessionId}` : null;
 
@@ -122,6 +136,7 @@ export function useSessionEvents(
     if (!sessionId) return;
     setEvents([]);
     lastSeqRef.current = 0;
+    firstPromptSentRef.current = false;
   }, [sessionId]);
 
   useEffect(() => {
@@ -136,31 +151,51 @@ export function useSessionEvents(
     });
   }, [sessionId]);
 
-  const sendPrompt = useCallback((message: string): boolean => {
-    if (!wsRef.current || !wsReadyRef.current) return false;
+  const sendPrompt = useCallback(
+    (message: string, options?: { images?: unknown[] }): boolean => {
+      if (!wsRef.current || !wsReadyRef.current) return false;
 
-    wsRef.current.send(
-      JSON.stringify({
-        type: "prompt",
-        message,
-        id: crypto.randomUUID(),
-      }),
-    );
+      if (!firstPromptSentRef.current) {
+        const generatedTitle = generateSessionTitle({
+          firstPrompt: message,
+          mode: session?.mode ?? "chat",
+        });
 
-    const seq = lastSeqRef.current + 1;
-    setEvents((prev) =>
-      mergeCanonicalEvents(prev, [
-        {
-          seq,
+        wsRef.current.send(
+          JSON.stringify({
+            type: "set_session_name",
+            id: crypto.randomUUID(),
+            name: generatedTitle,
+          }),
+        );
+      }
+
+      wsRef.current.send(
+        JSON.stringify({
           type: "prompt",
-          payload: { type: "prompt", message },
-          createdAt: new Date().toISOString(),
-        },
-      ]),
-    );
-    lastSeqRef.current = seq;
-    return true;
-  }, []);
+          message,
+          images: options?.images,
+          id: crypto.randomUUID(),
+        }),
+      );
+      firstPromptSentRef.current = true;
+
+      const seq = lastSeqRef.current + 1;
+      setEvents((prev) =>
+        mergeCanonicalEvents(prev, [
+          {
+            seq,
+            type: "prompt",
+            payload: { type: "prompt", message, images: options?.images },
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+      );
+      lastSeqRef.current = seq;
+      return true;
+    },
+    [session?.mode],
+  );
 
   const waitForCommandResponse = useCallback(
     (id: string, command: string) =>
@@ -229,7 +264,10 @@ export function useSessionEvents(
           }),
         );
 
-        const stateResponse = await waitForCommandResponse(getStateId, "get_state");
+        const stateResponse = await waitForCommandResponse(
+          getStateId,
+          "get_state",
+        );
         const modelSelection = extractModelSelection(stateResponse.data);
 
         if (modelSelection) {
@@ -262,7 +300,67 @@ export function useSessionEvents(
         };
       }
     },
-    [session?.currentModelId, session?.currentModelProvider, waitForCommandResponse],
+    [
+      session?.currentModelId,
+      session?.currentModelProvider,
+      waitForCommandResponse,
+    ],
+  );
+
+  const executeRpcCommand = useCallback(
+    async (command: Record<string, unknown>) => {
+      const ws = wsRef.current;
+      if (!ws || !wsReadyRef.current) {
+        return { ok: false, error: "Session not connected" };
+      }
+
+      const id = crypto.randomUUID();
+      const type = typeof command.type === "string" ? command.type : "command";
+
+      try {
+        ws.send(JSON.stringify({ ...command, id }));
+        const response = await waitForCommandResponse(id, type);
+        return {
+          ok: true,
+          data:
+            response.data && typeof response.data === "object"
+              ? (response.data as Record<string, unknown>)
+              : undefined,
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Command failed",
+        };
+      }
+    },
+    [waitForCommandResponse],
+  );
+
+  const getCommands = useCallback(async () => {
+    const result = await executeRpcCommand({ type: "get_commands" });
+    if (!result.ok) return [];
+    const commands = result.data?.commands;
+    return Array.isArray(commands) ? commands : [];
+  }, [executeRpcCommand]);
+
+  const exportHtml = useCallback(
+    async (outputPath?: string) => {
+      const result = await executeRpcCommand({
+        type: "export_html",
+        outputPath,
+      });
+      if (!result.ok) {
+        return { ok: false, error: result.error };
+      }
+
+      const path =
+        result.data && typeof result.data.path === "string"
+          ? result.data.path
+          : undefined;
+      return { ok: true, path };
+    },
+    [executeRpcCommand],
   );
 
   const flushPendingInitialPrompt = useCallback(() => {
@@ -450,6 +548,9 @@ export function useSessionEvents(
     setError,
     sendPrompt,
     setModel,
+    executeRpcCommand,
+    getCommands,
+    exportHtml,
     session,
   };
 }

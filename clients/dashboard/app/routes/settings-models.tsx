@@ -88,8 +88,9 @@ function formatSource(source: ModelsResponse["source"] | null): string {
 
 export default function SettingsModelsPage() {
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [modelsSource, setModelsSource] =
-    useState<ModelsResponse["source"] | null>(null);
+  const [modelsSource, setModelsSource] = useState<
+    ModelsResponse["source"] | null
+  >(null);
   const [modelsEnvironmentId, setModelsEnvironmentId] = useState<
     string | undefined
   >(undefined);
@@ -107,6 +108,7 @@ export default function SettingsModelsPage() {
     modelProvider: "",
     modelId: "",
   });
+  const [chatPromptProfile, setChatPromptProfile] = useState("");
   const [codeDefault, setCodeDefault] = useState({
     modelProvider: "",
     modelId: "",
@@ -160,6 +162,9 @@ export default function SettingsModelsPage() {
           | ModelsIntrospectionSetting
           | undefined;
         setIntrospectionEnvironmentId(introspection?.environmentId ?? "");
+
+        const chatPrompt = settingsRes.data.chat_mode_prompt_profile;
+        setChatPromptProfile(typeof chatPrompt === "string" ? chatPrompt : "");
       }
 
       setLoading(false);
@@ -209,7 +214,7 @@ export default function SettingsModelsPage() {
       environmentId: introspectionEnvironmentId || undefined,
     };
 
-    const [defaultsRes, introspectionRes] = await Promise.all([
+    const [defaultsRes, introspectionRes, chatPromptRes] = await Promise.all([
       api.put<{ ok: boolean }>("/settings", {
         key: "session_defaults",
         value: defaultsPayload,
@@ -218,12 +223,18 @@ export default function SettingsModelsPage() {
         key: "models_introspection",
         value: introspectionPayload,
       }),
+      api.put<{ ok: boolean }>("/settings", {
+        key: "chat_mode_prompt_profile",
+        value: chatPromptProfile,
+      }),
     ]);
 
     if (defaultsRes.error) {
       setError(defaultsRes.error);
     } else if (introspectionRes.error) {
       setError(introspectionRes.error);
+    } else if (chatPromptRes.error) {
+      setError(chatPromptRes.error);
     }
 
     setSaving(false);
@@ -303,6 +314,22 @@ export default function SettingsModelsPage() {
               No models available yet. Configure AI provider keys first.
             </p>
           )}
+
+          <div className="rounded-lg border border-border bg-surface/30 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-fg">
+              Chat-only prompt profile
+            </h3>
+            <p className="mb-2 text-xs text-muted">
+              Applied only to newly created chat sessions.
+            </p>
+            <textarea
+              value={chatPromptProfile}
+              onChange={(event) => setChatPromptProfile(event.target.value)}
+              rows={5}
+              className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-xs text-fg placeholder:text-muted"
+              placeholder="You are a chat-focused assistant..."
+            />
+          </div>
 
           {error && (
             <div className="rounded-lg border border-status-err/20 bg-status-err/5 px-3 py-2 text-sm text-status-err">

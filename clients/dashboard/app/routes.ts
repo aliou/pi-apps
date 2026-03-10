@@ -10,6 +10,7 @@ export default [
     index("routes/dashboard.tsx"),
     route("sessions", "routes/sessions.tsx"),
     route("sessions/:id", "routes/session.tsx"),
+    route("share/:token", "routes/share.tsx"),
     layout("routes/settings-layout.tsx", [
       route("settings", "routes/settings-index.tsx"),
       route("settings/secrets", "routes/settings.tsx"),

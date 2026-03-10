@@ -9,6 +9,7 @@ export type ConversationItem =
       text: string;
       timestamp: string;
       streaming: boolean;
+      fileReferences?: string[];
     }
   | { type: "thinking"; id: string; text: string; timestamp: string }
   | {
@@ -68,6 +69,11 @@ interface MessageUpdatePayload {
   assistantMessageEvent?: AssistantMessageEvent;
 }
 
+function extractFileReferences(text: string): string[] {
+  const matches = text.match(/\/workspace\/[\w./-]+/g) ?? [];
+  return Array.from(new Set(matches));
+}
+
 /**
  * Parse journal events into conversation items for the chat view.
  *
@@ -112,12 +118,14 @@ export function parseEventsToConversation(
 
   const flushAssistantText = (streaming: boolean) => {
     if (currentAssistantText.trim()) {
+      const trimmedText = currentAssistantText.trim();
       items.push({
         type: "assistant",
         id: currentAssistantId ?? `assistant-chunk-${assistantChunkCounter++}`,
-        text: currentAssistantText.trim(),
+        text: trimmedText,
         timestamp: currentTimestamp,
         streaming,
+        fileReferences: extractFileReferences(trimmedText),
       });
       // Advance id so next chunk is unique
       currentAssistantId = `assistant-chunk-${assistantChunkCounter++}`;
@@ -230,7 +238,11 @@ export function parseEventsToConversation(
         flushAll(false);
         // Show error if assistant message ended with an error
         const endPayload = payload as {
-          message?: { role?: string; stopReason?: string; errorMessage?: string };
+          message?: {
+            role?: string;
+            stopReason?: string;
+            errorMessage?: string;
+          };
         };
         if (
           endPayload.message?.role === "assistant" &&
@@ -350,7 +362,11 @@ export function parseEventsToConversation(
       }
 
       case "response": {
-        const p = payload as { command?: string; success?: boolean; error?: string };
+        const p = payload as {
+          command?: string;
+          success?: boolean;
+          error?: string;
+        };
         if (p.command === "prompt" && p.success === false) {
           items.push({
             type: "system",

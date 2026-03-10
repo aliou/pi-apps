@@ -14,9 +14,16 @@ async function request<T>(
   options?: RequestInit,
 ): Promise<APIResponse<T>> {
   try {
+    const defaultHeaders: HeadersInit = {};
+    const body = options?.body;
+
+    if (!(body instanceof FormData) && !(body instanceof Blob)) {
+      defaultHeaders["Content-Type"] = "application/json";
+    }
+
     const response = await fetch(`${BASE_URL}${path}`, {
       headers: {
-        "Content-Type": "application/json",
+        ...defaultHeaders,
         ...options?.headers,
       },
       ...options,
@@ -39,6 +46,12 @@ export const api = {
     request<T>(path, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+
+  postForm: <T>(path: string, formData: FormData) =>
+    request<T>(path, {
+      method: "POST",
+      body: formData,
     }),
 
   put: <T>(path: string, body: unknown) =>
@@ -105,6 +118,8 @@ export interface Session {
 
   repoPath?: string;
   branchName?: string;
+  branchCreationDeferred?: boolean;
+  environmentId?: string;
   name?: string;
   firstUserMessage?: string;
   currentModelProvider?: string;
@@ -197,6 +212,22 @@ export interface EventsResponse {
 
 export interface SessionHistoryResponse {
   entries: SessionHistoryEntry[];
+}
+
+export interface SessionFileRecord {
+  id: string;
+  sessionId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+  localPath: string;
+  sandboxPath?: string;
+  writeDeferred?: boolean;
+}
+
+export interface SessionFilesResponse {
+  files: SessionFileRecord[];
 }
 
 /**

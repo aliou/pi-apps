@@ -7,6 +7,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
+import { FilePanel } from "../components/chat/file-panel";
 import { ChatInput } from "../components/chat-input";
 import { ConversationView } from "../components/conversation-view";
 import { DebugView } from "../components/debug-view";
@@ -17,6 +18,7 @@ import {
   api,
   type ModelInfo,
   type ModelsResponse,
+  RELAY_URL,
   type SandboxRestartResponse,
 } from "../lib/api";
 import { parseEventsToConversation } from "../lib/conversation";
@@ -46,6 +48,9 @@ export default function SessionPage() {
     setError,
     sendPrompt,
     setModel,
+    getCommands,
+    exportHtml,
+    executeRpcCommand,
     session,
   } = useSessionEvents(id, initialPrompt);
 
@@ -63,6 +68,11 @@ export default function SessionPage() {
   const [isRestarting, setIsRestarting] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [commands, setCommands] = useState<
+    Array<{ name: string; description?: string }>
+  >([]);
+  const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
+  const [referencedPaths, setReferencedPaths] = useState<string[]>([]);
 
   useEffect(() => {
     navigate({ search: `?tab=${viewMode}` }, { replace: true });
@@ -86,12 +96,56 @@ export default function SessionPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (connectionStatus !== "connected") return;
+    let cancelled = false;
+    getCommands().then((result) => {
+      if (cancelled) return;
+      const normalized: Array<{ name: string; description?: string }> = [];
+      for (const entry of result) {
+        if (!entry || typeof entry !== "object") continue;
+        const command = entry as Record<string, unknown>;
+        const name = typeof command.name === "string" ? command.name : null;
+        if (!name) continue;
+        normalized.push({
+          name,
+          description:
+            typeof command.description === "string"
+              ? command.description
+              : undefined,
+        });
+      }
+      setCommands(normalized);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionStatus, getCommands]);
+
   const scrollToBottomRef = useRef<(() => void) | null>(null);
 
   const conversationItems = useMemo(
     () => parseEventsToConversation(events),
     [events],
   );
+
+  useEffect(() => {
+    const assistantItems = conversationItems.filter(
+      (item) => item.type === "assistant",
+    );
+    const allReferences = assistantItems.flatMap(
+      (item) => item.fileReferences ?? [],
+    );
+    setReferencedPaths(Array.from(new Set(allReferences)));
+
+    const lastAssistant = assistantItems.at(-1);
+    if (!lastAssistant || typeof lastAssistant.text !== "string") return;
+    const match = lastAssistant.text.match(/\/workspace\/[\w./-]+/);
+    if (match?.[0]) {
+      setHighlightedPath(match[0]);
+    }
+  }, [conversationItems]);
 
   const handleArchive = async () => {
     if (!id || !session || session.status === "archived") return;
@@ -172,6 +226,34 @@ export default function SessionPage() {
         onArchive={() => void handleArchive()}
         onDelete={() => void handleDelete()}
         onRestart={() => void handleRestart()}
+        onShare={() => {
+          if (!id) return;
+          void api
+            .post<{ url: string }>(`/sessions/${id}/share`, {})
+            .then((res) => {
+              if (!res.data?.url) {
+                setError(res.error ?? "Failed to create share link");
+                return;
+              }
+              const url = `${window.location.origin}${res.data.url}`;
+              navigator.clipboard.writeText(url);
+            });
+        }}
+        onExport={() => {
+          if (!id) return;
+          const outputPath = `/data/agent/exports/session-${id}.html`;
+          void exportHtml(outputPath).then((result) => {
+            if (!result.ok) {
+              setError(result.error ?? "Export failed");
+              return;
+            }
+            window.open(
+              `${apiBase()}/sessions/${id}/export`,
+              "_blank",
+              "noopener,noreferrer",
+            );
+          });
+        }}
         isArchiving={isArchiving}
         isDeleting={isDeleting}
         isRestarting={isRestarting}
@@ -187,18 +269,37 @@ export default function SessionPage() {
         </div>
       )}
 
+      {session?.branchCreationDeferred && (
+        <div className="flex-shrink-0 border-b border-amber-500/30 bg-amber-500/5 px-6 md:px-10">
+          <div className="max-w-4xl mx-auto flex items-center gap-2 py-2 text-xs text-amber-500">
+            <WarningIcon className="size-4 shrink-0" weight="fill" />
+            Branch creation deferred: provider has no exec capability. Run `git
+            checkout -b {session.branchName}` in sandbox terminal.
+          </div>
+        </div>
+      )}
+
       <div
         className={cn(
-          "flex-1 flex flex-col overflow-hidden bg-bg px-6 md:px-10",
+          "flex-1 flex overflow-hidden bg-bg",
           viewMode !== "chat" && "hidden",
         )}
       >
-        <div className="max-w-4xl mx-auto w-full flex-1 overflow-hidden">
-          <ConversationView
-            items={conversationItems}
-            scrollToBottomRef={scrollToBottomRef}
-          />
+        <div className="flex-1 px-6 md:px-10 overflow-hidden">
+          <div className="max-w-4xl mx-auto w-full h-full overflow-hidden">
+            <ConversationView
+              items={conversationItems}
+              scrollToBottomRef={scrollToBottomRef}
+            />
+          </div>
         </div>
+        {id && (
+          <FilePanel
+            sessionId={id}
+            highlightedPath={highlightedPath}
+            referencedPaths={referencedPaths}
+          />
+        )}
       </div>
       <div
         className={cn(
@@ -224,10 +325,17 @@ export default function SessionPage() {
           session={session}
           models={models}
           modelsError={modelsError}
+          commands={commands}
           onSetModel={setModel}
-          onSubmit={(msg) => {
-            sendPrompt(msg);
-            // Scroll to bottom after sending so user sees their message + response
+          onRunSlashCommand={async (commandName) => {
+            const result = await executeRpcCommand({ type: commandName });
+            if (!result.ok) {
+              setError(result.error ?? `/${commandName} failed`);
+            }
+            return result.ok;
+          }}
+          onSubmit={async (msg, options) => {
+            sendPrompt(msg, options);
             requestAnimationFrame(() => scrollToBottomRef.current?.());
           }}
           error={error}
@@ -235,4 +343,8 @@ export default function SessionPage() {
       )}
     </div>
   );
+}
+
+function apiBase(): string {
+  return `${RELAY_URL}/api`;
 }

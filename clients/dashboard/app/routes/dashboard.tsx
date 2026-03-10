@@ -16,6 +16,7 @@ import {
   type ModelInfo,
   type ModelsResponse,
 } from "../lib/api";
+import { generateSessionTitle } from "../lib/session-title";
 import { cn } from "../lib/utils";
 
 type Mode = "chat" | "code";
@@ -219,6 +220,8 @@ export default function DashboardPage() {
     setError(null);
 
     const modeDefaults = mode === "chat" ? defaults.chat : defaults.code;
+    const firstPrompt = message.trim();
+    const sessionName = generateSessionTitle({ firstPrompt, mode });
 
     const res = await api.post<{ id: string }>("/sessions", {
       mode,
@@ -226,6 +229,8 @@ export default function DashboardPage() {
       environmentId: mode === "code" ? selectedEnvironmentId : undefined,
       modelProvider: modeDefaults?.modelProvider,
       modelId: modeDefaults?.modelId,
+      firstPrompt,
+      sessionName,
     });
 
     if (res.error || !res.data?.id) {
@@ -234,7 +239,6 @@ export default function DashboardPage() {
       return;
     }
 
-    const firstPrompt = message.trim();
     sessionStorage.setItem(`pendingPrompt:${res.data.id}`, firstPrompt);
 
     navigate(`/sessions/${res.data.id}`, {
