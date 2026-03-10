@@ -6,7 +6,7 @@
 #
 # Run with:
 #
-#   docker run -p 8080:8080 pi-dashboard
+#   docker run -p 31416:31416 pi-dashboard
 
 # -- build stage --
 FROM node:22-slim AS builder
@@ -36,5 +36,5 @@ COPY docker-entrypoint.sh /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-EXPOSE 8080
+EXPOSE 31416
 CMD ["/usr/local/bin/docker-entrypoint.sh"]

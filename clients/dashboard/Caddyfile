@@ -2,7 +2,7 @@
 	admin off
 }
 
-:8080 {
+:31416 {
 	root * /srv
 	file_server
 	try_files {path} /index.html
