@@ -223,6 +223,7 @@ export function SessionHeader({
               !session ||
               session.status === "archived" ||
               sandboxStatus?.status === "creating" ||
+              sandboxStatus?.capabilities?.restart === false ||
               isRestarting
             }
             loading={isRestarting}

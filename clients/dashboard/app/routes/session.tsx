@@ -123,6 +123,25 @@ export default function SessionPage() {
     };
   }, [connectionStatus, getCommands]);
 
+  const capabilityWarnings = useMemo(() => {
+    const capabilities = sandboxStatus?.capabilities;
+    if (!capabilities) return [] as string[];
+
+    const warnings: string[] = [];
+    if (!capabilities.restart) {
+      warnings.push("Sandbox provider does not support restart.");
+    }
+    if (!capabilities.terminal) {
+      warnings.push("Sandbox provider does not expose terminal access.");
+    }
+    if (!capabilities.exec) {
+      warnings.push(
+        "Sandbox provider has limited exec support; setup actions may be deferred.",
+      );
+    }
+    return warnings;
+  }, [sandboxStatus?.capabilities]);
+
   const scrollToBottomRef = useRef<(() => void) | null>(null);
 
   const conversationItems = useMemo(
@@ -131,20 +150,28 @@ export default function SessionPage() {
   );
 
   useEffect(() => {
-    const assistantItems = conversationItems.filter(
-      (item) => item.type === "assistant",
-    );
-    const allReferences = assistantItems.flatMap(
-      (item) => item.fileReferences ?? [],
-    );
-    setReferencedPaths(Array.from(new Set(allReferences)));
+    const allReferences = conversationItems.flatMap((item) => {
+      if (item.type === "assistant" || item.type === "user") {
+        return item.fileReferences ?? [];
+      }
+      return [];
+    });
+    const uniqueReferences = Array.from(new Set(allReferences));
+    setReferencedPaths(uniqueReferences);
 
-    const lastAssistant = assistantItems.at(-1);
-    if (!lastAssistant || typeof lastAssistant.text !== "string") return;
-    const match = lastAssistant.text.match(/\/workspace\/[\w./-]+/);
-    if (match?.[0]) {
-      setHighlightedPath(match[0]);
+    const lastReferenced = [...conversationItems].reverse().find((item) => {
+      if (item.type === "assistant" || item.type === "user") {
+        return (item.fileReferences?.length ?? 0) > 0;
+      }
+      return false;
+    });
+
+    if (lastReferenced?.type === "assistant" || lastReferenced?.type === "user") {
+      setHighlightedPath(lastReferenced.fileReferences?.[0] ?? null);
+      return;
     }
+
+    setHighlightedPath(null);
   }, [conversationItems]);
 
   const handleArchive = async () => {
@@ -273,8 +300,16 @@ export default function SessionPage() {
         <div className="flex-shrink-0 border-b border-amber-500/30 bg-amber-500/5 px-6 md:px-10">
           <div className="max-w-4xl mx-auto flex items-center gap-2 py-2 text-xs text-amber-500">
             <WarningIcon className="size-4 shrink-0" weight="fill" />
-            Branch creation deferred: provider has no exec capability. Run `git
-            checkout -b {session.branchName}` in sandbox terminal.
+            Branch creation deferred: run `git checkout -b {session.branchName}`
+            in sandbox terminal.
+          </div>
+        </div>
+      )}
+
+      {capabilityWarnings.length > 0 && (
+        <div className="flex-shrink-0 border-b border-amber-500/30 bg-amber-500/5 px-6 md:px-10">
+          <div className="max-w-4xl mx-auto py-2 text-xs text-amber-500">
+            {capabilityWarnings.join(" ")}
           </div>
         </div>
       )}

@@ -2,7 +2,13 @@ import type { JournalEvent } from "./api";
 
 // Conversation item types for the chat view
 export type ConversationItem =
-  | { type: "user"; id: string; text: string; timestamp: string }
+  | {
+      type: "user";
+      id: string;
+      text: string;
+      timestamp: string;
+      fileReferences?: string[];
+    }
   | {
       type: "assistant";
       id: string;
@@ -69,9 +75,34 @@ interface MessageUpdatePayload {
   assistantMessageEvent?: AssistantMessageEvent;
 }
 
-function extractFileReferences(text: string): string[] {
+function extractWorkspacePathReferences(text: string): string[] {
   const matches = text.match(/\/workspace\/[\w./-]+/g) ?? [];
   return Array.from(new Set(matches));
+}
+
+function extractAttachedFileReferences(text: string): string[] {
+  const marker = "Attached files:";
+  const index = text.indexOf(marker);
+  if (index < 0) return [];
+
+  const section = text.slice(index + marker.length);
+  const references: string[] = [];
+
+  for (const line of section.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("- ")) continue;
+    const value = trimmed.slice(2).trim();
+    if (!value.startsWith("/workspace/")) continue;
+    references.push(value);
+  }
+
+  return Array.from(new Set(references));
+}
+
+function extractFileReferences(text: string): string[] {
+  const explicit = extractAttachedFileReferences(text);
+  const inferred = extractWorkspacePathReferences(text);
+  return Array.from(new Set([...explicit, ...inferred]));
 }
 
 /**
@@ -158,6 +189,7 @@ export function parseEventsToConversation(
             id: `user-${event.seq}`,
             text: p.message,
             timestamp: event.createdAt,
+            fileReferences: extractAttachedFileReferences(p.message),
           });
         }
         break;
