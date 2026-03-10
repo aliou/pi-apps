@@ -6,6 +6,31 @@ import { settings } from "../db/schema";
 // Keys that should not be exposed via the general settings API
 const PROTECTED_KEYS = ["github_repos_access_token"];
 
+interface ModelsIntrospectionSetting {
+  environmentId?: string;
+}
+
+function validateSettingValue(key: string, value: unknown): string | null {
+  if (key !== "models_introspection") {
+    return null;
+  }
+
+  if (!value || typeof value !== "object") {
+    return "models_introspection must be an object";
+  }
+
+  const payload = value as ModelsIntrospectionSetting;
+  if (
+    payload.environmentId !== undefined &&
+    (typeof payload.environmentId !== "string" ||
+      payload.environmentId.trim() === "")
+  ) {
+    return "models_introspection.environmentId must be a non-empty string when provided";
+  }
+
+  return null;
+}
+
 export function settingsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -86,6 +111,11 @@ export function settingsRoutes(): Hono<AppEnv> {
     }
 
     const value = body.value;
+    const validationError = validateSettingValue(key, value);
+    if (validationError) {
+      return c.json({ data: null, error: validationError }, 400);
+    }
+
     const now = new Date().toISOString();
     const valueStr = JSON.stringify(value);
 

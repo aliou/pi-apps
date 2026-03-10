@@ -5,7 +5,6 @@ import type {
 } from "../sandbox/manager";
 import type { SandboxChannel, SandboxHandle } from "../sandbox/types";
 import type { ExtensionConfigService } from "./extension-config.service";
-import type { SecretsService } from "./secrets.service";
 import { writeExtensionSettings } from "./settings-generator";
 
 const log = createLogger("models-introspection");
@@ -46,8 +45,9 @@ export interface ModelsIntrospectionResult {
 }
 
 /**
- * Queries available models via Pi RPC by spinning up an ephemeral Gondolin
- * sandbox, sending `get_available_models`, and tearing it down.
+ * Queries available models via Pi RPC by spinning up an ephemeral sandbox
+ * for the provided environment config, sending `get_available_models`,
+ * and tearing it down.
  *
  * This captures extension-defined providers/models that the built-in
  * pi-ai provider list does not include.
@@ -58,7 +58,6 @@ export class ModelsIntrospectionService {
 
   constructor(
     private sandboxManager: SandboxManager,
-    _secretsService: SecretsService,
     private extensionConfigService: ExtensionConfigService,
     private sessionDataDir: string,
     private envConfig: EnvironmentSandboxConfig,
@@ -99,15 +98,29 @@ export class ModelsIntrospectionService {
 
       // Create ephemeral sandbox with real provider (manager resolves secrets)
       log.debug({ sessionId }, "creating sandbox");
-      handle = await this.sandboxManager.createForSession(
-        sessionId,
-        this.envConfig,
-      );
+      try {
+        handle = await this.sandboxManager.createForSession(
+          sessionId,
+          this.envConfig,
+        );
+      } catch (err) {
+        throw new IntrospectionError(
+          `sandbox create failed: ${err instanceof Error ? err.message : String(err)}`,
+          IntrospectionErrorReason.SANDBOX_UNAVAILABLE,
+        );
+      }
       log.debug({ sessionId }, "sandbox created");
 
       // Wait for it to be running
       log.debug({ sessionId }, "resuming sandbox");
-      await handle.resume();
+      try {
+        await handle.resume();
+      } catch (err) {
+        throw new IntrospectionError(
+          `sandbox resume failed: ${err instanceof Error ? err.message : String(err)}`,
+          IntrospectionErrorReason.SANDBOX_UNAVAILABLE,
+        );
+      }
       log.debug({ sessionId }, "sandbox resumed");
 
       // Test pi is working before attaching

@@ -146,9 +146,18 @@ export interface ModelInfo {
 
 export interface ModelsResponse {
   models: ModelInfo[];
-  source: "introspected" | "fallback-cache" | "fallback-static";
+  source:
+    | "configured-environment"
+    | "fallback-environment"
+    | "fallback-cache"
+    | "fallback-static";
+  environmentId?: string;
   degraded?: boolean;
   message?: string;
+}
+
+export interface ModelsIntrospectionSetting {
+  environmentId?: string;
 }
 
 export interface JournalEvent {

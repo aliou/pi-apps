@@ -48,7 +48,6 @@ describe("ModelsIntrospectionService", () => {
 
     const service = new ModelsIntrospectionService(
       manager,
-      makeMockSecretsService(),
       makeMockExtensionConfigService(),
       "/tmp/pi-test-sessions",
       envConfig,

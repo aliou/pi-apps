@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
+import { settings } from "../db/schema";
 import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
@@ -17,6 +19,57 @@ import {
   createTestSessionHubManager,
 } from "../test-helpers";
 
+function makeIntrospectionSandbox(
+  models: Array<{ provider: string; modelId: string }>,
+) {
+  const messageHandlers = new Set<(message: string) => void>();
+  const closeHandlers = new Set<(reason?: string) => void>();
+
+  return {
+    sessionId: "introspect-models-test",
+    providerId: "fake-introspect",
+    status: "running" as const,
+    resume: async () => {},
+    exec: async () => ({ exitCode: 0, output: "pi 0.0.0" }),
+    attach: async () => ({
+      send: (message: string) => {
+        const payload = JSON.parse(message) as { id: string };
+        const response = JSON.stringify({
+          type: "response",
+          command: "get_available_models",
+          id: payload.id,
+          success: true,
+          data: { models },
+        });
+        for (const handler of messageHandlers) {
+          handler(response);
+        }
+      },
+      onMessage: (handler: (message: string) => void) => {
+        messageHandlers.add(handler);
+        queueMicrotask(() => handler('{"type":"ready"}'));
+        return () => {
+          messageHandlers.delete(handler);
+        };
+      },
+      onClose: (handler: (reason?: string) => void) => {
+        closeHandlers.add(handler);
+        return () => {
+          closeHandlers.delete(handler);
+        };
+      },
+      close: () => {
+        for (const handler of closeHandlers) {
+          handler("detached");
+        }
+      },
+    }),
+    pause: async () => {},
+    terminate: async () => {},
+    onStatusChange: () => () => {},
+  };
+}
+
 describe("Models Routes", () => {
   let db: AppDatabase;
   let sqlite: ReturnType<typeof createTestDatabase>["sqlite"];
@@ -30,6 +83,7 @@ describe("Models Routes", () => {
     sqlite = result.sqlite;
     environmentService = new EnvironmentService(db);
     extensionConfigService = new ExtensionConfigService(db);
+
     services = {
       db,
       sessionService: new SessionService(db),
@@ -53,79 +107,136 @@ describe("Models Routes", () => {
     sqlite.close();
   });
 
-  it("returns fallback-static when no gondolin environment exists", async () => {
+  it("returns source configured-environment when configured environment succeeds", async () => {
+    const configuredEnv = environmentService.create({
+      name: "Configured",
+      sandboxType: "gondolin",
+      config: {},
+      isDefault: true,
+    });
+
+    db.insert(settings)
+      .values({
+        key: "models_introspection",
+        value: JSON.stringify({ environmentId: configuredEnv.id }),
+        updatedAt: new Date().toISOString(),
+      })
+      .run();
+
+    services.sandboxManager.isProviderAvailable = async () => true;
+    services.sandboxManager.createForSession = async () =>
+      makeIntrospectionSandbox([
+        { provider: "anthropic", modelId: "claude-sonnet-4-20250514" },
+      ]);
+
     const app = createApp({ services });
     const res = await app.request("/api/models");
     const json = (await res.json()) as {
-      data: { models: Array<{ id: string; provider: string }>; source: string };
+      data: {
+        source: string;
+        environmentId?: string;
+        models: Array<{ id: string }>;
+      };
       error: string | null;
     };
 
     expect(res.status).toBe(200);
     expect(json.error).toBeNull();
-    expect(json.data.source).toBe("fallback-static");
-    expect(json.data.models.length).toBeGreaterThan(0);
-    expect(json.data.models[0]).toHaveProperty("id");
+    expect(json.data.source).toBe("configured-environment");
+    expect(json.data.environmentId).toBe(configuredEnv.id);
+    expect(json.data.models.length).toBe(1);
   });
 
-  it("returns fallback-cache when gondolin becomes unavailable after a successful introspection", async () => {
-    const gondolinEnv = environmentService.create({
+  it("falls back to fallback-environment when configured environment fails", async () => {
+    const configuredEnv = environmentService.create({
+      name: "Configured Docker",
+      sandboxType: "docker",
+      config: { image: "ghcr.io/aliou/pi-sandbox-codex-universal:latest" },
+      isDefault: false,
+    });
+    const defaultEnv = environmentService.create({
+      name: "Default Gondolin",
+      sandboxType: "gondolin",
+      config: {},
+      isDefault: true,
+    });
+
+    db.insert(settings)
+      .values({
+        key: "models_introspection",
+        value: JSON.stringify({ environmentId: configuredEnv.id }),
+        updatedAt: new Date().toISOString(),
+      })
+      .run();
+
+    let attempts = 0;
+    services.sandboxManager.isProviderAvailable = async () => true;
+    services.sandboxManager.createForSession = async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        return {
+          ...makeIntrospectionSandbox([]),
+          exec: async () => ({ exitCode: 1, output: "pi missing" }),
+        };
+      }
+      return makeIntrospectionSandbox([
+        { provider: "openai", modelId: "gpt-4o" },
+      ]);
+    };
+
+    const app = createApp({ services });
+    const res = await app.request("/api/models");
+    const json = (await res.json()) as {
+      data: { source: string; environmentId?: string };
+      error: string | null;
+    };
+
+    expect(res.status).toBe(200);
+    expect(json.data.source).toBe("fallback-environment");
+    expect(json.data.environmentId).toBe(defaultEnv.id);
+    expect(attempts).toBe(2);
+  });
+
+  it("returns fallback-static when all introspection paths fail and no cache exists", async () => {
+    environmentService.create({
+      name: "Docker",
+      sandboxType: "docker",
+      config: { image: "ghcr.io/aliou/pi-sandbox-codex-universal:latest" },
+      isDefault: true,
+    });
+
+    services.sandboxManager.isProviderAvailable = async () => false;
+
+    const app = createApp({ services });
+    const res = await app.request("/api/models");
+    const json = (await res.json()) as {
+      data: {
+        source: string;
+        degraded?: boolean;
+        models: Array<{ id: string }>;
+      };
+      error: string | null;
+    };
+
+    expect(res.status).toBe(200);
+    expect(json.data.source).toBe("fallback-static");
+    expect(json.data.degraded).toBe(true);
+    expect(json.data.models.length).toBeGreaterThan(0);
+  });
+
+  it("returns fallback-cache when fresh introspection fails after previous success", async () => {
+    environmentService.create({
       name: "Gondolin",
       sandboxType: "gondolin",
       config: {},
       isDefault: true,
     });
 
-    services.sandboxManager.createForSession = async () => {
-      const messageHandlers = new Set<(message: string) => void>();
-      const closeHandlers = new Set<(reason?: string) => void>();
-      return {
-        sessionId: "introspect-models-test",
-        providerId: "fake-introspect",
-        status: "running",
-        resume: async () => {},
-        exec: async () => ({ exitCode: 0, output: "pi 0.0.0" }),
-        attach: async () => ({
-          send: (message: string) => {
-            const payload = JSON.parse(message) as { id: string; type: string };
-            const response = JSON.stringify({
-              type: "response",
-              command: "get_available_models",
-              id: payload.id,
-              success: true,
-              data: {
-                models: [
-                  {
-                    provider: "anthropic",
-                    modelId: "claude-sonnet-4-20250514",
-                  },
-                ],
-              },
-            });
-            for (const handler of messageHandlers) {
-              handler(response);
-            }
-          },
-          onMessage: (handler: (message: string) => void) => {
-            messageHandlers.add(handler);
-            queueMicrotask(() => handler('{"type":"ready"}'));
-            return () => messageHandlers.delete(handler);
-          },
-          onClose: (handler: (reason?: string) => void) => {
-            closeHandlers.add(handler);
-            return () => closeHandlers.delete(handler);
-          },
-          close: () => {
-            for (const handler of closeHandlers) {
-              handler("detached");
-            }
-          },
-        }),
-        pause: async () => {},
-        terminate: async () => {},
-        onStatusChange: () => () => {},
-      };
-    };
+    services.sandboxManager.isProviderAvailable = async () => true;
+    services.sandboxManager.createForSession = async () =>
+      makeIntrospectionSandbox([
+        { provider: "anthropic", modelId: "claude-sonnet-4-20250514" },
+      ]);
 
     const app = createApp({ services });
 
@@ -134,14 +245,14 @@ describe("Models Routes", () => {
       data: { source: string; models: Array<{ id: string }> };
       error: string | null;
     };
-    expect(firstJson.data.source).toBe("introspected");
-    expect(firstJson.error).toBeNull();
+    expect(firstJson.data.source).toBe("fallback-environment");
 
-    environmentService.delete(gondolinEnv.id);
     extensionConfigService.add({
       scope: "global",
       package: "npm:@test/new-provider@1.0.0",
     });
+
+    services.sandboxManager.isProviderAvailable = async () => false;
 
     const second = await app.request("/api/models");
     const secondJson = (await second.json()) as {
@@ -157,5 +268,97 @@ describe("Models Routes", () => {
     expect(secondJson.data.source).toBe("fallback-cache");
     expect(secondJson.data.degraded).toBe(true);
     expect(secondJson.data.models.length).toBeGreaterThan(0);
+  });
+
+  it("returns cached fingerprint hit without re-introspection", async () => {
+    environmentService.create({
+      name: "Gondolin",
+      sandboxType: "gondolin",
+      config: {},
+      isDefault: true,
+    });
+
+    let attempts = 0;
+    services.sandboxManager.isProviderAvailable = async () => true;
+    services.sandboxManager.createForSession = async () => {
+      attempts += 1;
+      return makeIntrospectionSandbox([
+        { provider: "openai", modelId: "gpt-4o" },
+      ]);
+    };
+
+    const app = createApp({ services });
+
+    const first = await app.request("/api/models");
+    const firstJson = (await first.json()) as {
+      data: { source: string };
+      error: string | null;
+    };
+    expect(firstJson.data.source).toBe("fallback-environment");
+
+    const second = await app.request("/api/models");
+    const secondJson = (await second.json()) as {
+      data: { source: string };
+      error: string | null;
+    };
+
+    expect(secondJson.data.source).toBe("fallback-environment");
+    expect(attempts).toBe(1);
+  });
+
+  it("ignores missing configured environment and continues fallback order", async () => {
+    const defaultEnv = environmentService.create({
+      name: "Default",
+      sandboxType: "gondolin",
+      config: {},
+      isDefault: true,
+    });
+
+    db.insert(settings)
+      .values({
+        key: "models_introspection",
+        value: JSON.stringify({ environmentId: "missing-env" }),
+        updatedAt: new Date().toISOString(),
+      })
+      .run();
+
+    services.sandboxManager.isProviderAvailable = async () => true;
+    services.sandboxManager.createForSession = async () =>
+      makeIntrospectionSandbox([{ provider: "openai", modelId: "gpt-4o" }]);
+
+    const app = createApp({ services });
+    const res = await app.request("/api/models");
+    const json = (await res.json()) as {
+      data: { source: string; environmentId?: string };
+      error: string | null;
+    };
+
+    expect(res.status).toBe(200);
+    expect(json.data.source).toBe("fallback-environment");
+    expect(json.data.environmentId).toBe(defaultEnv.id);
+  });
+
+  it("updates models_introspection setting via settings route", async () => {
+    const app = createApp({ services });
+
+    const putRes = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: "models_introspection",
+        value: { environmentId: "env-1" },
+      }),
+    });
+
+    expect(putRes.status).toBe(200);
+
+    const row = db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, "models_introspection"))
+      .get();
+
+    expect(row).toBeDefined();
+    expect(row?.value).toBe(JSON.stringify({ environmentId: "env-1" }));
   });
 });

@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, SearchableSelect } from "../components/ui";
-import { api, type ModelInfo, type ModelsResponse } from "../lib/api";
+import {
+  api,
+  type Environment,
+  type ModelInfo,
+  type ModelsIntrospectionSetting,
+  type ModelsResponse,
+} from "../lib/api";
 
 interface SessionDefaults {
   chat?: { modelProvider?: string; modelId?: string };
@@ -66,6 +72,10 @@ function ModeModelForm({ title, models, value, onChange }: ModeModelFormProps) {
 
 export default function SettingsModelsPage() {
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [introspectionEnvironmentId, setIntrospectionEnvironmentId] =
+    useState("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,15 +92,22 @@ export default function SettingsModelsPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [modelsRes, settingsRes] = await Promise.all([
+      const [modelsRes, settingsRes, environmentsRes] = await Promise.all([
         api.get<ModelsResponse>("/models"),
         api.get<Record<string, unknown>>("/settings"),
+        api.get<Environment[]>("/environments"),
       ]);
 
       if (modelsRes.error) {
         setError(modelsRes.error);
       } else {
         setModels(modelsRes.data?.models ?? []);
+      }
+
+      if (environmentsRes.error) {
+        setError(environmentsRes.error);
+      } else {
+        setEnvironments(environmentsRes.data ?? []);
       }
 
       if (settingsRes.error) {
@@ -111,6 +128,11 @@ export default function SettingsModelsPage() {
             modelId: defaults.code.modelId ?? "",
           });
         }
+
+        const introspection = settingsRes.data.models_introspection as
+          | ModelsIntrospectionSetting
+          | undefined;
+        setIntrospectionEnvironmentId(introspection?.environmentId ?? "");
       }
 
       setLoading(false);
@@ -123,7 +145,7 @@ export default function SettingsModelsPage() {
     setSaving(true);
     setError(null);
 
-    const payload: SessionDefaults = {
+    const defaultsPayload: SessionDefaults = {
       chat:
         chatDefault.modelProvider && chatDefault.modelId
           ? {
@@ -140,17 +162,37 @@ export default function SettingsModelsPage() {
           : undefined,
     };
 
-    const res = await api.put<{ ok: boolean }>("/settings", {
-      key: "session_defaults",
-      value: payload,
-    });
+    const introspectionPayload: ModelsIntrospectionSetting = {
+      environmentId: introspectionEnvironmentId || undefined,
+    };
 
-    if (res.error) {
-      setError(res.error);
+    const [defaultsRes, introspectionRes] = await Promise.all([
+      api.put<{ ok: boolean }>("/settings", {
+        key: "session_defaults",
+        value: defaultsPayload,
+      }),
+      api.put<{ ok: boolean }>("/settings", {
+        key: "models_introspection",
+        value: introspectionPayload,
+      }),
+    ]);
+
+    if (defaultsRes.error) {
+      setError(defaultsRes.error);
+    } else if (introspectionRes.error) {
+      setError(introspectionRes.error);
     }
 
     setSaving(false);
   };
+
+  const introspectionItems = [
+    { value: "__auto__", label: "Automatic fallback (default + others)" },
+    ...environments.map((env) => ({
+      value: env.id,
+      label: `${env.name} (${env.sandboxType})${env.isDefault ? " [default]" : ""}`,
+    })),
+  ];
 
   return (
     <div>
@@ -165,6 +207,23 @@ export default function SettingsModelsPage() {
         <div className="py-8 text-center text-sm text-muted">Loading...</div>
       ) : (
         <div className="space-y-3">
+          <div className="rounded-lg border border-border bg-surface/30 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-fg">
+              Introspection environment
+            </h3>
+            <p className="mb-2 text-xs text-muted">
+              Select the environment used by /api/models introspection.
+            </p>
+            <SearchableSelect
+              value={introspectionEnvironmentId || "__auto__"}
+              onValueChange={(value) =>
+                setIntrospectionEnvironmentId(value === "__auto__" ? "" : value)
+              }
+              placeholder="Auto fallback (default + others)"
+              items={introspectionItems}
+            />
+          </div>
+
           <ModeModelForm
             title="Chat default"
             models={models}
