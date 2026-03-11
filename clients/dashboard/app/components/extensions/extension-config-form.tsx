@@ -1,5 +1,5 @@
-import { Button } from "../ui";
 import type { ExtensionManifest } from "../../lib/api";
+import { Button } from "../ui";
 
 interface Props {
   manifest: ExtensionManifest | null;
@@ -24,7 +24,8 @@ export function ExtensionConfigForm({
   if (keys.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-surface/20 p-4 text-sm text-muted">
-        This extension does not publish a config schema.
+        This extension does not publish a config schema. Package metadata can
+        still load without it.
       </div>
     );
   }
@@ -34,7 +35,12 @@ export function ExtensionConfigForm({
       {keys.map((key) => {
         const field = properties[key] ?? {};
         const raw = value[key];
-        const current = typeof raw === "string" ? raw : raw === undefined ? "" : JSON.stringify(raw);
+        const current =
+          typeof raw === "string"
+            ? raw
+            : raw === undefined
+              ? ""
+              : JSON.stringify(raw);
 
         return (
           <label key={key} className="block space-y-1">
@@ -42,7 +48,9 @@ export function ExtensionConfigForm({
               {field.title ?? key}
             </span>
             {field.description ? (
-              <span className="block text-xs text-muted">{field.description}</span>
+              <span className="block text-xs text-muted">
+                {field.description}
+              </span>
             ) : null}
             <input
               value={current}
@@ -50,7 +58,9 @@ export function ExtensionConfigForm({
               className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none"
             />
             {fieldErrors?.[key] ? (
-              <span className="block text-xs text-status-err">{fieldErrors[key]}</span>
+              <span className="block text-xs text-status-err">
+                {fieldErrors[key]}
+              </span>
             ) : null}
           </label>
         );

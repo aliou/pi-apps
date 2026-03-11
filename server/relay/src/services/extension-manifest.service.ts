@@ -61,7 +61,12 @@ export class ExtensionManifestService {
     } = {},
   ) {}
 
-  async getManifest(packageName: string): Promise<ExtensionManifest | null> {
+  async getManifest(packageRef: string): Promise<ExtensionManifest | null> {
+    const packageName = normalizeNpmPackageName(packageRef);
+    if (!packageName) {
+      return null;
+    }
+
     const ttlMs = this.options.ttlMs ?? 5 * 60 * 1000;
     const now = Date.now();
     const cached = this.cache.get(packageName);
@@ -153,4 +158,30 @@ function normalizeRepository(
   if (!repository) return undefined;
   if (typeof repository === "string") return repository;
   return repository.url;
+}
+
+function normalizeNpmPackageName(packageRef: string): string | null {
+  const trimmed = packageRef.trim();
+  if (!trimmed) return null;
+
+  const npmRef = trimmed.startsWith("npm:") ? trimmed.slice(4) : trimmed;
+  if (npmRef.startsWith("git:")) return null;
+  if (npmRef.startsWith("http://") || npmRef.startsWith("https://"))
+    return null;
+
+  const withoutFragment = npmRef.split("#", 1)[0] ?? npmRef;
+
+  if (withoutFragment.startsWith("@")) {
+    const slashIndex = withoutFragment.indexOf("/");
+    if (slashIndex === -1) return withoutFragment;
+    const versionIndex = withoutFragment.indexOf("@", slashIndex + 1);
+    return versionIndex === -1
+      ? withoutFragment
+      : withoutFragment.slice(0, versionIndex);
+  }
+
+  const versionIndex = withoutFragment.indexOf("@");
+  return versionIndex === -1
+    ? withoutFragment
+    : withoutFragment.slice(0, versionIndex);
 }
