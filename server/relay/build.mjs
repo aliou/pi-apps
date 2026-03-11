@@ -30,16 +30,19 @@ await esbuild.build({
       process.env.BUILT_AT ?? new Date().toISOString(),
     ),
     "process.env.RELAY_VERSION": JSON.stringify(process.env.RELAY_VERSION ?? "0.1.0"),
-    // __dirname is not available in ESM, but some deps use it
-    "__dirname": "'/app'",
   },
-  // Externalize native deps and packages with CJS __dirname usage
+  // Externalize native deps and packages with CJS __dirname usage.
+  // pino/pino-pretty use thread-stream which spawns worker processes from
+  // file paths - they must load from node_modules, not be bundled.
   external: [
     "@earendil-works/gondolin",
     "better-sqlite3",
     "cpu-features",
     "dockerode",
     "ssh2",
+    "pino",
+    "pino-pretty",
+    "thread-stream",
   ],
   // Banner to provide require() for CJS dependencies
   banner: {
