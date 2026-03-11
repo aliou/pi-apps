@@ -30,6 +30,8 @@ await esbuild.build({
       process.env.BUILT_AT ?? new Date().toISOString(),
     ),
     "process.env.RELAY_VERSION": JSON.stringify(process.env.RELAY_VERSION ?? "0.1.0"),
+    // __dirname is not available in ESM, but some deps use it
+    "__dirname": "'/app'",
   },
   // Externalize native deps and packages with CJS __dirname usage
   external: [
