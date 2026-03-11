@@ -165,7 +165,7 @@ export interface ModelsResponse {
     | "configured-environment"
     | "fallback-environment"
     | "fallback-cache"
-    | "fallback-static";
+    | "unavailable";
   environmentId?: string;
   degraded?: boolean;
   message?: string;

@@ -11,7 +11,8 @@ const log = createLogger("models-introspection");
 
 export interface IntrospectedModel {
   provider: string;
-  modelId: string;
+  id: string;
+  name?: string;
   [key: string]: unknown;
 }
 

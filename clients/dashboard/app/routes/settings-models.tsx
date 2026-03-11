@@ -20,6 +20,13 @@ interface ModeModelFormProps {
   onChange: (value: { modelProvider: string; modelId: string }) => void;
 }
 
+function compareModelNames(a: string, b: string) {
+  return a.localeCompare(b, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
 function ModeModelForm({ title, models, value, onChange }: ModeModelFormProps) {
   const providers = useMemo(
     () => Array.from(new Set(models.map((m) => m.provider))).sort(),
@@ -27,7 +34,12 @@ function ModeModelForm({ title, models, value, onChange }: ModeModelFormProps) {
   );
 
   const modelsForProvider = useMemo(
-    () => models.filter((m) => m.provider === value.modelProvider),
+    () =>
+      models
+        .filter((model) => model.provider === value.modelProvider)
+        .sort((a, b) =>
+          compareModelNames(a.name ?? a.id, b.name ?? b.id),
+        ),
     [models, value.modelProvider],
   );
 
@@ -79,8 +91,8 @@ function formatSource(source: ModelsResponse["source"] | null): string {
       return "fallback env";
     case "fallback-cache":
       return "cache";
-    case "fallback-static":
-      return "static fallback";
+    case "unavailable":
+      return "unavailable";
     default:
       return source;
   }

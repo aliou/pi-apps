@@ -15,9 +15,9 @@ type ModelSource =
   | "configured-environment"
   | "fallback-environment"
   | "fallback-cache"
-  | "fallback-static";
+  | "unavailable";
 
-type ApiModelInfo = IntrospectedModel & { id: string };
+type ApiModelInfo = IntrospectedModel;
 
 type IntrospectionSource = Extract<
   ModelSource,
@@ -42,21 +42,12 @@ interface IntrospectionCandidate {
 }
 
 /**
- * Static fallback models - returned when no environment introspection succeeds
- * and no successful introspection cache exists.
- */
-const STATIC_FALLBACK_MODELS: IntrospectedModel[] = [
-  { provider: "pi-ai", modelId: "gpt-4o" },
-  { provider: "pi-ai", modelId: "claude-3-5-sonnet" },
-  { provider: "pi-ai", modelId: "gemini-1.5-pro" },
-];
-
-/**
  * Models API - returns available models via Pi RPC introspection.
  *
  * Uses a configured introspection environment when available, otherwise falls
  * back to default/other configured environments. If all providers fail,
- * returns cached introspection or static built-in models.
+ * returns cached introspection when available, otherwise an empty degraded
+ * response with detailed errors.
  */
 export function modelsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
@@ -260,16 +251,16 @@ export function modelsRoutes(): Hono<AppEnv> {
 
     logger.warn(
       { errorCount: errors.length },
-      "all introspection candidates failed, using static fallback",
+      "all introspection candidates failed, no cached introspection available",
     );
     return c.json({
       data: createResponse(
-        STATIC_FALLBACK_MODELS,
-        "fallback-static",
-        "No compatible introspection environment available, using static built-in models",
+        [],
+        "unavailable",
+        "Model introspection unavailable. Configure a working introspection environment and refresh models.",
         true,
       ),
-      error: errors.length > 0 ? errors.join(" | ") : null,
+      error: errors.length > 0 ? errors.join(" | ") : "model introspection unavailable",
     });
   });
 
@@ -396,7 +387,7 @@ function createResponse(
   environmentId?: string,
 ): ModelsResponseData {
   const response: ModelsResponseData = {
-    models: models.map((model) => ({ ...model, id: model.modelId })),
+    models,
     source,
   };
 

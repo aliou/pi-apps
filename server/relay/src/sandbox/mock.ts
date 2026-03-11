@@ -85,10 +85,10 @@ class MockSandboxHandle implements SandboxHandle {
   private promptCount = 0;
 
   private static readonly AVAILABLE_MODELS = [
-    { provider: "anthropic", modelId: "claude-sonnet-4-20250514" },
-    { provider: "anthropic", modelId: "claude-opus-4-20250918" },
-    { provider: "openai", modelId: "gpt-4.1" },
-    { provider: "google", modelId: "gemini-2.5-pro" },
+    { provider: "anthropic", id: "claude-sonnet-4-20250514" },
+    { provider: "anthropic", id: "claude-opus-4-20250918" },
+    { provider: "openai", id: "gpt-4.1" },
+    { provider: "google", id: "gemini-2.5-pro" },
   ];
 
   private static readonly THINKING_LEVELS = [
@@ -456,15 +456,15 @@ class MockSandboxHandle implements SandboxHandle {
     const currentIndex = models.findIndex(
       (m) =>
         m.provider === this.currentModel.provider &&
-        m.modelId === this.currentModel.modelId,
+        m.id === this.currentModel.modelId,
     );
     const nextIndex = (currentIndex + 1) % models.length;
     const next = models[nextIndex];
     if (!next) return;
-    this.currentModel = { provider: next.provider, modelId: next.modelId };
+    this.currentModel = { provider: next.provider, modelId: next.id };
     this.sendResponse(commandId, "cycle_model", true, {
       provider: next.provider,
-      modelId: next.modelId,
+      modelId: next.id,
     });
   }
 

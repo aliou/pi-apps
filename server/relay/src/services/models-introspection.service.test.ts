@@ -59,7 +59,7 @@ describe("ModelsIntrospectionService", () => {
     expect(result.models).toBeInstanceOf(Array);
     expect(result.models.length).toBeGreaterThan(0);
     expect(result.models[0]).toHaveProperty("provider");
-    expect(result.models[0]).toHaveProperty("modelId");
+    expect(result.models[0]).toHaveProperty("id");
   });
 
   describe("IntrospectionError", () => {

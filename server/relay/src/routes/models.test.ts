@@ -20,7 +20,7 @@ import {
 } from "../test-helpers";
 
 function makeIntrospectionSandbox(
-  models: Array<{ provider: string; modelId: string }>,
+  models: Array<{ provider: string; id: string }>,
 ) {
   const messageHandlers = new Set<(message: string) => void>();
   const closeHandlers = new Set<(reason?: string) => void>();
@@ -126,7 +126,7 @@ describe("Models Routes", () => {
     services.sandboxManager.isProviderAvailable = async () => true;
     services.sandboxManager.createForSession = async () =>
       makeIntrospectionSandbox([
-        { provider: "anthropic", modelId: "claude-sonnet-4-20250514" },
+        { provider: "anthropic", id: "claude-sonnet-4-20250514" },
       ]);
 
     const app = createApp({ services });
@@ -180,7 +180,7 @@ describe("Models Routes", () => {
         };
       }
       return makeIntrospectionSandbox([
-        { provider: "openai", modelId: "gpt-4o" },
+        { provider: "openai", id: "gpt-4o" },
       ]);
     };
 
@@ -197,7 +197,7 @@ describe("Models Routes", () => {
     expect(attempts).toBe(2);
   });
 
-  it("returns fallback-static when all introspection paths fail and no cache exists", async () => {
+  it("returns unavailable when all introspection paths fail and no cache exists", async () => {
     environmentService.create({
       name: "Docker",
       sandboxType: "docker",
@@ -219,9 +219,9 @@ describe("Models Routes", () => {
     };
 
     expect(res.status).toBe(200);
-    expect(json.data.source).toBe("fallback-static");
+    expect(json.data.source).toBe("unavailable");
     expect(json.data.degraded).toBe(true);
-    expect(json.data.models.length).toBeGreaterThan(0);
+    expect(json.data.models).toHaveLength(0);
   });
 
   it("returns fallback-cache when fresh introspection fails after previous success", async () => {
@@ -235,7 +235,7 @@ describe("Models Routes", () => {
     services.sandboxManager.isProviderAvailable = async () => true;
     services.sandboxManager.createForSession = async () =>
       makeIntrospectionSandbox([
-        { provider: "anthropic", modelId: "claude-sonnet-4-20250514" },
+        { provider: "anthropic", id: "claude-sonnet-4-20250514" },
       ]);
 
     const app = createApp({ services });
@@ -283,7 +283,7 @@ describe("Models Routes", () => {
     services.sandboxManager.createForSession = async () => {
       attempts += 1;
       return makeIntrospectionSandbox([
-        { provider: "openai", modelId: "gpt-4o" },
+        { provider: "openai", id: "gpt-4o" },
       ]);
     };
 
@@ -324,7 +324,7 @@ describe("Models Routes", () => {
 
     services.sandboxManager.isProviderAvailable = async () => true;
     services.sandboxManager.createForSession = async () =>
-      makeIntrospectionSandbox([{ provider: "openai", modelId: "gpt-4o" }]);
+      makeIntrospectionSandbox([{ provider: "openai", id: "gpt-4o" }]);
 
     const app = createApp({ services });
     const res = await app.request("/api/models");
@@ -351,7 +351,7 @@ describe("Models Routes", () => {
     services.sandboxManager.createForSession = async () => {
       attempts += 1;
       return makeIntrospectionSandbox([
-        { provider: "openai", modelId: `gpt-4o-${attempts}` },
+        { provider: "openai", id: `gpt-4o-${attempts}` },
       ]);
     };
 
