@@ -1,7 +1,6 @@
 import {
   CodeIcon,
   CubeIcon,
-  GearIcon,
   GitBranchIcon,
   GithubLogoIcon,
   KeyIcon,
@@ -32,11 +31,6 @@ export default function SettingsLayout() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="lg:sticky lg:top-8 lg:self-start">
           <div className="rounded-xl border border-border bg-surface/20 p-3">
-            <h2 className="mb-2 flex items-center gap-2 px-2 text-sm font-semibold text-fg">
-              <GearIcon className="size-4" weight="bold" />
-              Sections
-            </h2>
-
             <nav className="space-y-1">
               {SETTINGS_ITEMS.map((item) => {
                 const Icon = item.icon;
