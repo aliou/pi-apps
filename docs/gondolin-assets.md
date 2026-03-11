@@ -51,3 +51,14 @@ This keeps large build artifacts inside the repo-local dev state instead of scat
 - The helper only installs from published GitHub release artifacts.
 - You can still set `imagePath` manually if you already have a verified asset directory.
 - A failed install does not block manual path entry in the UI.
+
+## CI / Automated Builds
+
+The CI workflow (`relay-gondolin-assets` job) builds Gondolin assets automatically. However, due to a [QEMU bug on GitHub Actions ARM runners](ci-known-issues.md#gondolin-assets-on-arm-runners-ubuntu-2404-arm), VM-based tests are disabled. Assets are still built, verified, and uploaded as artifacts.
+
+To download CI-built assets:
+```bash
+gh run download <run-id> -n gondolin-assets-aarch64-<sha>
+```
+
+For local testing, use the Lima VM or a native ARM64 machine with working QEMU.
