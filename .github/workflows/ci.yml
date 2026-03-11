@@ -105,7 +105,7 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
             gondolin-arch: aarch64
-            qemu-packages: qemu-system-arm
+            qemu-packages: qemu-system-aarch64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
