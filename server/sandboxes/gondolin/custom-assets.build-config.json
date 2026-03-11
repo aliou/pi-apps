@@ -2,7 +2,7 @@
   "arch": "aarch64",
   "distro": "alpine",
   "alpine": {
-    "version": "3.23.0",
+    "version": "3.22.0",
     "kernelPackage": "linux-virt",
     "kernelImage": "vmlinuz-virt",
     "rootfsPackages": [
