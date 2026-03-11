@@ -7,5 +7,10 @@
 	file_server
 	try_files {path} /index.html
 
+	# Never cache index.html so browsers always get fresh asset references
+	header /index.html Cache-Control "no-cache, no-store, must-revalidate"
+	header / Cache-Control "no-cache, no-store, must-revalidate"
+
+	# Cache hashed assets forever (they change names when content changes)
 	header /assets/* Cache-Control "public, max-age=31536000, immutable"
 }
