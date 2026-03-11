@@ -1,7 +1,8 @@
 # Release metadata. Auto-updated by CI.
 # Do not edit manually.
 {
-  rev = "e58182e";
-  relay.aarch64-linux.hash = "sha256-M9yy97Eoz4o6QuNGoLsckhyd+YUrYRvEJcvZiRhZGKE=";
-  gondolin-assets.aarch64-linux.hash = "sha256-m/WMbvlB9WjSIluZS4X50E0O7OM4MOojEV1xPiEgNkg=";
+  rev = "6314f21";
+  relay.aarch64-linux.hash = "sha256-uLLyllil6YZ1A5SOHJPb3kzbq85Icf/GPpt60iRBmUs=";
+  gondolin-assets.aarch64-linux.hash = "sha256-PvQYw/DJQBQvvnXhjLlHr/bsm83Hd2eEshPnm98uuy4=";
+  dashboard-oci.aarch64-linux.hash = "sha256-fT+VHq1k9MFKiLRZSjdQj0/VGQwYrJuK6kMDkd/hXGU=";
 }
