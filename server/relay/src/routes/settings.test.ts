@@ -1,18 +1,20 @@
+import { eq } from "drizzle-orm";
 import { afterEach, assert, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
 import { settings } from "../db/schema";
 import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
-import { EventJournal } from "../services/event-journal";
-import { ExtensionConfigService } from "../services/extension-config.service";
-import { ExtensionManifestService } from "../services/extension-manifest.service";
+import { EventJournal } from "./../services/event-journal";
+import { ExtensionConfigService } from "./../services/extension-config.service";
+import { ExtensionManifestService } from "./../services/extension-manifest.service";
 import { GitHubService } from "../services/github.service";
-import { PackageCatalogService } from "../services/package-catalog.service";
+import { PackageCatalogService } from "./../services/package-catalog.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
 import {
   createTestDatabase,
+  createTestGitHubAppService,
   createTestSandboxManager,
   createTestSecretsService,
   createTestSessionHubManager,
@@ -27,14 +29,17 @@ describe("Settings Routes", () => {
     const result = createTestDatabase();
     db = result.db;
     sqlite = result.sqlite;
+    const secretsService = createTestSecretsService(db);
+    const githubAppService = createTestGitHubAppService(db, secretsService);
     services = {
       db,
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
-      githubService: new GitHubService(),
+      githubService: new GitHubService({ githubAppService }),
+      githubAppService,
       sandboxManager: createTestSandboxManager(),
-      secretsService: createTestSecretsService(db),
+      secretsService,
       environmentService: new EnvironmentService(db),
       extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),
@@ -128,7 +133,7 @@ describe("Settings Routes", () => {
       const stored = db
         .select()
         .from(settings)
-        .where(require("drizzle-orm").eq(settings.key, "theme"))
+        .where(eq(settings.key, "theme"))
         .get();
       assert(stored, "setting stored");
       expect(JSON.parse(stored.value)).toBe("dark");
@@ -155,7 +160,7 @@ describe("Settings Routes", () => {
       const stored = db
         .select()
         .from(settings)
-        .where(require("drizzle-orm").eq(settings.key, "theme"))
+        .where(eq(settings.key, "theme"))
         .get();
       assert(stored, "setting stored");
       expect(JSON.parse(stored.value)).toBe("dark");
@@ -177,7 +182,7 @@ describe("Settings Routes", () => {
       const stored = db
         .select()
         .from(settings)
-        .where(require("drizzle-orm").eq(settings.key, "preferences"))
+        .where(eq(settings.key, "preferences"))
         .get();
       assert(stored, "setting stored");
       expect(JSON.parse(stored.value)).toEqual({
@@ -214,6 +219,22 @@ describe("Settings Routes", () => {
       expect(json.error).toBe("Cannot modify protected setting");
     });
 
+    it("rejects github_app_config from general settings writes", async () => {
+      const app = createApp({ services });
+      const res = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "github_app_config",
+          value: { appId: 1 },
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("Cannot modify protected setting");
+    });
+
     it("validates chat_mode_prompt_profile as string", async () => {
       const app = createApp({ services });
 
@@ -233,6 +254,34 @@ describe("Settings Routes", () => {
         body: JSON.stringify({
           key: "chat_mode_prompt_profile",
           value: "You are chat focused",
+        }),
+      });
+      expect(okRes.status).toBe(200);
+    });
+
+    it("validates idle_policy shape", async () => {
+      const app = createApp({ services });
+
+      const badRes = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "idle_policy",
+          value: { defaultTimeoutSeconds: 0, graceAfterDisconnectSeconds: -1 },
+        }),
+      });
+      expect(badRes.status).toBe(400);
+
+      const okRes = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "idle_policy",
+          value: {
+            defaultTimeoutSeconds: 7200,
+            graceAfterDisconnectSeconds: 300,
+            disableForModes: ["chat"],
+          },
         }),
       });
       expect(okRes.status).toBe(200);

@@ -9,7 +9,7 @@ import {
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
-import { api, type Session } from "../lib/api";
+import { api, type Session, type VersionMeta } from "../lib/api";
 import { useSidebar } from "../lib/sidebar";
 import { cn, getSessionDisplayTitle } from "../lib/utils";
 import { Logo } from "./logo";
@@ -37,6 +37,11 @@ function getRepoLabel(session: Session): string | null {
   if (!session.repoPath) return null;
   const parts = session.repoPath.split("/").filter(Boolean);
   return parts.at(-1) ?? null;
+}
+
+function shortHash(value: string | undefined): string {
+  if (!value) return "dev";
+  return value === "dev" ? value : value.slice(0, 7);
 }
 
 function SidebarLink({
@@ -77,6 +82,7 @@ export default function AppLayout() {
   const { collapsed, toggle } = useSidebar();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [versionMeta, setVersionMeta] = useState<VersionMeta | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -85,11 +91,17 @@ export default function AppLayout() {
     if (res.data) setSessions(res.data);
   }, []);
 
+  const loadVersionMeta = useCallback(async () => {
+    const res = await api.get<VersionMeta>("/meta/version");
+    if (res.data) setVersionMeta(res.data);
+  }, []);
+
   useEffect(() => {
     loadSessions();
+    loadVersionMeta();
     const interval = setInterval(loadSessions, 30000);
     return () => clearInterval(interval);
-  }, [loadSessions]);
+  }, [loadSessions, loadVersionMeta]);
 
   const orderedSessions = useMemo(
     () => [...sessions].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt)),
@@ -309,7 +321,14 @@ export default function AppLayout() {
             "flex items-center justify-between px-5 py-4",
           )}
         >
-          <p className={cn("font-mono text-xs text-muted/50", collapsed && "md:hidden")}>v0.1.0</p>
+          <div className={cn("min-w-0", collapsed && "md:hidden")}>
+            <p className="font-mono text-xs text-muted/50">
+              v{versionMeta?.relayVersion ?? "0.1.0"}
+            </p>
+            <p className="truncate font-mono text-[10px] text-muted/40">
+              relay {shortHash(versionMeta?.serverHash)} · dash {shortHash(versionMeta?.dashboardHash)}
+            </p>
+          </div>
           <span className={cn(collapsed && "md:hidden")}>
             <ThemeToggle />
           </span>

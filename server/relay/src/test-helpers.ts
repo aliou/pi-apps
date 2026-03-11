@@ -9,6 +9,7 @@ import { SandboxManager } from "./sandbox/manager";
 import { CryptoService } from "./services/crypto.service";
 import { EnvironmentService } from "./services/environment.service";
 import { EventJournal } from "./services/event-journal";
+import { GitHubAppService } from "./services/github-app.service";
 import { SecretsService } from "./services/secrets.service";
 import { SessionService } from "./services/session.service";
 import { buildEventHooks } from "./ws/hooks";
@@ -162,4 +163,14 @@ export function createTestSessionHubManager(
     secretsService,
     eventHooks,
   });
+}
+
+/**
+ * Create a test GitHub App service.
+ */
+export function createTestGitHubAppService(
+  db: AppDatabase,
+  secretsService: SecretsService,
+): GitHubAppService {
+  return new GitHubAppService(db, secretsService);
 }

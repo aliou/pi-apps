@@ -1,10 +1,12 @@
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
+import { eq } from "drizzle-orm";
 import { createApp } from "./app";
 import { ensureDataDirs, parseConfig } from "./config";
 import { createDatabase } from "./db/connection";
 import { runMigrations } from "./db/migrate";
+import { settings } from "./db/schema";
 import {
   getIdleCheckIntervalMs,
   getRelayEncryptionKey,
@@ -13,20 +15,23 @@ import {
 } from "./env";
 import { createLogger } from "./lib/logger";
 import { SandboxLogStore } from "./sandbox/log-store";
-import { SandboxManager } from "./sandbox/manager";
+import { resolveEnvConfig, SandboxManager } from "./sandbox/manager";
 import { CryptoService } from "./services/crypto.service";
 import { EnvironmentService } from "./services/environment.service";
 import { EventJournal } from "./services/event-journal";
 import { ExtensionConfigService } from "./services/extension-config.service";
 import { ExtensionManifestService } from "./services/extension-manifest.service";
 import { GitHubService } from "./services/github.service";
+import { GitHubAppService } from "./services/github-app.service";
 import { IdleReaper } from "./services/idle-reaper";
 import { PackageCatalogService } from "./services/package-catalog.service";
 import { RepoService } from "./services/repo.service";
 import { SecretsService } from "./services/secrets.service";
 import { SessionService } from "./services/session.service";
+import { createWebSocketHandler } from "./ws/handler";
 import { buildEventHooks } from "./ws/hooks";
 import { SessionHubManager } from "./ws/session-hub";
+import { createTerminalHandler } from "./ws/terminal";
 
 const VERSION = "0.1.0";
 
@@ -65,7 +70,6 @@ async function main() {
   const sessionService = new SessionService(db);
   const eventJournal = new EventJournal(db);
   const repoService = new RepoService(db);
-  const githubService = new GitHubService();
 
   // Initialize secrets service (required)
   const encryptionKey = getRelayEncryptionKey();
@@ -82,6 +86,30 @@ async function main() {
   );
   const secretsService = new SecretsService(db, cryptoService);
   log.info("secrets service initialized");
+
+  // Initialize GitHub App service
+  const githubAppService = new GitHubAppService(db, secretsService);
+  log.info("github app service initialized");
+
+  // Initialize GitHub service (with app service support)
+  const githubService = new GitHubService({
+    githubAppService,
+    getPat: () => {
+      // Provide PAT getter for backward compatibility
+      const row = db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, "github_repos_access_token"))
+        .get();
+      if (!row) return undefined;
+      try {
+        return JSON.parse(row.value) as string;
+      } catch {
+        return row.value;
+      }
+    },
+  });
+  log.info("github service initialized");
 
   // Initialize sandbox manager -- providers are built on-demand from
   // per-environment config. CF API token is fetched from secrets table.
@@ -144,6 +172,7 @@ async function main() {
       eventJournal,
       repoService,
       githubService,
+      githubAppService,
       sandboxManager,
       secretsService,
       environmentService,
@@ -159,8 +188,6 @@ async function main() {
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
   // Now mount the WebSocket handler
-  const { createWebSocketHandler } = await import("./ws/handler");
-
   const wsHandler = createWebSocketHandler(upgradeWebSocket, {
     sandboxManager,
     sessionService,
@@ -172,7 +199,6 @@ async function main() {
   app.get("/ws/sessions/:id", wsHandler);
 
   // Terminal WebSocket handler
-  const { createTerminalHandler } = await import("./ws/terminal");
   const terminalHandler = createTerminalHandler(upgradeWebSocket, {
     sandboxManager,
     sessionService,
@@ -182,8 +208,8 @@ async function main() {
   app.get("/ws/sessions/:id/terminal", terminalHandler);
 
   // Start idle reaper
-  const { resolveEnvConfig } = await import("./sandbox/manager");
   const reaper = new IdleReaper({
+    db,
     sessionService,
     environmentService,
     secretsService,

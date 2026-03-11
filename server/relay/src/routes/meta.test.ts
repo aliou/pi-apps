@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
 import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { ExtensionConfigService } from "../services/extension-config.service";
-import { ExtensionManifestService } from "./../services/extension-manifest.service";
+import { ExtensionManifestService } from "../services/extension-manifest.service";
 import { GitHubService } from "../services/github.service";
 import { PackageCatalogService } from "../services/package-catalog.service";
 import { RepoService } from "../services/repo.service";
@@ -18,7 +18,7 @@ import {
   createTestSessionHubManager,
 } from "../test-helpers";
 
-describe("Health Routes", () => {
+describe("Meta Routes", () => {
   let db: AppDatabase;
   let sqlite: ReturnType<typeof createTestDatabase>["sqlite"];
   let services: AppServices;
@@ -51,46 +51,37 @@ describe("Health Routes", () => {
 
   afterEach(() => {
     sqlite.close();
+    delete process.env.GIT_COMMIT;
+    delete process.env.DASHBOARD_GIT_COMMIT;
+    delete process.env.BUILT_AT;
   });
 
-  describe("GET /health", () => {
-    it("returns ok and version", async () => {
-      const app = createApp({ services });
-      const res = await app.request("/health");
+  it("returns dev markers when hashes are missing", async () => {
+    const app = createApp({ services });
+    const res = await app.request("/api/meta/version");
 
-      expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.ok).toBe(true);
-      expect(json.version).toBe("0.1.0");
-      expect(json.commit).toBe("dev");
-    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.data.relayVersion).toBe("0.1.0");
+    expect(json.data.serverHash).toBe("dev");
+    expect(json.data.dashboardHash).toBe("dev");
   });
 
-  describe("GET /api", () => {
-    it("returns server info and endpoints", async () => {
-      const app = createApp({ services });
-      const res = await app.request("/api");
+  it("returns configured version metadata", async () => {
+    process.env.GIT_COMMIT = "abc1234";
+    process.env.DASHBOARD_GIT_COMMIT = "def5678";
+    process.env.BUILT_AT = "2026-03-11T11:00:00.000Z";
 
-      expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.name).toBe("pi-relay");
-      expect(json.version).toBe("0.1.0");
-      expect(json.endpoints).toBeDefined();
-      expect(json.endpoints.health).toBe("GET /health");
-      expect(json.endpoints.rpc).toBe("WS /rpc (not yet implemented)");
-      expect(json.commit).toBe("dev");
-    });
-  });
+    const app = createApp({ services });
+    const res = await app.request("/api/meta/version");
 
-  describe("commit SHA injection", () => {
-    it("uses GIT_COMMIT env var when set", async () => {
-      vi.stubEnv("GIT_COMMIT", "abc1234");
-      const app = createApp({ services });
-      const res = await app.request("/health");
-      const json = (await res.json()) as { commit: string };
-
-      expect(json.commit).toBe("abc1234");
-      vi.unstubAllEnvs();
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.data).toEqual({
+      relayVersion: "0.1.0",
+      serverHash: "abc1234",
+      dashboardHash: "def5678",
+      builtAt: "2026-03-11T11:00:00.000Z",
     });
   });
 });

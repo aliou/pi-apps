@@ -6,6 +6,7 @@ import type {
   SandboxInfo,
   SandboxProvider,
   SandboxProviderCapabilities,
+  SandboxSecretMaterial,
   SandboxStatus,
 } from "./types";
 
@@ -113,7 +114,7 @@ class MockSandboxHandle implements SandboxHandle {
   async resume(
     _secrets?: Record<string, string>,
     _githubToken?: string,
-    _secretMaterial?: import("./types").SandboxSecretMaterial,
+    _secretMaterial?: SandboxSecretMaterial,
   ): Promise<void> {
     if (this._status === "paused") {
       this.setStatus("running");

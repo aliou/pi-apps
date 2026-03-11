@@ -12,6 +12,7 @@ import { RepoService } from "./services/repo.service";
 import { SessionService } from "./services/session.service";
 import {
   createTestDatabase,
+  createTestGitHubAppService,
   createTestSandboxManager,
   createTestSecretsService,
   createTestSessionHubManager,
@@ -30,14 +31,18 @@ describe("Session Protocol Integration", () => {
     db = result.db;
     sqlite = result.sqlite;
     const environmentService = new EnvironmentService(db);
+    const secretsService = createTestSecretsService(db);
+    const githubAppService = createTestGitHubAppService(db, secretsService);
+    const githubService = new GitHubService({ githubAppService });
     services = {
       db,
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
-      githubService: new GitHubService(),
+      githubService,
+      githubAppService,
       sandboxManager: createTestSandboxManager(),
-      secretsService: createTestSecretsService(db),
+      secretsService,
       environmentService,
       extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),

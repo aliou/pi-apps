@@ -3,11 +3,12 @@ import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
 import { type Env as PinoEnv, pinoLogger } from "hono-pino";
 import type { AppDatabase } from "./db/connection";
-import { rootLogger } from "./lib/logger";
+import { rootLogger, withRequestContext } from "./lib/logger";
 import { environmentsRoutes } from "./routes/environments";
 import { extensionConfigsRoutes } from "./routes/extension-configs";
 import { githubRoutes } from "./routes/github";
 import { healthRoutes } from "./routes/health";
+import { metaRoutes } from "./routes/meta";
 import { modelsRoutes } from "./routes/models";
 import { packagesRoutes } from "./routes/packages";
 import { secretsRoutes } from "./routes/secrets";
@@ -19,6 +20,7 @@ import type { EnvironmentService } from "./services/environment.service";
 import type { EventJournal } from "./services/event-journal";
 import type { ExtensionConfigService } from "./services/extension-config.service";
 import type { GitHubService } from "./services/github.service";
+import type { GitHubAppService } from "./services/github-app.service";
 import type { PackageCatalogService } from "./services/package-catalog.service";
 import type { RepoService } from "./services/repo.service";
 import type { SecretsService } from "./services/secrets.service";
@@ -32,6 +34,7 @@ export type AppEnv = PinoEnv & {
     eventJournal: EventJournal;
     repoService: RepoService;
     githubService: GitHubService;
+    githubAppService: GitHubAppService;
     sandboxManager: SandboxManager;
     secretsService: SecretsService;
     environmentService: EnvironmentService;
@@ -49,6 +52,7 @@ export interface AppServices {
   eventJournal: EventJournal;
   repoService: RepoService;
   githubService: GitHubService;
+  githubAppService: GitHubAppService;
   sandboxManager: SandboxManager;
   secretsService: SecretsService;
   environmentService: EnvironmentService;
@@ -74,6 +78,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     c.set("eventJournal", services.eventJournal);
     c.set("repoService", services.repoService);
     c.set("githubService", services.githubService);
+    c.set("githubAppService", services.githubAppService);
     c.set("sandboxManager", services.sandboxManager);
     c.set("secretsService", services.secretsService);
     c.set("environmentService", services.environmentService);
@@ -86,6 +91,9 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
   });
 
   app.use("*", requestId());
+  app.use("*", async (c, next) => {
+    await withRequestContext(c.get("requestId"), next);
+  });
   app.use(
     "*",
     pinoLogger({
@@ -99,12 +107,39 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
     }),
   );
   app.use("*", cors());
+  app.use("*", async (c, next) => {
+    const startedAt = Date.now();
+    await next();
+    const logger = c.get("logger");
+    const status = c.res.status;
+    logger.info(
+      {
+        event: "request_summary",
+        requestId: c.get("requestId"),
+        method: c.req.method,
+        path: c.req.path,
+        status,
+        durationMs: Date.now() - startedAt,
+        outcome:
+          status >= 500 ? "error" : status >= 400 ? "client_error" : "success",
+      },
+      "request summary",
+    );
+  });
 
   // Error handler
   app.onError((err, c) => {
     const logger = c.get("logger");
     logger.error(
-      { err, path: c.req.path, method: c.req.method },
+      {
+        event: "request_error",
+        requestId: c.get("requestId"),
+        method: c.req.method,
+        path: c.req.path,
+        errorName: err instanceof Error ? err.name : "Error",
+        errorMessage: err instanceof Error ? err.message : String(err),
+        err,
+      },
       "unhandled error",
     );
     return c.json({ data: null, error: "Internal server error" }, 500);
@@ -114,6 +149,7 @@ export function createApp(options: CreateAppOptions): Hono<AppEnv> {
   app.route("/", healthRoutes());
   app.route("/api/sessions", sessionsRoutes());
   app.route("/api/github", githubRoutes());
+  app.route("/api/meta", metaRoutes());
   app.route("/api/models", modelsRoutes());
   app.route("/api/settings", settingsRoutes());
   app.route("/api/secrets", secretsRoutes(services.secretsService));

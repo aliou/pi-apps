@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createTestDatabase, createTestSecretsService } from "../test-helpers";
 import { CloudflareSandboxProvider } from "./cloudflare";
+import { SandboxManager } from "./manager";
 
 const CONFIG = {
   workerUrl: "https://test-worker.example.com",
@@ -462,12 +464,7 @@ describe("CloudflareSandboxHandle", () => {
 // ─── Manager wiring ─────────────────────────────────────────────────────────
 
 describe("SandboxManager cloudflare wiring", () => {
-  // Import inline to avoid circular issues with mock setup
   it("registers cloudflare provider when config is provided", async () => {
-    const { SandboxManager } = await import("./manager");
-    const { createTestSecretsService, createTestDatabase } = await import(
-      "../test-helpers"
-    );
     const { db } = createTestDatabase();
     const secretsService = createTestSecretsService(db);
     const manager = new SandboxManager(
@@ -487,10 +484,6 @@ describe("SandboxManager cloudflare wiring", () => {
   });
 
   it("does not register cloudflare when config is missing", async () => {
-    const { SandboxManager } = await import("./manager");
-    const { createTestSecretsService, createTestDatabase } = await import(
-      "../test-helpers"
-    );
     const { db } = createTestDatabase();
     const secretsService = createTestSecretsService(db);
     const manager = new SandboxManager(

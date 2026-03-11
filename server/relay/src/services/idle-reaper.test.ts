@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AppDatabase } from "../db/connection";
-import { sessions } from "../db/schema";
+import { sessions, settings as sessionsSettings } from "../db/schema";
 import type { EnvironmentSandboxConfig } from "../sandbox/manager";
 import {
   createTestDatabase,
@@ -21,6 +21,7 @@ function createTestDeps(overrides?: Partial<IdleReaperDeps>): {
   sessionService: SessionService;
   environmentService: EnvironmentService;
   broadcasts: { sessionId: string; event: ServerEvent }[];
+  sessionHubManager: ReturnType<typeof createTestSessionHubManager>;
 } {
   const { db, sqlite } = createTestDatabase();
   const sessionService = new SessionService(db);
@@ -76,6 +77,7 @@ function createTestDeps(overrides?: Partial<IdleReaperDeps>): {
   };
 
   const deps: IdleReaperDeps = {
+    db,
     sessionService,
     environmentService,
     secretsService,
@@ -87,7 +89,15 @@ function createTestDeps(overrides?: Partial<IdleReaperDeps>): {
     ...overrides,
   };
 
-  return { deps, db, sqlite, sessionService, environmentService, broadcasts };
+  return {
+    deps,
+    db,
+    sqlite,
+    sessionService,
+    environmentService,
+    broadcasts,
+    sessionHubManager,
+  };
 }
 
 /** Create a Docker environment and return its ID. */
@@ -305,6 +315,101 @@ describe("IdleReaper", () => {
       sessionService.get(okSessionId)?.status,
     ];
     expect(statuses).toContain("idle");
+  });
+
+  it("respects reconnect grace from idle policy", async () => {
+    const {
+      deps,
+      db,
+      sqlite: s,
+      sessionService,
+      environmentService,
+      sessionHubManager,
+    } = createTestDeps();
+    sqlite = s;
+
+    db.insert(sessionsSettings)
+      .values({
+        key: "idle_policy",
+        value: JSON.stringify({
+          defaultTimeoutSeconds: 60,
+          graceAfterDisconnectSeconds: 600,
+        }),
+        updatedAt: new Date().toISOString(),
+      })
+      .run();
+
+    const envId = createDockerEnv(environmentService, {
+      idleTimeoutSeconds: 60,
+    });
+    const sessionId = createIdleSession(sessionService, envId, 300);
+    const hub = sessionHubManager.getOrCreate(sessionId) as unknown as {
+      lastDisconnectedAt: number | null;
+    };
+    hub.lastDisconnectedAt = Date.now();
+
+    const reaper = new IdleReaper(deps);
+    await reaper.tick();
+
+    expect(sessionService.get(sessionId)?.status).toBe("active");
+  });
+
+  it("skips idle while a tool is still running", async () => {
+    const {
+      deps,
+      sqlite: s,
+      sessionService,
+      environmentService,
+      sessionHubManager,
+    } = createTestDeps();
+    sqlite = s;
+
+    const envId = createDockerEnv(environmentService, {
+      idleTimeoutSeconds: 60,
+    });
+    const sessionId = createIdleSession(sessionService, envId, 300);
+    const hub = sessionHubManager.getOrCreate(sessionId) as unknown as {
+      runningToolCallIds: Set<string>;
+    };
+    hub.runningToolCallIds.add("tool_1");
+
+    const reaper = new IdleReaper(deps);
+    await reaper.tick();
+
+    expect(sessionService.get(sessionId)?.status).toBe("active");
+  });
+
+  it("can disable idling for a mode via idle policy", async () => {
+    const {
+      deps,
+      db,
+      sqlite: s,
+      sessionService,
+      environmentService,
+    } = createTestDeps();
+    sqlite = s;
+
+    db.insert(sessionsSettings)
+      .values({
+        key: "idle_policy",
+        value: JSON.stringify({
+          defaultTimeoutSeconds: 60,
+          graceAfterDisconnectSeconds: 0,
+          disableForModes: ["chat"],
+        }),
+        updatedAt: new Date().toISOString(),
+      })
+      .run();
+
+    const envId = createDockerEnv(environmentService, {
+      idleTimeoutSeconds: 60,
+    });
+    const sessionId = createIdleSession(sessionService, envId, 300);
+
+    const reaper = new IdleReaper(deps);
+    await reaper.tick();
+
+    expect(sessionService.get(sessionId)?.status).toBe("active");
   });
 
   it("start/stop lifecycle works cleanly", async () => {

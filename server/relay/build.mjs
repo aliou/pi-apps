@@ -21,9 +21,15 @@ await esbuild.build({
   outfile: "dist/index.js",
   sourcemap: true,
   define: {
-    // Bake the commit SHA in at build time. Set GIT_COMMIT env before
-    // running `pnpm build` in CI. Falls back to "dev" for local builds.
+    // Bake build identity in at build time. Falls back to dev markers locally.
     "process.env.GIT_COMMIT": JSON.stringify(process.env.GIT_COMMIT ?? "dev"),
+    "process.env.DASHBOARD_GIT_COMMIT": JSON.stringify(
+      process.env.DASHBOARD_GIT_COMMIT ?? process.env.PI_DASHBOARD_COMMIT ?? "dev",
+    ),
+    "process.env.BUILT_AT": JSON.stringify(
+      process.env.BUILT_AT ?? new Date().toISOString(),
+    ),
+    "process.env.RELAY_VERSION": JSON.stringify(process.env.RELAY_VERSION ?? "0.1.0"),
   },
   // Externalize native deps and packages with CJS __dirname usage
   external: [

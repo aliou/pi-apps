@@ -7,13 +7,14 @@ import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
 import { ExtensionConfigService } from "../services/extension-config.service";
-import { ExtensionManifestService } from "../services/extension-manifest.service";
+import { ExtensionManifestService } from "./../services/extension-manifest.service";
 import { GitHubService } from "../services/github.service";
-import { PackageCatalogService } from "../services/package-catalog.service";
+import { PackageCatalogService } from "./../services/package-catalog.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
 import {
   createTestDatabase,
+  createTestGitHubAppService,
   createTestSandboxManager,
   createTestSecretsService,
   createTestSessionHubManager,
@@ -83,15 +84,18 @@ describe("Models Routes", () => {
     sqlite = result.sqlite;
     environmentService = new EnvironmentService(db);
     extensionConfigService = new ExtensionConfigService(db);
+    const secretsService = createTestSecretsService(db);
+    const githubAppService = createTestGitHubAppService(db, secretsService);
 
     services = {
       db,
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
-      githubService: new GitHubService(),
+      githubService: new GitHubService({ githubAppService }),
+      githubAppService,
       sandboxManager: createTestSandboxManager(),
-      secretsService: createTestSecretsService(db),
+      secretsService,
       environmentService,
       extensionConfigService,
       sandboxLogStore: new SandboxLogStore(),
@@ -179,9 +183,7 @@ describe("Models Routes", () => {
           exec: async () => ({ exitCode: 1, output: "pi missing" }),
         };
       }
-      return makeIntrospectionSandbox([
-        { provider: "openai", id: "gpt-4o" },
-      ]);
+      return makeIntrospectionSandbox([{ provider: "openai", id: "gpt-4o" }]);
     };
 
     const app = createApp({ services });
@@ -282,9 +284,7 @@ describe("Models Routes", () => {
     services.sandboxManager.isProviderAvailable = async () => true;
     services.sandboxManager.createForSession = async () => {
       attempts += 1;
-      return makeIntrospectionSandbox([
-        { provider: "openai", id: "gpt-4o" },
-      ]);
+      return makeIntrospectionSandbox([{ provider: "openai", id: "gpt-4o" }]);
     };
 
     const app = createApp({ services });

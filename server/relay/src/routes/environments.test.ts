@@ -4,14 +4,15 @@ import type { AppDatabase } from "../db/connection";
 import { SandboxLogStore } from "../sandbox/log-store";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
-import { ExtensionConfigService } from "../services/extension-config.service";
-import { ExtensionManifestService } from "../services/extension-manifest.service";
+import { ExtensionConfigService } from "./../services/extension-config.service";
+import { ExtensionManifestService } from "./../services/extension-manifest.service";
 import { GitHubService } from "../services/github.service";
-import { PackageCatalogService } from "../services/package-catalog.service";
+import { PackageCatalogService } from "./../services/package-catalog.service";
 import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
 import {
   createTestDatabase,
+  createTestGitHubAppService,
   createTestSandboxManager,
   createTestSecretsService,
   createTestSessionHubManager,
@@ -26,14 +27,17 @@ describe("Environments Routes", () => {
     const result = createTestDatabase();
     db = result.db;
     sqlite = result.sqlite;
+    const secretsService = createTestSecretsService(db);
+    const githubAppService = createTestGitHubAppService(db, secretsService);
     services = {
       db,
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
-      githubService: new GitHubService(),
+      githubService: new GitHubService({ githubAppService }),
+      githubAppService,
       sandboxManager: createTestSandboxManager(),
-      secretsService: createTestSecretsService(db),
+      secretsService,
       environmentService: new EnvironmentService(db),
       extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),

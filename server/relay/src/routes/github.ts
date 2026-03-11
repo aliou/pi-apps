@@ -3,18 +3,17 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
 import { createLogger } from "../lib/logger";
+import {
+  GITHUB_APP_CONFIG_KEY,
+  type GitHubAppConnectRequest,
+} from "../services/github-app.service";
 
-/**
- * Settings key for GitHub token used for repo listing/cloning.
- * Named to avoid conflict with pi-ai's GITHUB_TOKEN env var check.
- */
-const GITHUB_TOKEN_KEY = "github_repos_access_token";
+export const GITHUB_TOKEN_KEY = "github_repos_access_token";
 
 export function githubRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const logger = createLogger("github");
 
-  // Get token status
   app.get("/token", async (c) => {
     const db = c.get("db");
     const githubService = c.get("githubService");
@@ -29,7 +28,7 @@ export function githubRoutes(): Hono<AppEnv> {
       return c.json({ data: { configured: false }, error: null });
     }
 
-    const token = JSON.parse(setting.value) as string;
+    const token = parseSettingString(setting.value);
     const info = await githubService.validateToken(token);
 
     if (!info.valid) {
@@ -51,7 +50,6 @@ export function githubRoutes(): Hono<AppEnv> {
     });
   });
 
-  // Set token
   app.post("/token", async (c) => {
     const db = c.get("db");
     const githubService = c.get("githubService");
@@ -63,39 +61,17 @@ export function githubRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const token = body.token;
-    if (!token || typeof token !== "string" || token.trim() === "") {
+    const token = body.token?.trim();
+    if (!token) {
       return c.json({ data: null, error: "Token is required" }, 400);
     }
 
-    // Validate token before storing
-    const info = await githubService.validateToken(token.trim());
+    const info = await githubService.validateToken(token);
     if (!info.valid) {
       return c.json({ data: null, error: info.error ?? "Invalid token" }, 400);
     }
 
-    // Store token
-    const now = new Date().toISOString();
-    const existing = db
-      .select()
-      .from(settings)
-      .where(eq(settings.key, GITHUB_TOKEN_KEY))
-      .get();
-
-    if (existing) {
-      db.update(settings)
-        .set({ value: JSON.stringify(token.trim()), updatedAt: now })
-        .where(eq(settings.key, GITHUB_TOKEN_KEY))
-        .run();
-    } else {
-      db.insert(settings)
-        .values({
-          key: GITHUB_TOKEN_KEY,
-          value: JSON.stringify(token.trim()),
-          updatedAt: now,
-        })
-        .run();
-    }
+    upsertSetting(db, GITHUB_TOKEN_KEY, token);
 
     return c.json({
       data: {
@@ -106,40 +82,197 @@ export function githubRoutes(): Hono<AppEnv> {
     });
   });
 
-  // Delete token
   app.delete("/token", (c) => {
-    const db = c.get("db");
-    db.delete(settings).where(eq(settings.key, GITHUB_TOKEN_KEY)).run();
+    c.get("db")
+      .delete(settings)
+      .where(eq(settings.key, GITHUB_TOKEN_KEY))
+      .run();
     return c.json({ data: { ok: true }, error: null });
   });
 
-  // List repos
   app.get("/repos", async (c) => {
-    const db = c.get("db");
     const githubService = c.get("githubService");
-
-    const setting = db
-      .select()
-      .from(settings)
-      .where(eq(settings.key, GITHUB_TOKEN_KEY))
-      .get();
-
-    if (!setting) {
-      return c.json({ data: null, error: "GitHub token not configured" }, 401);
-    }
-
-    const token = JSON.parse(setting.value) as string;
+    const repoService = c.get("repoService");
 
     try {
-      const repos = await githubService.listRepos(token);
-      return c.json({ data: repos, error: null });
+      const result = await githubService.listAccessibleRepos();
+      for (const repo of result.repos) {
+        repoService.upsert({
+          id: String(repo.id),
+          name: repo.name,
+          fullName: repo.fullName,
+          owner: repo.owner,
+          isPrivate: repo.isPrivate,
+          description: repo.description,
+          htmlUrl: repo.htmlUrl,
+          cloneUrl: repo.cloneUrl,
+          sshUrl: repo.sshUrl,
+          defaultBranch: repo.defaultBranch,
+        });
+      }
+
+      return c.json({
+        data: {
+          mode: result.mode,
+          repos: result.repos,
+        },
+        error: null,
+      });
     } catch (err) {
       logger.error({ err }, "failed to list repos");
       const message =
         err instanceof Error ? err.message : "Failed to list repos";
-      return c.json({ data: null, error: message }, 500);
+      const status = message.includes("not configured") ? 401 : 500;
+      return c.json({ data: null, error: message }, status);
+    }
+  });
+
+  app.get("/app/status", async (c) => {
+    try {
+      const githubService = c.get("githubService");
+      const status = await githubService.getAuthStatus();
+      return c.json({
+        data: {
+          ...status.app,
+          preferredMode: status.preferredMode,
+          patConfigured: status.pat.configured,
+        },
+        error: null,
+      });
+    } catch (err) {
+      logger.error({ err }, "failed to get app status");
+      return c.json(
+        {
+          data: null,
+          error:
+            err instanceof Error ? err.message : "Failed to get app status",
+        },
+        500,
+      );
+    }
+  });
+
+  app.post("/app/connect", async (c) => {
+    const githubAppService = c.get("githubAppService");
+
+    let body: Partial<GitHubAppConnectRequest>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ data: null, error: "Invalid JSON body" }, 400);
+    }
+
+    if (!Number.isInteger(body.appId) || (body.appId ?? 0) <= 0) {
+      return c.json({ data: null, error: "appId is required" }, 400);
+    }
+
+    if (!body.privateKey?.trim()) {
+      return c.json({ data: null, error: "privateKey is required" }, 400);
+    }
+
+    try {
+      await githubAppService.connect({
+        appId: body.appId as number,
+        privateKey: body.privateKey,
+        webhookSecret: body.webhookSecret,
+        installationIds: body.installationIds,
+      });
+
+      const config = c
+        .get("db")
+        .select()
+        .from(settings)
+        .where(eq(settings.key, GITHUB_APP_CONFIG_KEY))
+        .get();
+
+      return c.json({
+        data: {
+          ok: true,
+          config: config ? JSON.parse(config.value) : null,
+        },
+        error: null,
+      });
+    } catch (err) {
+      logger.error({ err }, "failed to connect GitHub App");
+      return c.json(
+        {
+          data: null,
+          error:
+            err instanceof Error ? err.message : "Failed to connect GitHub App",
+        },
+        400,
+      );
+    }
+  });
+
+  app.delete("/app/connect", async (c) => {
+    try {
+      await c.get("githubAppService").disconnect();
+      return c.json({ data: { ok: true }, error: null });
+    } catch (err) {
+      logger.error({ err }, "failed to disconnect GitHub App");
+      return c.json(
+        {
+          data: null,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Failed to disconnect GitHub App",
+        },
+        500,
+      );
+    }
+  });
+
+  app.get("/app/installations", async (c) => {
+    try {
+      const installations = await c.get("githubAppService").listInstallations();
+      return c.json({ data: installations, error: null });
+    } catch (err) {
+      logger.error({ err }, "failed to list app installations");
+      const message =
+        err instanceof Error ? err.message : "Failed to list app installations";
+      const status = message.includes("not configured") ? 404 : 500;
+      return c.json({ data: null, error: message }, status);
     }
   });
 
   return app;
+}
+
+function parseSettingString(value: string): string {
+  try {
+    return JSON.parse(value) as string;
+  } catch {
+    return value;
+  }
+}
+
+function upsertSetting(
+  db: AppEnv["Variables"]["db"],
+  key: string,
+  value: string,
+): void {
+  const now = new Date().toISOString();
+  const existing = db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, key))
+    .get();
+
+  if (existing) {
+    db.update(settings)
+      .set({ value: JSON.stringify(value), updatedAt: now })
+      .where(eq(settings.key, key))
+      .run();
+    return;
+  }
+
+  db.insert(settings)
+    .values({
+      key,
+      value: JSON.stringify(value),
+      updatedAt: now,
+    })
+    .run();
 }

@@ -415,4 +415,61 @@ export class SecretsService {
 
     return count;
   }
+
+  /**
+   * Set a secret value by envVar name.
+   * If a secret with this envVar exists, update it. Otherwise, create a new one.
+   * Used for GitHub App credentials and other fixed-env-var secrets.
+   */
+  async setValueByEnvVar(envVar: string, value: string): Promise<void> {
+    const normalizedEnvVar = validateEnvVar(envVar);
+    const encrypted = this.crypto.encrypt(value);
+    const now = new Date().toISOString();
+
+    // Check if secret exists
+    const existing = await this.db
+      .select()
+      .from(secrets)
+      .where(eq(secrets.envVar, normalizedEnvVar))
+      .limit(1);
+
+    if (existing.length > 0) {
+      // Update existing
+      await this.db
+        .update(secrets)
+        .set({
+          iv: encrypted.iv,
+          ciphertext: encrypted.ciphertext,
+          tag: encrypted.tag,
+          keyVersion: encrypted.keyVersion,
+          updatedAt: now,
+        })
+        .where(eq(secrets.envVar, normalizedEnvVar));
+    } else {
+      // Create new secret for GitHub App
+      const id = crypto.randomUUID();
+      await this.db.insert(secrets).values({
+        id,
+        name: normalizedEnvVar, // Use envVar as name for these system secrets
+        envVar: normalizedEnvVar,
+        kind: "env_var" as SecretKind,
+        enabled: true,
+        iv: encrypted.iv,
+        ciphertext: encrypted.ciphertext,
+        tag: encrypted.tag,
+        keyVersion: encrypted.keyVersion,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  /**
+   * Delete a secret by its envVar name.
+   * Returns true if deleted, false if not found.
+   */
+  async deleteValueByEnvVar(envVar: string): Promise<void> {
+    const normalizedEnvVar = validateEnvVar(envVar);
+    await this.db.delete(secrets).where(eq(secrets.envVar, normalizedEnvVar));
+  }
 }

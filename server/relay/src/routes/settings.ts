@@ -4,10 +4,16 @@ import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
 
 // Keys that should not be exposed via the general settings API
-const PROTECTED_KEYS = ["github_repos_access_token"];
+const PROTECTED_KEYS = ["github_repos_access_token", "github_app_config"];
 
 interface ModelsIntrospectionSetting {
   environmentId?: string;
+}
+
+interface IdlePolicySetting {
+  defaultTimeoutSeconds: number;
+  graceAfterDisconnectSeconds: number;
+  disableForModes?: Array<"chat" | "code">;
 }
 
 function validateSettingValue(key: string, value: unknown): string | null {
@@ -31,6 +37,40 @@ function validateSettingValue(key: string, value: unknown): string | null {
   if (key === "chat_mode_prompt_profile") {
     if (typeof value !== "string") {
       return "chat_mode_prompt_profile must be a string";
+    }
+  }
+
+  if (key === "idle_policy") {
+    if (!value || typeof value !== "object") {
+      return "idle_policy must be an object";
+    }
+
+    const payload = value as IdlePolicySetting;
+    if (
+      !Number.isInteger(payload.defaultTimeoutSeconds) ||
+      payload.defaultTimeoutSeconds <= 0
+    ) {
+      return "idle_policy.defaultTimeoutSeconds must be a positive integer";
+    }
+
+    if (
+      !Number.isInteger(payload.graceAfterDisconnectSeconds) ||
+      payload.graceAfterDisconnectSeconds < 0
+    ) {
+      return "idle_policy.graceAfterDisconnectSeconds must be a non-negative integer";
+    }
+
+    if (payload.disableForModes !== undefined) {
+      if (!Array.isArray(payload.disableForModes)) {
+        return "idle_policy.disableForModes must be an array when provided";
+      }
+
+      const invalidMode = payload.disableForModes.find(
+        (mode) => mode !== "chat" && mode !== "code",
+      );
+      if (invalidMode) {
+        return "idle_policy.disableForModes entries must be 'chat' or 'code'";
+      }
     }
   }
 

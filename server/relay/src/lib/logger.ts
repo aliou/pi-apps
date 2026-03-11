@@ -1,6 +1,9 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { Context } from "hono";
 import pino from "pino";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+const requestContext = new AsyncLocalStorage<{ requestId?: string }>();
 
 function resolveLogLevel(): string {
   const value = process.env.PI_RELAY_LOG_LEVEL ?? process.env.LOG_LEVEL;
@@ -11,15 +14,12 @@ function resolveLogLevel(): string {
   return isDevelopment ? "debug" : "info";
 }
 
-/**
- * Root pino logger instance.
- * - JSON output in production for log aggregators.
- * - Pretty-printed, colorized output in development.
- * - Redacts sensitive fields to prevent credential leaks.
- */
 export const rootLogger = pino({
   level: resolveLogLevel(),
   timestamp: pino.stdTimeFunctions.isoTime,
+  mixin() {
+    return requestContext.getStore() ?? {};
+  },
   redact: {
     paths: [
       "password",
@@ -45,14 +45,18 @@ export const rootLogger = pino({
     : undefined,
 });
 
-/**
- * Create a scoped child logger.
- * All log entries include the scope field for filtering.
- *
- * Usage:
- *   const logger = createLogger("docker");
- *   logger.info({ containerId }, "container started");
- */
 export function createLogger(scope: string): pino.Logger {
   return rootLogger.child({ scope });
+}
+
+export function getRequestLogger(c: Context, scope: string): pino.Logger {
+  const requestLogger = c.get("logger") as pino.Logger | undefined;
+  return (requestLogger ?? rootLogger).child({ scope });
+}
+
+export async function withRequestContext<T>(
+  requestId: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return requestContext.run({ requestId }, fn);
 }

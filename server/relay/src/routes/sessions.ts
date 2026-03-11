@@ -17,8 +17,16 @@ import {
   resolveEnvConfig,
 } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
-import type { EnvironmentConfig } from "../services/environment.service";
-import type { SessionMode, SessionRecord } from "../services/session.service";
+import type {
+  EnvironmentConfig,
+  EnvironmentRecord,
+} from "../services/environment.service";
+import type { SecretsService } from "../services/secrets.service";
+import type {
+  SessionMode,
+  SessionRecord,
+  SessionStatus,
+} from "../services/session.service";
 import {
   buildSessionBranchName,
   buildSessionBranchRetryName,
@@ -243,9 +251,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
     const sessionService = c.get("sessionService");
     const statusParam = c.req.query("status");
     const statusFilter = statusParam
-      ? (statusParam.split(
-          ",",
-        ) as import("../services/session.service").SessionStatus[])
+      ? (statusParam.split(",") as SessionStatus[])
       : undefined;
     const sessions = sessionService.list(
       statusFilter ? { status: statusFilter } : undefined,
@@ -291,6 +297,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
     let repoBranch: string | undefined;
     let desiredBranchName: string | undefined;
     let githubToken: string | undefined;
+    let resolvedGitAuthorName: string | undefined;
+    let resolvedGitAuthorEmail: string | undefined;
     let environmentConfig: EnvironmentConfig | undefined;
 
     // Resolve environment for all modes
@@ -334,17 +342,13 @@ export function sessionsRoutes(): Hono<AppEnv> {
     const resolvedSystemPrompt = body.systemPrompt ?? chatOnlyPromptProfile;
 
     if (body.mode === "code") {
-      // Read GitHub token for repo resolution and sandbox git auth
-      githubToken = readStringSetting(db, "github_repos_access_token");
+      const githubService = c.get("githubService");
 
-      // Resolve repo for cloning — fetch live from GitHub, persist on use
       if (body.repoId) {
         let repo = repoService.get(body.repoId);
-        if (!repo && githubToken) {
-          const githubService = c.get("githubService");
+        if (!repo) {
           try {
-            const ghRepo = await githubService.getRepoById(
-              githubToken,
+            const ghRepo = await githubService.getRepoByIdUsingConfiguredAuth(
               body.repoId,
             );
             repoService.upsert({
@@ -371,6 +375,23 @@ export function sessionsRoutes(): Hono<AppEnv> {
         if (repo?.cloneUrl) {
           repoUrl = repo.cloneUrl;
           repoBranch = repo.defaultBranch ?? "main";
+
+          try {
+            const authContext = await githubService.getAuthContext(
+              repo.fullName,
+            );
+            githubToken = await authContext.getRepoAccessToken(repo.fullName);
+            const actorIdentity = await authContext.getActorIdentity(
+              repo.fullName,
+            );
+            resolvedGitAuthorName = actorIdentity.name;
+            resolvedGitAuthorEmail = actorIdentity.email;
+          } catch (err) {
+            logger.warn(
+              { err, repoFullName: repo.fullName },
+              "failed to resolve repo auth context",
+            );
+          }
         }
       }
     }
@@ -409,8 +430,12 @@ export function sessionsRoutes(): Hono<AppEnv> {
 
       // Read git author settings
       const settingsDb = c.get("db");
-      const gitAuthorName = readStringSetting(settingsDb, "git_author_name");
-      const gitAuthorEmail = readStringSetting(settingsDb, "git_author_email");
+      const gitAuthorName =
+        readStringSetting(settingsDb, "git_author_name") ??
+        resolvedGitAuthorName;
+      const gitAuthorEmail =
+        readStringSetting(settingsDb, "git_author_email") ??
+        resolvedGitAuthorEmail;
 
       // Resolve environment config
       let resolvedEnvConfig: EnvironmentSandboxConfig | undefined;
@@ -607,7 +632,7 @@ export function sessionsRoutes(): Hono<AppEnv> {
   // Client calls this before opening WebSocket.
   app.post("/:id/activate", async (c) => {
     const activateStartedAt = Date.now();
-    const db = c.get("db");
+    c.get("db"); // Keep dependency for future use
     const sessionService = c.get("sessionService");
     const eventJournal = c.get("eventJournal");
     const sandboxManager = c.get("sandboxManager");
@@ -713,8 +738,24 @@ export function sessionsRoutes(): Hono<AppEnv> {
             "activate settings-written",
           );
 
-          // Read GitHub token for git credential refresh
-          const ghToken = readStringSetting(db, "github_repos_access_token");
+          // Resolve GitHub token for git credential refresh using auth context
+          const ghService = c.get("githubService");
+          let ghToken: string | undefined;
+          if (current.repoFullName) {
+            try {
+              const authContext = await ghService.getAuthContext(
+                current.repoFullName,
+              );
+              ghToken = await authContext.getRepoAccessToken(
+                current.repoFullName,
+              );
+            } catch (err) {
+              logger.warn(
+                { err, sessionId: id, repoFullName: current.repoFullName },
+                "failed to resolve repo auth on activate",
+              );
+            }
+          }
           // Resolve environment config for the provider
           const envResolveStartedAt = Date.now();
           let envConfig: EnvironmentSandboxConfig | undefined;
@@ -1092,9 +1133,9 @@ export function sessionsRoutes(): Hono<AppEnv> {
       );
 
       // 3. Load GitHub token and git author settings
-      const githubToken = readStringSetting(db, "github_repos_access_token");
-      const gitAuthorName = readStringSetting(db, "git_author_name");
-      const gitAuthorEmail = readStringSetting(db, "git_author_email");
+      const githubService = c.get("githubService");
+      let githubToken: string | undefined;
+      let resolvedGitIdentity: { name: string; email: string } | undefined;
 
       // 4. Resolve repo info for sandbox creation
       const repoService = c.get("repoService");
@@ -1105,8 +1146,28 @@ export function sessionsRoutes(): Hono<AppEnv> {
         if (repo?.cloneUrl) {
           repoUrl = repo.cloneUrl;
           repoBranch = session.branchName ?? repo.defaultBranch ?? "main";
+
+          try {
+            const authContext = await githubService.getAuthContext(
+              repo.fullName,
+            );
+            githubToken = await authContext.getRepoAccessToken(repo.fullName);
+            resolvedGitIdentity = await authContext.getActorIdentity(
+              repo.fullName,
+            );
+          } catch (err) {
+            logger.warn(
+              { err, sessionId: id, repoFullName: repo.fullName },
+              "failed to resolve repo auth on restart",
+            );
+          }
         }
       }
+
+      const gitAuthorName =
+        readStringSetting(db, "git_author_name") ?? resolvedGitIdentity?.name;
+      const gitAuthorEmail =
+        readStringSetting(db, "git_author_email") ?? resolvedGitIdentity?.email;
 
       // 5. Resolve environment config
       let environmentConfig: EnvironmentConfig | undefined;
@@ -1547,17 +1608,12 @@ export function sessionsRoutes(): Hono<AppEnv> {
 async function resolveSessionEnvConfig(
   session: SessionRecord,
   environmentService: {
-    get(
-      id: string,
-    ): import("../services/environment.service").EnvironmentRecord | undefined;
+    get(id: string): EnvironmentRecord | undefined;
   },
   secretsService: { getValue(id: string): Promise<string | null> },
 ): Promise<EnvironmentSandboxConfig | undefined> {
   if (!session.environmentId) return undefined;
   const env = environmentService.get(session.environmentId);
   if (!env) return undefined;
-  return resolveEnvConfig(
-    env,
-    secretsService as import("../services/secrets.service").SecretsService,
-  );
+  return resolveEnvConfig(env, secretsService as SecretsService);
 }

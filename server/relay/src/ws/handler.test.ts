@@ -10,6 +10,7 @@ import {
   createTestSessionHubManager,
 } from "../test-helpers";
 import type { WebSocketHandlerDeps } from "./handler";
+import { buildEventHooks } from "./hooks";
 
 describe("WebSocket Handler", () => {
   let db: AppDatabase;
@@ -59,11 +60,10 @@ describe("WebSocket Handler", () => {
 
   describe("buildEventHooks", () => {
     let sessionService: SessionService;
-    let hooks: ReturnType<typeof import("./hooks").buildEventHooks>;
+    let hooks: ReturnType<typeof buildEventHooks>;
 
-    beforeEach(async () => {
+    beforeEach(() => {
       sessionService = deps.sessionService;
-      const { buildEventHooks } = await import("./hooks");
       hooks = buildEventHooks(sessionService);
     });
 

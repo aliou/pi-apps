@@ -18,6 +18,7 @@ import type {
   SandboxInfo,
   SandboxProvider,
   SandboxProviderCapabilities,
+  SandboxSecretMaterial,
   SandboxStatus,
 } from "./types";
 
@@ -685,7 +686,7 @@ class DockerSandboxHandle implements SandboxHandle {
   async resume(
     secrets?: Record<string, string>,
     githubToken?: string,
-    _secretMaterial?: import("./types").SandboxSecretMaterial,
+    _secretMaterial?: SandboxSecretMaterial,
   ): Promise<void> {
     // Refresh secrets and git config on host before resuming
     // (bind mounts pick them up)

@@ -1,4 +1,7 @@
 import { setInterval } from "node:timers/promises";
+import { eq } from "drizzle-orm";
+import type { AppDatabase } from "../db/connection";
+import { settings } from "../db/schema";
 import { createLogger } from "../lib/logger";
 import type { resolveEnvConfig, SandboxManager } from "../sandbox/manager";
 import type { SandboxProviderType } from "../sandbox/provider-types";
@@ -10,7 +13,14 @@ import type {
 import type { SecretsService } from "./secrets.service";
 import type { SessionRecord, SessionService } from "./session.service";
 
+export interface IdlePolicy {
+  defaultTimeoutSeconds: number;
+  graceAfterDisconnectSeconds: number;
+  disableForModes?: Array<"chat" | "code">;
+}
+
 export interface IdleReaperDeps {
+  db: AppDatabase;
   sessionService: SessionService;
   environmentService: EnvironmentService;
   secretsService: SecretsService;
@@ -21,6 +31,11 @@ export interface IdleReaperDeps {
 }
 
 const log = createLogger("idle-reaper");
+const IDLE_POLICY_KEY = "idle_policy";
+const DEFAULT_IDLE_POLICY: IdlePolicy = {
+  defaultTimeoutSeconds: 7_200,
+  graceAfterDisconnectSeconds: 300,
+};
 
 export class IdleReaper {
   private controller: AbortController | null = null;
@@ -51,15 +66,18 @@ export class IdleReaper {
   }
 
   async tick(): Promise<void> {
+    const policy = this.readIdlePolicy();
     const envs = this.deps.environmentService.list();
     const timeoutMap = new Map<string, number>();
 
     for (const env of envs) {
-      // Cloudflare manages its own idle timeout via Durable Object sleepAfter
       if (env.sandboxType === "cloudflare") continue;
 
       const config = JSON.parse(env.config) as EnvironmentConfig;
-      timeoutMap.set(env.id, config.idleTimeoutSeconds ?? 3600);
+      timeoutMap.set(
+        env.id,
+        config.idleTimeoutSeconds ?? policy.defaultTimeoutSeconds,
+      );
     }
 
     const activeSessions = this.deps.sessionService.listActiveSessions();
@@ -67,29 +85,51 @@ export class IdleReaper {
 
     for (const session of activeSessions) {
       try {
-        // Skip sessions without an environment (mock/chat sessions)
         if (!session.environmentId) continue;
+        if (policy.disableForModes?.includes(session.mode)) continue;
 
         const timeoutSeconds = timeoutMap.get(session.environmentId);
-        // Skip if environment not in map (e.g., Cloudflare, or unknown env)
         if (timeoutSeconds === undefined) continue;
 
-        const lastActivity = new Date(session.lastActivityAt).getTime();
-        const idleMs = now - lastActivity;
-
-        if (idleMs < timeoutSeconds * 1000) continue;
-
-        // Skip if there are active connections
-        const connectionCount = this.deps.sessionHubManager.getConnectionCount(
-          session.id,
-        );
-        if (connectionCount > 0) {
+        const hubState = this.deps.sessionHubManager.getIdleState(session.id);
+        if (hubState.connectionCount > 0) {
           log.debug(
-            { sessionId: session.id, connectionCount },
+            {
+              sessionId: session.id,
+              connectionCount: hubState.connectionCount,
+            },
             "skipping idle: active connections",
           );
           continue;
         }
+
+        if (
+          hubState.lastDisconnectedAt &&
+          now - hubState.lastDisconnectedAt <
+            policy.graceAfterDisconnectSeconds * 1000
+        ) {
+          log.debug(
+            {
+              sessionId: session.id,
+              lastDisconnectedAt: hubState.lastDisconnectedAt,
+              graceAfterDisconnectSeconds: policy.graceAfterDisconnectSeconds,
+            },
+            "skipping idle: reconnect grace",
+          );
+          continue;
+        }
+
+        if (hubState.hasRunningTools) {
+          log.debug(
+            { sessionId: session.id },
+            "skipping idle: tool still running",
+          );
+          continue;
+        }
+
+        const lastActivity = new Date(session.lastActivityAt).getTime();
+        const idleMs = now - lastActivity;
+        if (idleMs < timeoutSeconds * 1000) continue;
 
         await this.idleSession(session, idleMs);
       } catch (err) {
@@ -105,29 +145,23 @@ export class IdleReaper {
     const idleMinutes = Math.round(idleMs / 60_000);
     log.info({ sessionId: session.id, idleMinutes }, "idling session");
 
-    // Double-check no clients connected (race condition guard)
-    const connectionCount = this.deps.sessionHubManager.getConnectionCount(
-      session.id,
-    );
-    if (connectionCount > 0) {
+    const hubState = this.deps.sessionHubManager.getIdleState(session.id);
+    if (hubState.connectionCount > 0) {
       log.debug(
-        { sessionId: session.id, connectionCount },
+        { sessionId: session.id, connectionCount: hubState.connectionCount },
         "aborting idle: clients connected",
       );
       return;
     }
 
-    // 1. Notify any connected clients (should be none, but for safety)
     this.deps.sessionHubManager.broadcast(session.id, {
       type: "sandbox_status",
       status: "paused",
       message: "Session idled due to inactivity",
     });
 
-    // 2. Clear client state (controller, capabilities, activator)
     this.deps.sessionHubManager.clearSessionClientState(session.id);
 
-    // 3. Pause the sandbox
     if (session.sandboxProvider && session.sandboxProviderId) {
       let envConfig: Awaited<ReturnType<typeof resolveEnvConfig>> | undefined;
       if (session.environmentId) {
@@ -164,7 +198,39 @@ export class IdleReaper {
       }
     }
 
-    // 3. Update session status
     this.deps.sessionService.update(session.id, { status: "idle" });
+  }
+
+  private readIdlePolicy(): IdlePolicy {
+    const row = this.deps.db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, IDLE_POLICY_KEY))
+      .get();
+
+    if (!row) {
+      return DEFAULT_IDLE_POLICY;
+    }
+
+    try {
+      const parsed = JSON.parse(row.value) as Partial<IdlePolicy>;
+      return {
+        defaultTimeoutSeconds:
+          typeof parsed.defaultTimeoutSeconds === "number" &&
+          parsed.defaultTimeoutSeconds > 0
+            ? parsed.defaultTimeoutSeconds
+            : DEFAULT_IDLE_POLICY.defaultTimeoutSeconds,
+        graceAfterDisconnectSeconds:
+          typeof parsed.graceAfterDisconnectSeconds === "number" &&
+          parsed.graceAfterDisconnectSeconds >= 0
+            ? parsed.graceAfterDisconnectSeconds
+            : DEFAULT_IDLE_POLICY.graceAfterDisconnectSeconds,
+        ...(Array.isArray(parsed.disableForModes)
+          ? { disableForModes: parsed.disableForModes }
+          : {}),
+      };
+    } catch {
+      return DEFAULT_IDLE_POLICY;
+    }
   }
 }

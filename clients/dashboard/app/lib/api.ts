@@ -151,6 +151,18 @@ export interface GitHubRepo {
   defaultBranch: string;
 }
 
+export interface GitHubRepoListResponse {
+  mode: "pat" | "github_app";
+  repos: GitHubRepo[];
+}
+
+export interface VersionMeta {
+  relayVersion: string;
+  serverHash: string;
+  dashboardHash: string;
+  builtAt?: string;
+}
+
 export interface ModelInfo {
   id: string;
   provider: string;

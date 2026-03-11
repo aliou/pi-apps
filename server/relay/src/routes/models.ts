@@ -260,7 +260,10 @@ export function modelsRoutes(): Hono<AppEnv> {
         "Model introspection unavailable. Configure a working introspection environment and refresh models.",
         true,
       ),
-      error: errors.length > 0 ? errors.join(" | ") : "model introspection unavailable",
+      error:
+        errors.length > 0
+          ? errors.join(" | ")
+          : "model introspection unavailable",
     });
   });
 

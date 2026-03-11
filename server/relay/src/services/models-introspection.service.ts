@@ -1,3 +1,5 @@
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { createLogger } from "../lib/logger";
 import type {
   EnvironmentSandboxConfig,
@@ -207,8 +209,6 @@ export class ModelsIntrospectionService {
       }
       // Clean up ephemeral session data directory
       try {
-        const { join } = await import("node:path");
-        const { rmSync } = await import("node:fs");
         rmSync(join(this.sessionDataDir, sessionId), {
           recursive: true,
           force: true,

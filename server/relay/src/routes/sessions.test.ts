@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
 import type { AppDatabase } from "../db/connection";
 import { SandboxLogStore } from "../sandbox/log-store";
+import type { EnvironmentSandboxConfig } from "../sandbox/manager";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
-import { ExtensionConfigService } from "../services/extension-config.service";
+import { ExtensionConfigService } from "./../services/extension-config.service";
 import { ExtensionManifestService } from "../services/extension-manifest.service";
 import { GitHubService } from "../services/github.service";
 import { PackageCatalogService } from "../services/package-catalog.service";
@@ -14,6 +15,7 @@ import { RepoService } from "../services/repo.service";
 import { SessionService } from "../services/session.service";
 import {
   createTestDatabase,
+  createTestGitHubAppService,
   createTestSandboxManager,
   createTestSecretsService,
   createTestSessionHubManager,
@@ -29,14 +31,18 @@ describe("Sessions Routes", () => {
     db = result.db;
     sqlite = result.sqlite;
     const environmentService = new EnvironmentService(db);
+    const secretsService = createTestSecretsService(db);
+    const githubAppService = createTestGitHubAppService(db, secretsService);
+    const githubService = new GitHubService({ githubAppService });
     services = {
       db,
       sessionService: new SessionService(db),
       eventJournal: new EventJournal(db),
       repoService: new RepoService(db),
-      githubService: new GitHubService(),
+      githubService,
+      githubAppService,
       sandboxManager: createTestSandboxManager(),
-      secretsService: createTestSecretsService(db),
+      secretsService,
       environmentService,
       extensionConfigService: new ExtensionConfigService(db),
       sandboxLogStore: new SandboxLogStore(),
@@ -247,9 +253,7 @@ describe("Sessions Routes", () => {
         isDefault: true,
       });
 
-      let capturedEnvConfig:
-        | import("../sandbox/manager").EnvironmentSandboxConfig
-        | undefined;
+      let capturedEnvConfig: EnvironmentSandboxConfig | undefined;
       const originalCreateForSession =
         services.sandboxManager.createForSession.bind(services.sandboxManager);
       services.sandboxManager.createForSession = async (

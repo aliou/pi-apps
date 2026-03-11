@@ -1,9 +1,10 @@
 import type { WSContext } from "hono/ws";
 import { createLogger } from "../lib/logger";
-import type {
-  EnvironmentSandboxConfig,
-  SandboxManager,
-  SandboxProviderType,
+import {
+  type EnvironmentSandboxConfig,
+  resolveEnvConfig,
+  type SandboxManager,
+  type SandboxProviderType,
 } from "../sandbox/manager";
 import type { SandboxChannel } from "../sandbox/types";
 import type { EnvironmentService } from "../services/environment.service";
@@ -33,6 +34,12 @@ export interface HubClient {
   connectedAt: Date;
 }
 
+export interface SessionIdleState {
+  connectionCount: number;
+  lastDisconnectedAt: number | null;
+  hasRunningTools: boolean;
+}
+
 export interface SessionHubDeps {
   sandboxManager: SandboxManager;
   sessionService: SessionService;
@@ -54,6 +61,8 @@ export class SessionHub {
   private controllerClientId: string | null = null;
   private activatorClientId: string | null = null;
   private lastWriterClientId: string | null = null;
+  private lastDisconnectedAt: number | null = null;
+  private runningToolCallIds = new Set<string>();
   private unsubMessage: (() => void) | null = null;
   private unsubClose: (() => void) | null = null;
   private closed = false;
@@ -79,6 +88,7 @@ export class SessionHub {
     }
 
     // Store client
+    this.lastDisconnectedAt = null;
     this.clients.set(client.id, client);
     logger.info(
       {
@@ -127,6 +137,7 @@ export class SessionHub {
 
     // Start detach timer if no clients remain
     if (this.clients.size === 0) {
+      this.lastDisconnectedAt = Date.now();
       this.startDetachTimer();
     }
   }
@@ -136,6 +147,14 @@ export class SessionHub {
    */
   getConnectionCount(): number {
     return this.clients.size;
+  }
+
+  getIdleState(): SessionIdleState {
+    return {
+      connectionCount: this.clients.size,
+      lastDisconnectedAt: this.lastDisconnectedAt,
+      hasRunningTools: this.runningToolCallIds.size > 0,
+    };
   }
 
   /**
@@ -270,6 +289,7 @@ export class SessionHub {
     this.channel = null;
 
     this.clients.clear();
+    this.runningToolCallIds.clear();
 
     logger.info({ sessionId: this.sessionId }, "hub closed");
   }
@@ -307,7 +327,6 @@ export class SessionHub {
     if (session.environmentId) {
       const env = this.deps.environmentService.get(session.environmentId);
       if (env) {
-        const { resolveEnvConfig } = await import("../sandbox/manager");
         envConfig = await resolveEnvConfig(env, this.deps.secretsService);
       }
     }
@@ -405,6 +424,7 @@ export class SessionHub {
         "sandbox channel closed",
       );
       this.channel = null;
+      this.runningToolCallIds.clear();
       this.broadcast({
         type: "sandbox_status",
         status: "stopped",
@@ -417,6 +437,13 @@ export class SessionHub {
    * Handle an event from the sandbox.
    */
   private handleSandboxEvent(event: PiEvent): void {
+    if (event.type === "tool_execution_start") {
+      this.runningToolCallIds.add(event.toolCallId);
+    }
+    if (event.type === "tool_execution_end") {
+      this.runningToolCallIds.delete(event.toolCallId);
+    }
+
     // Journal the event
     this.deps.eventJournal.append(this.sessionId, event.type, event);
 
@@ -679,6 +706,17 @@ export class SessionHubManager {
   getConnectionCount(sessionId: string): number {
     const hub = this.hubs.get(sessionId);
     return hub?.getConnectionCount() ?? 0;
+  }
+
+  getIdleState(sessionId: string): SessionIdleState {
+    const hub = this.hubs.get(sessionId);
+    return (
+      hub?.getIdleState() ?? {
+        connectionCount: 0,
+        lastDisconnectedAt: null,
+        hasRunningTools: false,
+      }
+    );
   }
 
   /**

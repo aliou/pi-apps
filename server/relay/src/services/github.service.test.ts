@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubService } from "./github.service";
+import type { GitHubAppService } from "./github-app.service";
 
 describe("GitHubService", () => {
   let service: GitHubService;
@@ -79,6 +80,94 @@ describe("GitHubService", () => {
 
       expect(result.valid).toBe(true);
       expect(result.scopes).toEqual([]);
+    });
+  });
+
+  describe("auth fallback", () => {
+    it("prefers GitHub App per repo when installation token resolves", async () => {
+      const appService = {
+        getStatus: vi.fn().mockResolvedValue({
+          configured: true,
+          hasPrivateKey: true,
+          hasWebhookSecret: false,
+          installationIds: [],
+        }),
+        getRepoAccessToken: vi.fn().mockResolvedValue({
+          installationId: 42,
+          token: "ghs_app_token",
+          expiresAt: new Date().toISOString(),
+        }),
+        getActorIdentity: vi.fn().mockResolvedValue({
+          name: "pi-relay[bot]",
+          email: "pi-relay[bot]@users.noreply.github.com",
+        }),
+      } satisfies Partial<GitHubAppService>;
+
+      const github = new GitHubService({
+        githubAppService: appService as unknown as GitHubAppService,
+        getPat: () => "ghp_fallback",
+      });
+
+      const context = await github.getAuthContext("owner/repo");
+      expect(context.mode).toBe("github_app");
+      await expect(context.getRepoAccessToken("owner/repo")).resolves.toBe(
+        "ghs_app_token",
+      );
+    });
+
+    it("falls back to PAT when GitHub App token lookup fails", async () => {
+      const appService = {
+        getStatus: vi.fn().mockResolvedValue({
+          configured: true,
+          hasPrivateKey: true,
+          hasWebhookSecret: false,
+          installationIds: [],
+        }),
+        getRepoAccessToken: vi
+          .fn()
+          .mockRejectedValue(new Error("installation missing")),
+      } satisfies Partial<GitHubAppService>;
+
+      const github = new GitHubService({
+        githubAppService: appService as unknown as GitHubAppService,
+        getPat: () => "ghp_fallback",
+      });
+      vi.spyOn(github, "validateToken").mockResolvedValue({
+        valid: true,
+        user: "fallback-user",
+      });
+
+      const context = await github.getAuthContext("owner/repo");
+      expect(context.mode).toBe("pat");
+      await expect(context.getRepoAccessToken("owner/repo")).resolves.toBe(
+        "ghp_fallback",
+      );
+      await expect(context.getActorIdentity()).resolves.toEqual({
+        name: "fallback-user",
+        email: "fallback-user@users.noreply.github.com",
+      });
+    });
+
+    it("returns actionable error when app fails and PAT fallback is absent", async () => {
+      const appService = {
+        getStatus: vi.fn().mockResolvedValue({
+          configured: true,
+          hasPrivateKey: true,
+          hasWebhookSecret: false,
+          installationIds: [],
+        }),
+        getRepoAccessToken: vi
+          .fn()
+          .mockRejectedValue(new Error("installation missing")),
+      } satisfies Partial<GitHubAppService>;
+
+      const github = new GitHubService({
+        githubAppService: appService as unknown as GitHubAppService,
+      });
+
+      await expect(github.getAuthContext("owner/repo")).rejects.toThrow(
+        /PAT fallback is not configured/,
+      );
     });
   });
 
