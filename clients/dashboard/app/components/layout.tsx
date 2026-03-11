@@ -332,7 +332,7 @@ export default function AppLayout() {
           <span className="text-sm font-medium text-fg">{currentLabel}</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="dashboard-scroll-area flex-1 overflow-y-auto">
           <div className="px-6 py-8 md:px-10 md:py-10">
             <Outlet />
           </div>

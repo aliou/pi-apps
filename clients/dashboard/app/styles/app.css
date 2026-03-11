@@ -74,24 +74,6 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 3px;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-muted);
-  }
-
   /* Streamdown code blocks: class-based dark mode overrides */
   .dark .shiki,
   .dark .shiki span {
@@ -115,6 +97,10 @@
   .conversation-no-scrollbar *::-webkit-scrollbar {
     display: none;
   }
+}
+
+.dashboard-scroll-area {
+  scrollbar-gutter: stable;
 }
 
 /* Hide empty trailing line in code blocks (outside @layer so it wins over utility classes) */
