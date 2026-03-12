@@ -84,13 +84,19 @@ export function modelsRoutes(): Hono<AppEnv> {
     const environmentService = c.get("environmentService");
     const sessionDataDir = c.get("sessionDataDir");
 
+    const allEnvs = environmentService.list();
     const packages = extensionConfigService.getResolvedPackages(
       "_introspect",
       "code",
     );
     const secretsList = await secretsService.list();
     const secrets = await secretsService.getAllAsEnv();
-    const fingerprint = computeFingerprint(packages, secrets, secretsList);
+    const fingerprint = computeFingerprint(
+      packages,
+      secrets,
+      secretsList,
+      allEnvs,
+    );
 
     logger.debug(
       {
@@ -124,7 +130,7 @@ export function modelsRoutes(): Hono<AppEnv> {
 
     const introspectionSetting = getIntrospectionSetting(db);
     const candidates = buildIntrospectionCandidates(
-      environmentService.list(),
+      allEnvs,
       introspectionSetting.environmentId,
       logger,
     );
@@ -354,6 +360,13 @@ function computeFingerprint(
   packages: string[],
   secrets: Record<string, string>,
   secretsList?: SecretInfo[],
+  environments?: Array<{
+    id: string;
+    sandboxType: string;
+    isDefault: boolean;
+    config: string;
+    updatedAt: string;
+  }>,
 ): string {
   const hash = createHash("sha256");
 
@@ -376,6 +389,15 @@ function computeFingerprint(
       if (s.domains && s.domains.length > 0) {
         hash.update(`domains:${s.envVar}:${s.domains.sort().join(",")}\n`);
       }
+    }
+  }
+
+  if (environments) {
+    const sorted = [...environments].sort((a, b) => a.id.localeCompare(b.id));
+    for (const env of sorted) {
+      hash.update(
+        `env:${env.id}:${env.sandboxType}:${env.isDefault ? "default" : "non-default"}:${env.config}:${env.updatedAt}\n`,
+      );
     }
   }
 

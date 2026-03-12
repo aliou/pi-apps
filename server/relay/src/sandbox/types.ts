@@ -166,6 +166,9 @@ export interface CreateSandboxOptions {
   repoUrl?: string;
   repoBranch?: string;
 
+  /** Existing host workspace directory to use directly instead of cloning. */
+  workspacePath?: string;
+
   /** GitHub PAT for git push and private repo clone */
   githubToken?: string;
 

@@ -105,10 +105,21 @@ export function settingsRoutes(): Hono<AppEnv> {
       // Gondolin not available
     }
 
+    // Check local availability
+    let localAvailable = false;
+    try {
+      localAvailable = await sandboxManager.isProviderAvailable({
+        sandboxType: "local",
+      });
+    } catch {
+      // Local pi not available
+    }
+
     return c.json({
       data: {
         docker: { available: dockerAvailable },
         gondolin: { available: gondolinAvailable },
+        local: { available: localAvailable },
       },
       error: null,
     });

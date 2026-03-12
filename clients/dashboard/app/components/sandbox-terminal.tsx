@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RELAY_URL, type SandboxStatusResponse } from "../lib/api";
+import { getRelayWsUrl, type SandboxStatusResponse } from "../lib/api";
 import { cn } from "../lib/utils";
 
 interface SandboxTerminalProps {
@@ -63,7 +63,15 @@ function TerminalInstance({ sessionId }: { sessionId: string }) {
 
       const cols = terminal.cols ?? 80;
       const rows = terminal.rows ?? 24;
-      const wsUrl = `${RELAY_URL.replace("http", "ws")}/ws/sessions/${sessionId}/terminal?cols=${cols}&rows=${rows}`;
+      const relayWsUrl = getRelayWsUrl();
+      if (!relayWsUrl) {
+        if (!cancelled) {
+          setError("Relay WebSocket URL is not configured");
+          setStatus("error");
+        }
+        return;
+      }
+      const wsUrl = `${relayWsUrl}/ws/sessions/${sessionId}/terminal?cols=${cols}&rows=${rows}`;
 
       ws = new WebSocket(wsUrl);
 
@@ -164,7 +172,7 @@ function TerminalInstance({ sessionId }: { sessionId: string }) {
             : status === "connecting"
               ? "Connecting..."
               : status === "error"
-                ? error ?? "Error"
+                ? (error ?? "Error")
                 : "Exited"}
         </span>
       </div>

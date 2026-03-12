@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, createApp } from "../app";
@@ -7,7 +8,7 @@ import { SandboxLogStore } from "../sandbox/log-store";
 import type { EnvironmentSandboxConfig } from "../sandbox/manager";
 import { EnvironmentService } from "../services/environment.service";
 import { EventJournal } from "../services/event-journal";
-import { ExtensionConfigService } from "./../services/extension-config.service";
+import { ExtensionConfigService } from "../services/extension-config.service";
 import { ExtensionManifestService } from "../services/extension-manifest.service";
 import { GitHubService } from "../services/github.service";
 import { PackageCatalogService } from "../services/package-catalog.service";
@@ -25,8 +26,10 @@ describe("Sessions Routes", () => {
   let db: AppDatabase;
   let sqlite: ReturnType<typeof createTestDatabase>["sqlite"];
   let services: AppServices;
+  let tempDirs: string[];
 
   beforeEach(() => {
+    tempDirs = [];
     const result = createTestDatabase();
     db = result.db;
     sqlite = result.sqlite;
@@ -63,6 +66,9 @@ describe("Sessions Routes", () => {
   });
 
   afterEach(() => {
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
     sqlite.close();
   });
 
@@ -181,6 +187,82 @@ describe("Sessions Routes", () => {
       expect(json.data.mode).toBe("code");
       expect(json.data.repoId).toBe("owner/repo");
       expect(json.data.environmentId).toBeDefined();
+    });
+
+    it("creates local code session using repoId as a filesystem path", async () => {
+      const workspace = mkdtempSync(join(tmpdir(), "pi-relay-local-"));
+      tempDirs.push(workspace);
+      const localEnv = services.environmentService.create({
+        name: "Local",
+        sandboxType: "local",
+        config: {},
+      });
+
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "code",
+          repoId: workspace,
+          environmentId: localEnv.id,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.mode).toBe("code");
+      expect(json.data.repoId).toBeNull();
+      expect(json.data.repoPath).toBe(workspace);
+      expect(json.data.environmentId).toBe(localEnv.id);
+    });
+
+    it("allows local code session without repoId and uses temp workspace", async () => {
+      const localEnv = services.environmentService.create({
+        name: "Local",
+        sandboxType: "local",
+        config: {},
+      });
+
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "code",
+          environmentId: localEnv.id,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.data.mode).toBe("code");
+      expect(json.data.repoId).toBeNull();
+      expect(json.data.repoPath).toBeNull();
+      expect(json.data.environmentId).toBe(localEnv.id);
+    });
+
+    it("rejects nonexistent local workspace paths", async () => {
+      const localEnv = services.environmentService.create({
+        name: "Local",
+        sandboxType: "local",
+        config: {},
+      });
+
+      const app = createApp({ services });
+      const res = await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "code",
+          repoId: "/definitely/missing/path",
+          environmentId: localEnv.id,
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toContain("Local workspace does not exist");
     });
 
     it("rejects session with nonexistent environmentId", async () => {

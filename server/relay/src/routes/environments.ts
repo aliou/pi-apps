@@ -47,6 +47,7 @@ function toSandboxConfig(
     workerUrl: config.workerUrl,
     apiToken,
     imagePath: config.imagePath,
+    piBinaryPath: config.piBinaryPath,
     env: config.envVars
       ? Object.fromEntries(
           config.envVars.map((entry) => [entry.key, entry.value]),
@@ -129,6 +130,13 @@ function validateConfig(
       typeof config.imagePath !== "string"
     ) {
       return "config.imagePath must be a string when provided";
+    }
+  } else if (sandboxType === "local") {
+    if (
+      config.piBinaryPath !== undefined &&
+      typeof config.piBinaryPath !== "string"
+    ) {
+      return "config.piBinaryPath must be a string when provided";
     }
   }
 
@@ -311,7 +319,12 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const validTypes: SandboxType[] = ["docker", "cloudflare", "gondolin"];
+    const validTypes: SandboxType[] = [
+      "docker",
+      "cloudflare",
+      "gondolin",
+      "local",
+    ];
     if (!body.sandboxType || !validTypes.includes(body.sandboxType)) {
       return c.json(
         {
@@ -388,6 +401,7 @@ export function environmentsRoutes(): Hono<AppEnv> {
       "docker",
       "cloudflare",
       "gondolin",
+      "local",
     ];
     if (!body.sandboxType || !validSandboxTypes.includes(body.sandboxType)) {
       return c.json(

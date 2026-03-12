@@ -9,6 +9,7 @@ import type { SandboxResourceTier } from "../sandbox/provider-types";
  * - Docker: image (required), resourceTier (optional)
  * - Cloudflare: workerUrl (required), resourceTier (optional)
  * - Gondolin: imagePath (optional), resourceTier (optional)
+ * - Local: piBinaryPath (optional), resourceTier unused
  */
 /**
  * Per-environment config stored as JSON in the environments table.
@@ -16,6 +17,7 @@ import type { SandboxResourceTier } from "../sandbox/provider-types";
  * - Docker: image (required), resourceTier (optional)
  * - Cloudflare: workerUrl (required), secretId (required, references secrets table), resourceTier (optional)
  * - Gondolin: imagePath (optional), resourceTier (optional)
+ * - Local: piBinaryPath (optional)
  */
 export interface EnvironmentConfig {
   /** Docker image name (required for docker type) */
@@ -26,6 +28,8 @@ export interface EnvironmentConfig {
   secretId?: string;
   /** Optional custom guest assets directory for Gondolin environments. */
   imagePath?: string;
+  /** Optional explicit path to the pi executable for local environments. */
+  piBinaryPath?: string;
   resourceTier?: SandboxResourceTier;
   /** Idle timeout in seconds before the reaper idles the session. Default: 3600 (1 hour). */
   idleTimeoutSeconds?: number;
@@ -36,7 +40,7 @@ export interface EnvironmentConfig {
   envVars?: Array<{ key: string; value: string }>;
 }
 
-export type SandboxType = "docker" | "cloudflare" | "gondolin";
+export type SandboxType = "docker" | "cloudflare" | "gondolin" | "local";
 
 export interface CreateEnvironmentParams {
   name: string;

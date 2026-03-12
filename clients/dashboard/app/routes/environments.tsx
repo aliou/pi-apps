@@ -56,7 +56,7 @@ function EnvironmentDialog({
   const isEdit = !!environment;
   const [name, setName] = useState(environment?.name ?? "");
   const [sandboxType, setSandboxType] = useState<
-    "docker" | "cloudflare" | "gondolin"
+    "docker" | "cloudflare" | "gondolin" | "local"
   >(environment?.sandboxType ?? "docker");
   const [image, setImage] = useState(
     environment?.config.image ?? images[0]?.image ?? "",
@@ -70,6 +70,9 @@ function EnvironmentDialog({
   );
   const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>(
     environment?.config.envVars ?? [],
+  );
+  const [piBinaryPath, setPiBinaryPath] = useState(
+    environment?.config.piBinaryPath ?? "",
   );
   const [isDefault, setIsDefault] = useState(environment?.isDefault ?? false);
   const [idleTimeout, setIdleTimeout] = useState(
@@ -150,7 +153,8 @@ function EnvironmentDialog({
     const isConfigComplete =
       (sandboxType === "docker" && !!image) ||
       (sandboxType === "cloudflare" && !!workerUrl.trim() && !!secretId) ||
-      sandboxType === "gondolin";
+      sandboxType === "gondolin" ||
+      sandboxType === "local";
 
     if (!isConfigComplete) return;
 
@@ -164,7 +168,13 @@ function EnvironmentDialog({
           ? { image }
           : sandboxType === "cloudflare"
             ? { workerUrl, secretId }
-            : { ...(imagePath.trim() ? { imagePath: imagePath.trim() } : {}) };
+            : sandboxType === "gondolin"
+              ? { ...(imagePath.trim() ? { imagePath: imagePath.trim() } : {}) }
+              : {
+                  ...(piBinaryPath.trim()
+                    ? { piBinaryPath: piBinaryPath.trim() }
+                    : {}),
+                };
 
       const res = await api.post<ProbeResult>("/environments/probe", {
         sandboxType,
@@ -188,7 +198,7 @@ function EnvironmentDialog({
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [sandboxType, image, workerUrl, secretId, imagePath]);
+  }, [sandboxType, image, workerUrl, secretId, imagePath, piBinaryPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,11 +220,18 @@ function EnvironmentDialog({
           ? { image, idleTimeoutSeconds: idleTimeout, ...sharedConfig }
           : sandboxType === "cloudflare"
             ? { workerUrl, secretId, ...sharedConfig }
-            : {
-                idleTimeoutSeconds: idleTimeout,
-                ...(imagePath.trim() ? { imagePath: imagePath.trim() } : {}),
-                ...sharedConfig,
-              };
+            : sandboxType === "gondolin"
+              ? {
+                  idleTimeoutSeconds: idleTimeout,
+                  ...(imagePath.trim() ? { imagePath: imagePath.trim() } : {}),
+                  ...sharedConfig,
+                }
+              : {
+                  ...(piBinaryPath.trim()
+                    ? { piBinaryPath: piBinaryPath.trim() }
+                    : {}),
+                  ...sharedConfig,
+                };
 
       if (isEdit) {
         const update: UpdateEnvironmentRequest = {
@@ -331,7 +348,8 @@ function EnvironmentDialog({
                           e.target.value as
                             | "docker"
                             | "cloudflare"
-                            | "gondolin",
+                            | "gondolin"
+                            | "local",
                         )
                       }
                       className="size-4 border-border accent-accent"
@@ -348,7 +366,8 @@ function EnvironmentDialog({
                           e.target.value as
                             | "docker"
                             | "cloudflare"
-                            | "gondolin",
+                            | "gondolin"
+                            | "local",
                         )
                       }
                       className="size-4 border-border accent-accent"
@@ -365,12 +384,31 @@ function EnvironmentDialog({
                           e.target.value as
                             | "docker"
                             | "cloudflare"
-                            | "gondolin",
+                            | "gondolin"
+                            | "local",
                         )
                       }
                       className="size-4 border-border accent-accent"
                     />
                     <span className="text-sm text-fg">Gondolin</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      value="local"
+                      checked={sandboxType === "local"}
+                      onChange={(e) =>
+                        setSandboxType(
+                          e.target.value as
+                            | "docker"
+                            | "cloudflare"
+                            | "gondolin"
+                            | "local",
+                        )
+                      }
+                      className="size-4 border-border accent-accent"
+                    />
+                    <span className="text-sm text-fg">Local</span>
                   </label>
                 </div>
               </div>
@@ -680,6 +718,49 @@ function EnvironmentDialog({
                 </div>
               )}
 
+              {/* Local options */}
+              {sandboxType === "local" && (
+                <div className="space-y-4">
+                  <div>
+                    <label
+                      htmlFor="env-local-pi-binary-path"
+                      className="mb-1.5 block text-xs font-medium text-muted"
+                    >
+                      Pi Binary Path (optional)
+                    </label>
+                    <input
+                      id="env-local-pi-binary-path"
+                      type="text"
+                      value={piBinaryPath}
+                      onChange={(e) => setPiBinaryPath(e.target.value)}
+                      placeholder="/usr/local/bin/pi or /path/to/custom/pi"
+                      className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                    />
+                    <p className="mt-1 text-xs text-muted">
+                      Leave empty to use the pi binary in PATH.
+                    </p>
+                  </div>
+
+                  {probeStatus === "probing" && (
+                    <p className="text-xs text-muted">
+                      Checking availability...
+                    </p>
+                  )}
+                  {probeStatus === "available" && (
+                    <p className="flex items-center gap-1 text-xs text-green-500">
+                      <CheckCircleIcon className="size-3" weight="fill" />
+                      Available
+                    </p>
+                  )}
+                  {probeStatus === "unavailable" && (
+                    <p className="flex items-center gap-1 text-xs text-red-500">
+                      <WarningCircleIcon className="size-3" weight="fill" />
+                      {probeError ?? "Not available"}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-muted">
@@ -854,6 +935,7 @@ function EnvironmentRow({
 
   const isCloudflare = environment.sandboxType === "cloudflare";
   const isGondolin = environment.sandboxType === "gondolin";
+  const isLocal = environment.sandboxType === "local";
 
   const formatIdleTimeout = (seconds: number) => {
     const minutes = seconds / 60;
@@ -872,7 +954,9 @@ function EnvironmentRow({
             ? "bg-orange-500/10 text-orange-500"
             : isGondolin
               ? "bg-violet-500/10 text-violet-500"
-              : "bg-accent/10 text-accent"
+              : isLocal
+                ? "bg-blue-500/10 text-blue-500"
+                : "bg-accent/10 text-accent"
         }`}
       >
         {isCloudflare ? (
@@ -903,11 +987,13 @@ function EnvironmentRow({
                     ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
                     : ""
                 }`
-              : `${imageMeta?.name ?? environment.config.image}${
-                  environment.config.idleTimeoutSeconds
-                    ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
-                    : ""
-                }`}
+              : isLocal
+                ? `Local${environment.config.piBinaryPath ? ` (${environment.config.piBinaryPath})` : ""}`
+                : `${imageMeta?.name ?? environment.config.image}${
+                    environment.config.idleTimeoutSeconds
+                      ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
+                      : ""
+                  }`}
         </p>
       </div>
 

@@ -1,5 +1,6 @@
-import { rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import process from "node:process";
 import { createLogger } from "../lib/logger";
 import type {
   EnvironmentSandboxConfig,
@@ -98,6 +99,10 @@ export class ModelsIntrospectionService {
         "code",
       );
       log.debug({ sessionId, packages }, "wrote extension settings");
+
+      if (this.envConfig.sandboxType === "local") {
+        this.copyHostAuth(sessionId);
+      }
 
       // Create ephemeral sandbox with real provider (manager resolves secrets)
       log.debug({ sessionId }, "creating sandbox");
@@ -217,6 +222,33 @@ export class ModelsIntrospectionService {
       } catch {
         // Best-effort cleanup
       }
+    }
+  }
+
+  private copyHostAuth(sessionId: string): void {
+    const hostAgentDir =
+      process.env.PI_CODING_AGENT_DIR ||
+      join(
+        process.env.HOME || process.env.USERPROFILE || "",
+        ".pi",
+        "agent",
+      );
+    const hostAuthFile = join(hostAgentDir, "auth.json");
+    if (!existsSync(hostAuthFile)) {
+      log.debug({ sessionId, hostAuthFile }, "no host auth.json found, skipping");
+      return;
+    }
+
+    const sandboxAgentDir = join(this.sessionDataDir, sessionId, "agent");
+    mkdirSync(sandboxAgentDir, { recursive: true });
+    const destAuthFile = join(sandboxAgentDir, "auth.json");
+
+    try {
+      copyFileSync(hostAuthFile, destAuthFile);
+      log.debug({ sessionId }, "copied host auth.json to introspection sandbox");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn({ sessionId, err: message }, "failed to copy host auth.json");
     }
   }
 

@@ -125,6 +125,9 @@ async function main() {
       gondolin: {
         sessionDataDir,
       },
+      local: {
+        sessionDataDir,
+      },
       logStore: sandboxLogStore,
     },
     secretsService,

@@ -11,7 +11,7 @@ export const environments = sqliteTable("environments", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   sandboxType: text("sandbox_type", {
-    enum: ["docker", "cloudflare", "gondolin"],
+    enum: ["docker", "cloudflare", "gondolin", "local"],
   }).notNull(),
   config: text("config").notNull(), // JSON string: { image, resources? }
   isDefault: integer("is_default", { mode: "boolean" })
@@ -31,7 +31,7 @@ export const sessions = sqliteTable("sessions", {
     .notNull()
     .default("creating"),
   sandboxProvider: text("sandbox_provider", {
-    enum: ["mock", "docker", "cloudflare", "gondolin"],
+    enum: ["mock", "docker", "cloudflare", "gondolin", "local"],
   }),
   sandboxProviderId: text("sandbox_provider_id"),
   environmentId: text("environment_id").references(() => environments.id),

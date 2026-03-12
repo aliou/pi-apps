@@ -80,7 +80,11 @@ export function createTerminalHandler(
             : undefined;
 
           const handle = await sandboxManager.getHandleByType(
-            session.sandboxProvider as "docker" | "gondolin" | "cloudflare",
+            session.sandboxProvider as
+              | "docker"
+              | "gondolin"
+              | "cloudflare"
+              | "local",
             session.sandboxProviderId,
             envConfig,
           );

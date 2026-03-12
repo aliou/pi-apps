@@ -9,6 +9,19 @@ export type APIResponse<T> =
 export const RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "";
 const BASE_URL = `${RELAY_URL}/api`;
 
+export function getRelayWsUrl(): string {
+  const relayUrl =
+    RELAY_URL || (typeof window !== "undefined" ? window.location.origin : "");
+
+  if (!relayUrl) {
+    return "";
+  }
+
+  const url = new URL(relayUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString().replace(/\/$/, "");
+}
+
 async function request<T>(
   path: string,
   options?: RequestInit,
@@ -68,22 +81,54 @@ export const api = {
 
 const CLIENT_ID_KEY = "pi-dashboard-client-id";
 
+export function createId(): string {
+  const cryptoApi = globalThis.crypto;
+
+  if (cryptoApi?.randomUUID) {
+    return cryptoApi.randomUUID();
+  }
+
+  if (cryptoApi?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+    bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+    return [
+      hex.slice(0, 4).join(""),
+      hex.slice(4, 6).join(""),
+      hex.slice(6, 8).join(""),
+      hex.slice(8, 10).join(""),
+      hex.slice(10, 16).join(""),
+    ].join("-");
+  }
+
+  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 /**
  * Get or generate a persistent client ID for this browser.
  * Stored in localStorage and reused across sessions.
  */
 export function getClientId(): string {
+  const fallbackId = createId();
+
   if (typeof window === "undefined") {
-    // SSR fallback - generate temporary ID
-    return crypto.randomUUID();
+    return fallbackId;
   }
 
-  let clientId = localStorage.getItem(CLIENT_ID_KEY);
-  if (!clientId) {
-    clientId = crypto.randomUUID();
-    localStorage.setItem(CLIENT_ID_KEY, clientId);
+  try {
+    const existing = window.localStorage.getItem(CLIENT_ID_KEY);
+    if (existing) {
+      return existing;
+    }
+
+    window.localStorage.setItem(CLIENT_ID_KEY, fallbackId);
+  } catch {
+    return fallbackId;
   }
-  return clientId;
+
+  return fallbackId;
 }
 
 /**
@@ -259,7 +304,7 @@ export interface SessionHistoryEntry {
 export interface Environment {
   id: string;
   name: string;
-  sandboxType: "docker" | "cloudflare" | "gondolin";
+  sandboxType: "docker" | "cloudflare" | "gondolin" | "local";
   config: EnvironmentConfig;
   isDefault: boolean;
   createdAt: string;
@@ -271,6 +316,7 @@ export interface EnvironmentConfig {
   workerUrl?: string;
   secretId?: string;
   imagePath?: string;
+  piBinaryPath?: string;
   idleTimeoutSeconds?: number;
   envVars?: Array<{ key: string; value: string }>;
   resources?: {
@@ -288,7 +334,7 @@ export interface AvailableImage {
 
 export interface CreateEnvironmentRequest {
   name: string;
-  sandboxType: "docker" | "cloudflare" | "gondolin";
+  sandboxType: "docker" | "cloudflare" | "gondolin" | "local";
   config: EnvironmentConfig;
   isDefault?: boolean;
 }
@@ -302,6 +348,7 @@ export interface UpdateEnvironmentRequest {
 export interface SandboxProviderStatus {
   docker: { available: boolean };
   gondolin: { available: boolean };
+  local: { available: boolean };
 }
 
 export interface ProbeResult {
