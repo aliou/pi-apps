@@ -266,29 +266,35 @@ export class GitHubService {
   }
 
   async listBranches(token: string, fullName: string): Promise<string[]> {
-    const branches: string[] = [];
-    let url: string | null = `${API_BASE}/repos/${fullName}/branches?per_page=${PER_PAGE}`;
-
-    while (url) {
-      const response = await fetch(url, {
+    const [repoResponse, branchesResponse] = await Promise.all([
+      fetch(`${API_BASE}/repos/${fullName}`, {
         headers: this.headers(token),
-      });
+      }),
+      fetch(`${API_BASE}/repos/${fullName}/branches?per_page=10`, {
+        headers: this.headers(token),
+      }),
+    ]);
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`GitHub API error: ${response.status} ${text}`);
-      }
-
-      const page = (await response.json()) as Array<Record<string, unknown>>;
-      for (const branch of page) {
-        const name = branch.name ? String(branch.name) : "";
-        if (name) branches.push(name);
-      }
-
-      url = this.getNextLink(response.headers.get("link"));
+    if (!repoResponse.ok) {
+      const text = await repoResponse.text();
+      throw new Error(`GitHub API error: ${repoResponse.status} ${text}`);
+    }
+    if (!branchesResponse.ok) {
+      const text = await branchesResponse.text();
+      throw new Error(`GitHub API error: ${branchesResponse.status} ${text}`);
     }
 
-    return branches;
+    const repo = (await repoResponse.json()) as Record<string, unknown>;
+    const defaultBranch = repo.default_branch
+      ? String(repo.default_branch)
+      : "";
+
+    const page = (await branchesResponse.json()) as Array<Record<string, unknown>>;
+    const fetchedBranches = page
+      .map((branch) => (branch.name ? String(branch.name) : ""))
+      .filter(Boolean);
+
+    return Array.from(new Set([defaultBranch, ...fetchedBranches].filter(Boolean)));
   }
 
   private async resolveRepoAuth(
