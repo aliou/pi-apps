@@ -135,14 +135,14 @@ export default function AppLayout() {
         data-mobile-open={mobileOpen || undefined}
         className={cn(
           "flex shrink-0 flex-col overflow-visible bg-bg-deep transition-all duration-200 ease-in-out",
-          "fixed inset-y-0 left-0 z-40 w-64 -translate-x-full shadow-xl",
+          "fixed inset-y-0 left-0 z-40 w-[85vw] max-w-64 -translate-x-full shadow-xl",
           "data-[mobile-open]:translate-x-0",
           "md:static md:z-auto md:translate-x-0 md:shadow-none md:border-r md:border-border",
           collapsed ? "md:w-14" : "md:w-64",
         )}
       >
         <div className={cn("shrink-0 border-b border-border", collapsed && "md:hidden")}>
-          <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center justify-between px-4 py-3 md:px-5 md:py-4">
             <NavLink
               to="/"
               onClick={() => setMobileOpen(false)}
@@ -318,7 +318,7 @@ export default function AppLayout() {
           className={cn(
             "shrink-0 border-t border-border",
             collapsed ? "md:flex md:justify-center md:px-2 md:py-4" : "",
-            "flex items-center justify-between px-5 py-4",
+            "flex items-center justify-between px-4 py-3 md:px-5 md:py-4",
           )}
         >
           <div className={cn("min-w-0", collapsed && "md:hidden")}>
@@ -339,7 +339,7 @@ export default function AppLayout() {
       </aside>
 
       <main className="relative z-0 flex flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3 md:hidden">
+        <div className="flex shrink-0 items-center gap-3 border-b border-border px-3 py-2.5 md:hidden">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
@@ -352,7 +352,7 @@ export default function AppLayout() {
         </div>
 
         <div className="dashboard-scroll-area flex-1 overflow-y-auto">
-          <div className="px-6 py-8 md:px-10 md:py-10">
+          <div className="px-4 py-5 md:px-10 md:py-10">
             <Outlet />
           </div>
         </div>

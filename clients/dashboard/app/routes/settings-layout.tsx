@@ -28,10 +28,10 @@ export default function SettingsLayout() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-8">
         <aside className="lg:sticky lg:top-8 lg:self-start">
-          <div className="rounded-xl border border-border bg-surface/20 p-3">
-            <nav className="space-y-1">
+          <div className="rounded-xl border border-border bg-surface/20 p-2.5 lg:p-3">
+            <nav className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:block lg:space-y-1">
               {SETTINGS_ITEMS.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -40,7 +40,7 @@ export default function SettingsLayout() {
                     to={item.to}
                     className={({ isActive }) =>
                       cn(
-                        "flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                        "flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-sm whitespace-nowrap transition-colors lg:shrink",
                         isActive
                           ? "bg-surface text-fg"
                           : "text-muted hover:bg-surface/60 hover:text-fg",
