@@ -2,6 +2,7 @@ import {
   ArrowUpIcon,
   ChatCircleIcon,
   CodeIcon,
+  CloudIcon,
   GithubLogoIcon,
   GitBranchIcon,
   PaperclipIcon,
@@ -214,6 +215,11 @@ export default function DashboardPage() {
     [repos],
   );
 
+  const environmentItems: SearchableSelectItem[] = useMemo(
+    () => environments.map((env) => ({ label: env.name, value: env.id })),
+    [environments],
+  );
+
   const selectedRepo = useMemo(
     () => repos.find((repo) => String(repo.id) === selectedRepoId) ?? null,
     [repos, selectedRepoId],
@@ -416,11 +422,11 @@ export default function DashboardPage() {
           </div>
 
           {mode === "code" ? (
-            <div className="mt-2 flex flex-wrap items-center justify-end gap-2 px-1 text-[11px]">
-              {isLoading ? (
-                <span className="text-muted">Loading repositories...</span>
-              ) : (
-                <>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px]">
+              <div className="flex min-w-0 items-center gap-2">
+                {isLoading ? (
+                  <span className="text-muted">Loading repositories...</span>
+                ) : (
                   <SearchableSelect
                     items={repoItems}
                     value={selectedRepoId}
@@ -429,6 +435,8 @@ export default function DashboardPage() {
                     icon={<GithubLogoIcon className="size-3.5" />}
                     className="h-7 min-w-[220px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
                   />
+                )}
+                {!isLoading && selectedRepoId ? (
                   <SearchableSelect
                     items={branchItems}
                     value={selectedBranch}
@@ -437,8 +445,25 @@ export default function DashboardPage() {
                     icon={<GitBranchIcon className="size-3.5" />}
                     className="h-7 min-w-[160px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
                   />
-                </>
-              )}
+                ) : null}
+              </div>
+
+              <div className="ml-auto">
+                {isLoading ? (
+                  <span className="text-muted">Loading environments...</span>
+                ) : environments.length > 0 ? (
+                  <SearchableSelect
+                    items={environmentItems}
+                    value={selectedEnvironmentId}
+                    onValueChange={setSelectedEnvironmentId}
+                    placeholder="Environment"
+                    icon={<CloudIcon className="size-3.5" />}
+                    className="h-7 min-w-[180px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
+                  />
+                ) : (
+                  <span className="text-status-warn">No environments available</span>
+                )}
+              </div>
             </div>
           ) : null}
 
