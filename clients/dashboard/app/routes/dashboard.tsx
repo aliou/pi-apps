@@ -1,11 +1,12 @@
 import {
   ArrowUpIcon,
   ChatCircleIcon,
-  CloudIcon,
   CodeIcon,
   GithubLogoIcon,
+  GitBranchIcon,
+  PaperclipIcon,
 } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import type { SearchableSelectItem } from "../components/ui";
 import { SearchableSelect, Tabs } from "../components/ui";
@@ -154,6 +155,9 @@ export default function DashboardPage() {
   const [selectedEnvironmentId, setSelectedEnvironmentId] =
     useState<string>("");
   const [message, setMessage] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -210,14 +214,37 @@ export default function DashboardPage() {
     [repos],
   );
 
-  const environmentItems: SearchableSelectItem[] = useMemo(
-    () => environments.map((e) => ({ label: e.name, value: e.id })),
-    [environments],
+  const selectedRepo = useMemo(
+    () => repos.find((repo) => String(repo.id) === selectedRepoId) ?? null,
+    [repos, selectedRepoId],
   );
+
+  const branchItems: SearchableSelectItem[] = useMemo(() => {
+    if (!selectedRepo) return [];
+    return Array.from(
+      new Set([
+        selectedRepo.defaultBranch,
+        "main",
+        "master",
+        "develop",
+        selectedBranch,
+      ].filter(Boolean)),
+    ).map((branch) => ({ label: branch, value: branch }));
+  }, [selectedRepo, selectedBranch]);
 
   const canSubmit =
     message.trim().length > 0 &&
     (mode === "chat" || (!!selectedRepoId && !!selectedEnvironmentId));
+
+  useEffect(() => {
+    if (!selectedRepo) {
+      setSelectedBranch("");
+      return;
+    }
+    if (!selectedBranch || selectedBranch === "") {
+      setSelectedBranch(selectedRepo.defaultBranch);
+    }
+  }, [selectedRepo, selectedBranch]);
 
   const handleSubmit = async () => {
     if (!canSubmit || isSubmitting) return;
@@ -226,13 +253,16 @@ export default function DashboardPage() {
     setError(null);
 
     const modeDefaults = mode === "chat" ? defaults.chat : defaults.code;
-    const firstPrompt = message.trim();
+    const firstPrompt = attachedFiles.length
+      ? `${message.trim()}\n\nAttached files:\n${attachedFiles.map((file) => `- ${file.name}`).join("\n")}`
+      : message.trim();
     const sessionName = generateSessionTitle({ firstPrompt, mode });
 
     const res = await api.post<{ id: string }>("/sessions", {
       mode,
       repoId: mode === "code" ? selectedRepoId : undefined,
       environmentId: mode === "code" ? selectedEnvironmentId : undefined,
+      branchName: mode === "code" ? selectedBranch : undefined,
       modelProvider: modeDefaults?.modelProvider,
       modelId: modeDefaults?.modelId,
       firstPrompt,
@@ -250,6 +280,7 @@ export default function DashboardPage() {
     navigate(`/sessions/${res.data.id}`, {
       state: { initialPrompt: firstPrompt },
     });
+    setAttachedFiles([]);
   };
 
   return (
@@ -290,32 +321,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="rounded-2xl border border-border bg-surface/30 p-4 md:p-5 transition-all duration-300 ease-out">
-          <div
-            aria-hidden={mode !== "code"}
-            className={cn(
-              "overflow-hidden transition-[max-height,opacity,transform,margin] duration-300 ease-out",
-              mode === "code"
-                ? "mb-4 max-h-80 translate-y-0 opacity-100"
-                : "mb-0 max-h-0 -translate-y-1 opacity-0 pointer-events-none",
-            )}
-          >
-            <div className="space-y-2">
-              <span className="text-xs text-muted">Repository</span>
-              {isLoading ? (
-                <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-sm text-muted">
-                  Loading repositories...
-                </div>
-              ) : (
-                <SearchableSelect
-                  items={repoItems}
-                  value={selectedRepoId}
-                  onValueChange={setSelectedRepoId}
-                  placeholder="Select repository"
-                  icon={<GithubLogoIcon className="size-4" />}
-                />
-              )}
-            </div>
-          </div>
 
           <div
             className={cn(
@@ -340,7 +345,59 @@ export default function DashboardPage() {
               rows={4}
               className="w-full resize-none bg-transparent px-4 pt-4 pb-1 text-base text-fg placeholder:text-muted focus:outline-none"
             />
-            <div className="flex items-center justify-end px-3 pb-3">
+            {attachedFiles.length > 0 ? (
+              <div className="mb-1 flex max-w-full items-center gap-1 overflow-x-auto px-3">
+                {attachedFiles.map((file) => (
+                  <span
+                    key={`${file.name}-${file.lastModified}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-muted"
+                  >
+                    {file.name}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAttachedFiles((prev) =>
+                          prev.filter(
+                            (entry) =>
+                              !(entry.name === file.name &&
+                                entry.lastModified === file.lastModified),
+                          ),
+                        )
+                      }
+                      className="text-muted hover:text-fg"
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between px-3 pb-3">
+              <div className="flex items-center">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files ?? []);
+                    if (files.length > 0) {
+                      setAttachedFiles((prev) => [...prev, ...files]);
+                    }
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-fg"
+                  aria-label="Attach files"
+                >
+                  <PaperclipIcon className="size-4" />
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={handleSubmit}
@@ -359,21 +416,28 @@ export default function DashboardPage() {
           </div>
 
           {mode === "code" ? (
-            <div className="mt-2 flex items-center justify-between gap-2 px-1 text-[11px]">
-              <span className="text-muted">Environment</span>
+            <div className="mt-2 flex flex-wrap items-center justify-end gap-2 px-1 text-[11px]">
               {isLoading ? (
-                <span className="text-muted">Loading environments...</span>
-              ) : environments.length > 0 ? (
-                <SearchableSelect
-                  items={environmentItems}
-                  value={selectedEnvironmentId}
-                  onValueChange={setSelectedEnvironmentId}
-                  placeholder="Select environment"
-                  icon={<CloudIcon className="size-3.5" />}
-                  className="h-7 w-auto min-w-[180px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
-                />
+                <span className="text-muted">Loading repositories...</span>
               ) : (
-                <span className="text-status-warn">No environments available</span>
+                <>
+                  <SearchableSelect
+                    items={repoItems}
+                    value={selectedRepoId}
+                    onValueChange={setSelectedRepoId}
+                    placeholder="Repository"
+                    icon={<GithubLogoIcon className="size-3.5" />}
+                    className="h-7 min-w-[220px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
+                  />
+                  <SearchableSelect
+                    items={branchItems}
+                    value={selectedBranch}
+                    onValueChange={setSelectedBranch}
+                    placeholder="Branch"
+                    icon={<GitBranchIcon className="size-3.5" />}
+                    className="h-7 min-w-[160px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
+                  />
+                </>
               )}
             </div>
           ) : null}
