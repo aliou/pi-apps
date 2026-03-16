@@ -1,15 +1,12 @@
-import { ArrowUpIcon, CaretDownIcon } from "@phosphor-icons/react";
+import { ArrowUpIcon, CaretDownIcon, CubeIcon, PaperclipIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchableSelect } from "../components/ui";
 import { api, type ModelInfo, type Session, type SessionFileRecord } from "../lib/api";
 import type { ConnectionStatus } from "../lib/use-session-events";
 import { useEnvironmentLabel } from "../hooks/use-environment";
 import { cn } from "../lib/utils";
-import {
-  AttachmentsPicker,
-  type ComposerAttachment,
-} from "./chat/attachments-picker";
 import { CommandsMenu, type SlashCommandItem } from "./chat/commands-menu";
+import type { ComposerAttachment } from "./chat/attachments-picker";
 
 export interface ChatInputProps {
   connectionStatus: ConnectionStatus;
@@ -84,6 +81,7 @@ export function ChatInput({
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const disabled =
     connectionStatus !== "connected" || session?.status === "archived";
@@ -246,6 +244,10 @@ export function ChatInput({
     }
   };
 
+  const handleOpenFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (
       e.key === "ArrowDown" &&
@@ -302,8 +304,8 @@ export function ChatInput({
   useEffect(resizeTextarea, [inputText]);
 
   return (
-    <div className="flex-shrink-0 px-6 pb-4 pt-2 md:px-10">
-      <div className="max-w-4xl mx-auto space-y-2">
+    <div className="flex-shrink-0 px-4 pb-4 pt-2 md:px-10">
+      <div className="mx-auto max-w-4xl space-y-2">
         {inputText.startsWith("/") && (
           <CommandsMenu
             commands={commands}
@@ -315,9 +317,9 @@ export function ChatInput({
 
         <div
           className={cn(
-            "rounded-2xl border border-border bg-surface transition-colors",
-            "focus-within:border-accent/50",
-            disabled && "opacity-50",
+            "rounded-2xl border border-border bg-surface/70 transition-colors",
+            "focus-within:border-accent/40",
+            disabled && "opacity-60",
           )}
         >
           <textarea
@@ -329,65 +331,104 @@ export function ChatInput({
             disabled={disabled}
             rows={1}
             className={cn(
-              "w-full resize-none bg-transparent px-4 pt-3 pb-1",
+              "w-full resize-none bg-transparent px-4 pt-3 pb-1.5",
               "text-sm text-fg placeholder:text-muted",
               "focus:outline-none",
               "disabled:cursor-not-allowed",
             )}
           />
-          <div className="flex flex-wrap items-center justify-between gap-3 px-3 pb-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              {session?.environmentId ? (
-                <a
-                  href="/settings/environments"
-                  className="inline-flex items-center rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:text-fg"
-                  title="Environment context"
-                >
-                  Env: {environmentLabel ?? session.environmentId}
-                </a>
-              ) : null}
-              <AttachmentsPicker
-                attachments={attachments}
-                onPick={(files) => void handlePickFiles(files)}
-                onRemove={(id) =>
-                  setAttachments((prev) =>
-                    prev.filter((attachment) => attachment.id !== id),
-                  )
-                }
-                disabled={disabled}
-              />
 
+          {attachments.length > 0 ? (
+            <div className="mb-1 flex max-w-full items-center gap-1 overflow-x-auto px-3">
+              {attachments.map((attachment) => (
+                <span
+                  key={attachment.id}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-muted"
+                >
+                  {attachment.file.name}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAttachments((prev) =>
+                        prev.filter((item) => item.id !== attachment.id),
+                      )
+                    }
+                    className="text-muted hover:text-fg"
+                    aria-label={`Remove ${attachment.file.name}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-between gap-2 px-3 pb-2">
+            <div className="flex items-center gap-2">
               {modelItems.length > 0 ? (
                 <SearchableSelect
                   value={selectedModel}
                   onValueChange={(value) => void handleModelChange(value)}
-                  placeholder="Select model"
+                  placeholder="Model"
                   items={modelItems}
                   icon={<CaretDownIcon className="size-3" />}
-                  className="h-8 max-w-[320px] text-xs"
+                  className="h-7 min-w-[130px] border-none bg-bg/40 text-xs"
                 />
               ) : (
-                <div className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted/70">
+                <div className="inline-flex items-center gap-1 rounded-md bg-bg/40 px-2 py-1 text-xs text-muted">
                   {session?.currentModelId || "Model"}
                   <CaretDownIcon className="size-3" />
                 </div>
               )}
+
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={!canSend}
+                className={cn(
+                  "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                  canSend
+                    ? "bg-accent text-accent-fg hover:bg-accent-hover"
+                    : "bg-muted/20 text-muted/40 cursor-not-allowed",
+                )}
+                aria-label="Send message"
+              >
+                <ArrowUpIcon className="size-3.5" weight="bold" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              disabled={!canSend}
-              className={cn(
-                "flex size-7 items-center justify-center rounded-full transition-colors",
-                canSend
-                  ? "bg-accent text-accent-fg hover:bg-accent-hover"
-                  : "bg-muted/20 text-muted/40 cursor-not-allowed",
-              )}
-              aria-label="Send message"
-            >
-              <ArrowUpIcon className="size-4" weight="bold" />
-            </button>
+
+            <div className="flex items-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                disabled={disabled}
+                onChange={(event) => {
+                  void handlePickFiles(event.target.files);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleOpenFilePicker}
+                disabled={disabled}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Attach files"
+              >
+                <PaperclipIcon className="size-4" />
+              </button>
+            </div>
           </div>
+
+          {session?.environmentId ? (
+            <div className="border-t border-border/70 px-3 py-1.5 text-[11px] text-muted">
+              <span className="inline-flex items-center gap-1.5">
+                <CubeIcon className="size-3" />
+                {environmentLabel ?? session.environmentId}
+              </span>
+            </div>
+          ) : null}
         </div>
         {modelsError && (
           <p className="mt-2 text-xs text-muted">
