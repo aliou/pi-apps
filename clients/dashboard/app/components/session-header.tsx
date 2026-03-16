@@ -87,45 +87,45 @@ function ViewToggle({
   onChange: (mode: ViewMode) => void;
 }) {
   return (
-    <div className="flex items-center bg-surface border border-border rounded-lg p-0.5">
+    <div className="flex items-center rounded-lg border border-border bg-surface p-0.5 md:w-auto">
       <button
         type="button"
         onClick={() => onChange("chat")}
         className={cn(
-          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+          "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors md:px-3",
           mode === "chat"
             ? "bg-accent text-accent-fg"
             : "text-muted hover:text-fg",
         )}
       >
         <ChatCircleIcon className="w-4 h-4" />
-        Chat
+        <span className="hidden md:inline">Chat</span>
       </button>
       <button
         type="button"
         onClick={() => onChange("debug")}
         className={cn(
-          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+          "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors md:px-3",
           mode === "debug"
             ? "bg-accent text-accent-fg"
             : "text-muted hover:text-fg",
         )}
       >
         <BugIcon className="w-4 h-4" />
-        Debug
+        <span className="hidden md:inline">Debug</span>
       </button>
       <button
         type="button"
         onClick={() => onChange("terminal")}
         className={cn(
-          "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+          "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors md:px-3",
           mode === "terminal"
             ? "bg-accent text-accent-fg"
             : "text-muted hover:text-fg",
         )}
       >
         <TerminalWindowIcon className="w-4 h-4" />
-        Terminal
+        <span className="hidden md:inline">Terminal</span>
       </button>
     </div>
   );
@@ -166,18 +166,18 @@ export function SessionHeader({
   isRestarting,
 }: SessionHeaderProps) {
   return (
-    <header className="flex-shrink-0 px-6 py-3 border-b border-border bg-surface md:px-10">
-      <div className="max-w-4xl mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <header className="flex-shrink-0 border-b border-border bg-surface px-4 py-3 md:px-10">
+      <div className="mx-auto flex max-w-4xl flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             to="/sessions"
             className="text-muted hover:text-fg transition-colors p-1 -ml-1"
           >
             <ArrowLeftIcon className="w-5 h-5" />
           </Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold text-fg">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="truncate text-base font-semibold text-fg md:text-lg">
                 {session?.name || sessionId?.slice(0, 8)}
               </h1>
               <SessionStatusBadge
@@ -186,7 +186,7 @@ export function SessionHeader({
                 sandboxStatus={sandboxStatus}
               />
             </div>
-            <p className="text-xs text-muted">
+            <p className="truncate text-xs text-muted">
               {session?.mode} session
               {session?.repoFullName
                 ? ` - ${session.repoFullName}`
@@ -197,27 +197,30 @@ export function SessionHeader({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end md:gap-3">
           <button
             type="button"
             onClick={onShare}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-fg"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-muted hover:text-fg md:px-2.5"
           >
             <ShareNetworkIcon className="size-4" />
-            Share
+            <span className="hidden md:inline">Share</span>
+            <span className="sr-only md:hidden">Share</span>
           </button>
           <button
             type="button"
             onClick={onExport}
             disabled={!session || session.status === "archived"}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-muted hover:text-fg disabled:opacity-50 md:px-2.5"
           >
             <DownloadSimpleIcon className="size-4" />
-            Export
+            <span className="hidden md:inline">Export</span>
+            <span className="sr-only md:hidden">Export</span>
           </button>
           <Button
             variant="secondary"
             size="sm"
+            className="h-8 px-2 md:px-3"
             onClick={onRestart}
             disabled={
               !session ||
@@ -229,26 +232,29 @@ export function SessionHeader({
             loading={isRestarting}
           >
             <ArrowClockwiseIcon className="size-4" />
-            Restart
+            <span className="hidden md:inline">Restart</span>
+            <span className="sr-only md:hidden">Restart</span>
           </Button>
           <button
             type="button"
             onClick={onArchive}
             disabled={!session || session.status === "archived" || isArchiving}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-fg disabled:opacity-50"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-muted hover:text-fg disabled:opacity-50 md:px-2.5"
           >
             <ArchiveBoxIcon className="size-4" />
-            Archive
+            <span className="hidden md:inline">Archive</span>
+            <span className="sr-only md:hidden">Archive</span>
           </button>
           {session?.status === "archived" && (
             <button
               type="button"
               onClick={onDelete}
               disabled={isDeleting}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-status-err/30 px-2.5 py-1.5 text-xs text-status-err hover:bg-status-err/10 disabled:opacity-50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-status-err/30 px-2 text-xs text-status-err hover:bg-status-err/10 disabled:opacity-50 md:px-2.5"
             >
               <TrashIcon className="size-4" />
-              Delete
+              <span className="hidden md:inline">Delete</span>
+              <span className="sr-only md:hidden">Delete</span>
             </button>
           )}
           <ViewToggle mode={viewMode} onChange={onViewModeChange} />
