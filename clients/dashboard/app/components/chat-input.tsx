@@ -122,6 +122,13 @@ export function ChatInput({
   const { label: environmentLabel } = useEnvironmentLabel(
     session?.environmentId,
   );
+  const attachmentError = attachments.find((a) => a.error)?.error ?? null;
+  const statusMessage =
+    error ??
+    attachmentError ??
+    modelError ??
+    (modelsError ? `Models unavailable: ${modelsError}` : null) ??
+    (isSettingModel ? "Switching model..." : null);
 
   const handleSubmit = async () => {
     if (!canSend) return;
@@ -364,39 +371,6 @@ export function ChatInput({
           ) : null}
 
           <div className="flex items-center justify-between gap-2 px-3 pb-2">
-            <div className="flex items-center gap-2">
-              {modelItems.length > 0 ? (
-                <SearchableSelect
-                  value={selectedModel}
-                  onValueChange={(value) => void handleModelChange(value)}
-                  placeholder="Model"
-                  items={modelItems}
-                  icon={<CaretDownIcon className="size-3" />}
-                  className="h-7 min-w-[130px] border-none bg-bg/40 text-xs"
-                />
-              ) : (
-                <div className="inline-flex items-center gap-1 rounded-md bg-bg/40 px-2 py-1 text-xs text-muted">
-                  {session?.currentModelId || "Model"}
-                  <CaretDownIcon className="size-3" />
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => void handleSubmit()}
-                disabled={!canSend}
-                className={cn(
-                  "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-                  canSend
-                    ? "bg-accent text-accent-fg hover:bg-accent-hover"
-                    : "bg-muted/20 text-muted/40 cursor-not-allowed",
-                )}
-                aria-label="Send message"
-              >
-                <ArrowUpIcon className="size-3.5" weight="bold" />
-              </button>
-            </div>
-
             <div className="flex items-center">
               <input
                 ref={fileInputRef}
@@ -413,40 +387,70 @@ export function ChatInput({
                 type="button"
                 onClick={handleOpenFilePicker}
                 disabled={disabled}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Attach files"
               >
                 <PaperclipIcon className="size-4" />
               </button>
             </div>
+
+            <div className="ml-auto flex items-center gap-1.5">
+              {modelItems.length > 0 ? (
+                <SearchableSelect
+                  value={selectedModel}
+                  onValueChange={(value) => void handleModelChange(value)}
+                  placeholder="Model"
+                  items={modelItems}
+                  icon={<CaretDownIcon className="size-3" />}
+                  className="h-7 min-w-[140px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
+                />
+              ) : (
+                <div className="inline-flex items-center gap-1 px-1 text-xs text-muted">
+                  {session?.currentModelId || "Model"}
+                  <CaretDownIcon className="size-3" />
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={!canSend}
+                className={cn(
+                  "inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+                  canSend
+                    ? "text-fg hover:bg-surface"
+                    : "text-muted/40 cursor-not-allowed",
+                )}
+                aria-label="Send message"
+              >
+                <ArrowUpIcon className="size-3.5" weight="bold" />
+              </button>
+            </div>
           </div>
 
-          {session?.environmentId ? (
-            <div className="border-t border-border/70 px-3 py-1.5 text-[11px] text-muted">
-              <span className="inline-flex items-center gap-1.5">
-                <CubeIcon className="size-3" />
-                {environmentLabel ?? session.environmentId}
-              </span>
-            </div>
+        </div>
+        <div className="flex items-center justify-between gap-3 px-1 text-[11px]">
+          <span className="inline-flex min-w-0 items-center gap-1.5 truncate text-muted">
+            <CubeIcon className="size-3 shrink-0" />
+            {session?.environmentId
+              ? (environmentLabel ?? session.environmentId)
+              : "No environment"}
+          </span>
+          {statusMessage ? (
+            <span
+              className={cn(
+                "max-w-[60%] truncate text-right",
+                error || modelError
+                  ? "text-status-err"
+                  : attachmentError
+                    ? "text-status-warn"
+                    : "text-muted",
+              )}
+            >
+              {statusMessage}
+            </span>
           ) : null}
         </div>
-        {modelsError && (
-          <p className="mt-2 text-xs text-muted">
-            Models unavailable: {modelsError}
-          </p>
-        )}
-        {isSettingModel && (
-          <p className="mt-2 text-xs text-muted">Switching model...</p>
-        )}
-        {modelError && (
-          <p className="mt-2 text-xs text-status-err">{modelError}</p>
-        )}
-        {attachments.some((a) => a.error) && (
-          <p className="mt-2 text-xs text-status-warn">
-            {attachments.find((a) => a.error)?.error}
-          </p>
-        )}
-        {error && <p className="mt-2 text-xs text-status-err">{error}</p>}
       </div>
     </div>
   );
