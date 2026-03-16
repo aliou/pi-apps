@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Button, Select, Tabs } from "../components/ui";
 import { api } from "../lib/api";
+import { cn } from "../lib/utils";
 
 // --- Types matching Phase 1 backend ---
 
@@ -424,44 +425,69 @@ function SecretRow({
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface/30 p-4 sm:flex-row sm:items-start">
+    <div className="rounded-lg border border-border bg-surface/30 p-4">
       <div className="flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium text-fg">{secret.name}</span>
-          <span className="max-w-full truncate rounded bg-bg px-1.5 py-0.5 font-mono text-xs text-muted sm:max-w-[16rem]">
-            {secret.envVar}
-          </span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs ${
-              secret.kind === "ai_provider"
-                ? "bg-blue-500/10 text-blue-500"
-                : secret.kind === "sandbox_provider"
-                  ? "bg-orange-500/10 text-orange-500"
-                  : "bg-purple-500/10 text-purple-500"
-            }`}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate font-medium text-fg">{secret.name}</span>
+              <span className="max-w-full truncate rounded bg-bg px-1.5 py-0.5 font-mono text-xs text-muted sm:max-w-[16rem]">
+                {secret.envVar}
+              </span>
+            </div>
+            <div className="mt-1 flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs ${
+                  secret.kind === "ai_provider"
+                    ? "bg-blue-500/10 text-blue-500"
+                    : secret.kind === "sandbox_provider"
+                      ? "bg-orange-500/10 text-orange-500"
+                      : "bg-purple-500/10 text-purple-500"
+                }`}
+              >
+                {secret.kind === "ai_provider"
+                  ? "AI Provider"
+                  : secret.kind === "sandbox_provider"
+                    ? "Sandbox"
+                    : "Env Var"}
+              </span>
+              {secret.enabled ? (
+                <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs text-green-500">
+                  <CheckCircleIcon className="size-3" weight="fill" />
+                  Enabled
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
+                  <WarningCircleIcon className="size-3" weight="fill" />
+                  Disabled
+                </span>
+              )}
+              {domains.length > 0 && (
+                <span className="flex items-center gap-1 rounded-full bg-muted/10 px-2 py-0.5 text-xs text-muted">
+                  {domains.length} {domains.length === 1 ? "host" : "hosts"}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggle}
+            disabled={toggling}
+            title={secret.enabled ? "Disable" : "Enable"}
+            className={cn(
+              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors disabled:opacity-50",
+              secret.enabled
+                ? "hover:bg-green-500/10 hover:text-green-500"
+                : "hover:bg-amber-500/10 hover:text-amber-500",
+            )}
           >
-            {secret.kind === "ai_provider"
-              ? "AI Provider"
-              : secret.kind === "sandbox_provider"
-                ? "Sandbox"
-                : "Env Var"}
-          </span>
-          {secret.enabled ? (
-            <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs text-green-500">
-              <CheckCircleIcon className="size-3" weight="fill" />
-              Enabled
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
-              <WarningCircleIcon className="size-3" weight="fill" />
-              Disabled
-            </span>
-          )}
-          {domains.length > 0 && (
-            <span className="flex items-center gap-1 rounded-full bg-muted/10 px-2 py-0.5 text-xs text-muted">
-              {domains.length} {domains.length === 1 ? "host" : "hosts"}
-            </span>
-          )}
+            {secret.enabled ? (
+              <ToggleRightIcon className="size-5" weight="fill" />
+            ) : (
+              <ToggleLeftIcon className="size-5" weight="fill" />
+            )}
+          </button>
         </div>
 
         {updateError && (
@@ -474,53 +500,39 @@ function SecretRow({
           </div>
         )}
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex items-center gap-2">
           <input
             type="password"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="(enter new value)"
-            className="min-w-[14rem] flex-1 rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+            className="min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
           />
 
-          <Button
-            onClick={handleSave}
-            disabled={!value.trim()}
-            loading={saving}
-            variant="primary"
-            size="md"
-          >
-            <FloppyDiskIcon className="size-4" />
-            Save
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              onClick={handleSave}
+              disabled={!value.trim()}
+              loading={saving}
+              variant="primary"
+              size="md"
+              className="px-2.5 sm:px-4"
+            >
+              <FloppyDiskIcon className="size-4" />
+              <span className="hidden sm:inline">Save</span>
+            </Button>
 
-          <button
-            type="button"
-            onClick={handleToggle}
-            disabled={toggling}
-            title={secret.enabled ? "Disable" : "Enable"}
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-              secret.enabled
-                ? "border-green-500/30 text-green-500 hover:bg-green-500/10"
-                : "border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
-            }`}
-          >
-            {secret.enabled ? (
-              <ToggleRightIcon className="size-4" weight="fill" />
-            ) : (
-              <ToggleLeftIcon className="size-4" weight="fill" />
-            )}
-          </button>
-
-          <Button
-            onClick={handleDelete}
-            loading={deleting}
-            variant="danger"
-            size="md"
-            className="border border-red-500/30 bg-transparent text-red-500 hover:bg-red-500/10"
-          >
-            <TrashIcon className="size-4" />
-          </Button>
+            <Button
+              onClick={handleDelete}
+              loading={deleting}
+              variant="danger"
+              size="md"
+              className="border border-red-500/30 bg-transparent px-2.5 text-red-500 hover:bg-red-500/10 sm:px-4"
+            >
+              <TrashIcon className="size-4" />
+              <span className="hidden sm:inline">Delete</span>
+            </Button>
+          </div>
         </div>
 
         <div className="mt-3">
@@ -665,14 +677,14 @@ export default function SettingsPage() {
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors sm:w-auto sm:justify-start ${
+          className={`flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3 ${
             showAddForm
               ? "border-accent/30 bg-accent/10 text-accent"
               : "border-border bg-bg text-muted hover:text-fg"
           }`}
         >
           <PlusIcon className="size-3.5" weight="bold" />
-          Add secret
+          <span className="hidden sm:inline">Add secret</span>
         </button>
       </div>
 
