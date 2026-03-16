@@ -474,7 +474,10 @@ export default function DashboardPage() {
                 )}
                 {!isLoading && selectedRepoId ? (
                   isLoadingBranches ? (
-                    <span className="px-1 text-xs text-muted">Loading branches...</span>
+                    <div
+                      className="h-7 min-w-[160px] animate-pulse rounded-md bg-muted/20"
+                      aria-label="Loading branches"
+                    />
                   ) : (
                     <SearchableSelect
                       items={branchItems}
