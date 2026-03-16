@@ -127,6 +127,28 @@ export function githubRoutes(): Hono<AppEnv> {
     }
   });
 
+  app.get("/branches", async (c) => {
+    const githubService = c.get("githubService");
+    const repoFullName = c.req.query("repoFullName")?.trim();
+
+    if (!repoFullName) {
+      return c.json({ data: null, error: "repoFullName is required" }, 400);
+    }
+
+    try {
+      const branches = await githubService.listBranchesUsingConfiguredAuth(
+        repoFullName,
+      );
+      return c.json({ data: { branches }, error: null });
+    } catch (err) {
+      logger.error({ err, repoFullName }, "failed to list repo branches");
+      const message =
+        err instanceof Error ? err.message : "Failed to list repo branches";
+      const status = message.includes("not configured") ? 401 : 500;
+      return c.json({ data: null, error: message }, status);
+    }
+  });
+
   app.get("/app/status", async (c) => {
     try {
       const githubService = c.get("githubService");

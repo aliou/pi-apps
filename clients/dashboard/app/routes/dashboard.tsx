@@ -157,12 +157,14 @@ export default function DashboardPage() {
     useState<string>("");
   const [message, setMessage] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("");
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
 
   useEffect(() => {
     setMode(requestedMode);
@@ -225,32 +227,66 @@ export default function DashboardPage() {
     [repos, selectedRepoId],
   );
 
-  const branchItems: SearchableSelectItem[] = useMemo(() => {
-    if (!selectedRepo) return [];
-    return Array.from(
-      new Set([
-        selectedRepo.defaultBranch,
-        "main",
-        "master",
-        "develop",
-        selectedBranch,
-      ].filter(Boolean)),
-    ).map((branch) => ({ label: branch, value: branch }));
-  }, [selectedRepo, selectedBranch]);
+  const branchItems: SearchableSelectItem[] = useMemo(
+    () =>
+      availableBranches.map((branch) => ({
+        label: branch,
+        value: branch,
+      })),
+    [availableBranches],
+  );
 
   const canSubmit =
     message.trim().length > 0 &&
     (mode === "chat" || (!!selectedRepoId && !!selectedEnvironmentId));
 
   useEffect(() => {
-    if (!selectedRepo) {
+    if (mode !== "code" || !selectedRepo) {
+      setAvailableBranches([]);
       setSelectedBranch("");
       return;
     }
-    if (!selectedBranch || selectedBranch === "") {
-      setSelectedBranch(selectedRepo.defaultBranch);
-    }
-  }, [selectedRepo, selectedBranch]);
+
+    let cancelled = false;
+
+    const loadBranches = async () => {
+      setIsLoadingBranches(true);
+      try {
+        const result = await api.get<{ branches: string[] }>(
+          `/github/branches?repoFullName=${encodeURIComponent(selectedRepo.fullName)}`,
+        );
+
+        if (cancelled) return;
+
+        const fetched = result.data?.branches ?? [];
+        const fallback = selectedRepo.defaultBranch ? [selectedRepo.defaultBranch] : [];
+        const merged = Array.from(new Set([...fetched, ...fallback]));
+        setAvailableBranches(merged);
+        setSelectedBranch((previous) => {
+          if (merged.length === 0) return "";
+          if (previous && merged.includes(previous)) return previous;
+          if (merged.includes(selectedRepo.defaultBranch)) {
+            return selectedRepo.defaultBranch;
+          }
+          return merged[0] ?? "";
+        });
+      } catch {
+        if (!cancelled) {
+          const fallback = selectedRepo.defaultBranch ? [selectedRepo.defaultBranch] : [];
+          setAvailableBranches(fallback);
+          setSelectedBranch(fallback[0] ?? "");
+        }
+      } finally {
+        if (!cancelled) setIsLoadingBranches(false);
+      }
+    };
+
+    void loadBranches();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, selectedRepo]);
 
   const handleSubmit = async () => {
     if (!canSubmit || isSubmitting) return;
@@ -437,14 +473,18 @@ export default function DashboardPage() {
                   />
                 )}
                 {!isLoading && selectedRepoId ? (
-                  <SearchableSelect
-                    items={branchItems}
-                    value={selectedBranch}
-                    onValueChange={setSelectedBranch}
-                    placeholder="Branch"
-                    icon={<GitBranchIcon className="size-3.5" />}
-                    className="h-7 min-w-[160px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
-                  />
+                  isLoadingBranches ? (
+                    <span className="px-1 text-xs text-muted">Loading branches...</span>
+                  ) : (
+                    <SearchableSelect
+                      items={branchItems}
+                      value={selectedBranch}
+                      onValueChange={setSelectedBranch}
+                      placeholder="Branch"
+                      icon={<GitBranchIcon className="size-3.5" />}
+                      className="h-7 min-w-[160px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
+                    />
+                  )
                 ) : null}
               </div>
 

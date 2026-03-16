@@ -169,6 +169,11 @@ export class GitHubService {
     return this.getRepoById(pat, id);
   }
 
+  async listBranchesUsingConfiguredAuth(repoFullName: string): Promise<string[]> {
+    const resolved = await this.resolveRepoAuth(repoFullName);
+    return this.listBranches(resolved.token, repoFullName);
+  }
+
   async validateToken(token: string): Promise<GitHubTokenInfo> {
     try {
       const response = await fetch(`${API_BASE}/user`, {
@@ -258,6 +263,32 @@ export class GitHubService {
 
     const repo = (await response.json()) as Record<string, unknown>;
     return this.mapRepo(repo);
+  }
+
+  async listBranches(token: string, fullName: string): Promise<string[]> {
+    const branches: string[] = [];
+    let url: string | null = `${API_BASE}/repos/${fullName}/branches?per_page=${PER_PAGE}`;
+
+    while (url) {
+      const response = await fetch(url, {
+        headers: this.headers(token),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`GitHub API error: ${response.status} ${text}`);
+      }
+
+      const page = (await response.json()) as Array<Record<string, unknown>>;
+      for (const branch of page) {
+        const name = branch.name ? String(branch.name) : "";
+        if (name) branches.push(name);
+      }
+
+      url = this.getNextLink(response.headers.get("link"));
+    }
+
+    return branches;
   }
 
   private async resolveRepoAuth(
