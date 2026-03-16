@@ -72,6 +72,7 @@ export default function SessionPage() {
     Array<{ name: string; description?: string }>
   >([]);
   const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
+  const [filePanelOpen, setFilePanelOpen] = useState(false);
   const [referencedPaths, setReferencedPaths] = useState<string[]>([]);
 
   useEffect(() => {
@@ -281,10 +282,11 @@ export default function SessionPage() {
             );
           });
         }}
+        onToggleFiles={() => setFilePanelOpen((prev) => !prev)}
+        filePanelOpen={filePanelOpen}
         isArchiving={isArchiving}
         isDeleting={isDeleting}
         isRestarting={isRestarting}
-        collapsed={collapsed}
       />
 
       {session?.extensionsStale && (
@@ -328,13 +330,13 @@ export default function SessionPage() {
             />
           </div>
         </div>
-        {id && (
+        {id && filePanelOpen ? (
           <FilePanel
             sessionId={id}
             highlightedPath={highlightedPath}
             referencedPaths={referencedPaths}
           />
-        )}
+        ) : null}
       </div>
       <div
         className={cn(

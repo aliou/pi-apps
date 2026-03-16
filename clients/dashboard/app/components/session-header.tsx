@@ -1,10 +1,13 @@
+import { Menu } from "@ark-ui/react/menu";
 import {
   ArchiveBoxIcon,
   ArrowClockwiseIcon,
   ArrowLeftIcon,
   BugIcon,
   ChatCircleIcon,
+  DotsThreeIcon,
   DownloadSimpleIcon,
+  FilesIcon,
   ShareNetworkIcon,
   TerminalWindowIcon,
   TrashIcon,
@@ -17,12 +20,6 @@ import { Button } from "./ui/button";
 
 export type ViewMode = "chat" | "debug" | "terminal";
 
-/**
- * Unified status badge. Collapses session status, WS connection, and sandbox
- * state into a single indicator so the header doesn't overflow with badges.
- *
- * Priority: archived > error > connecting > sandbox status > connected.
- */
 function SessionStatusBadge({
   session,
   connectionStatus,
@@ -71,9 +68,9 @@ function SessionStatusBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full ${color}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${color}`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
       {label}
     </span>
   );
@@ -98,7 +95,7 @@ function ViewToggle({
             : "text-muted hover:text-fg",
         )}
       >
-        <ChatCircleIcon className="w-4 h-4" />
+        <ChatCircleIcon className="h-4 w-4" />
         <span className="hidden md:inline">Chat</span>
       </button>
       <button
@@ -111,7 +108,7 @@ function ViewToggle({
             : "text-muted hover:text-fg",
         )}
       >
-        <BugIcon className="w-4 h-4" />
+        <BugIcon className="h-4 w-4" />
         <span className="hidden md:inline">Debug</span>
       </button>
       <button
@@ -124,7 +121,7 @@ function ViewToggle({
             : "text-muted hover:text-fg",
         )}
       >
-        <TerminalWindowIcon className="w-4 h-4" />
+        <TerminalWindowIcon className="h-4 w-4" />
         <span className="hidden md:inline">Terminal</span>
       </button>
     </div>
@@ -143,10 +140,11 @@ export interface SessionHeaderProps {
   onRestart: () => void;
   onShare: () => void;
   onExport: () => void;
+  onToggleFiles: () => void;
+  filePanelOpen: boolean;
   isArchiving: boolean;
   isDeleting: boolean;
   isRestarting: boolean;
-  collapsed: boolean;
 }
 
 export function SessionHeader({
@@ -161,19 +159,23 @@ export function SessionHeader({
   onRestart,
   onShare,
   onExport,
+  onToggleFiles,
+  filePanelOpen,
   isArchiving,
   isDeleting,
   isRestarting,
 }: SessionHeaderProps) {
+  const canMutate = !!session && session.status !== "archived";
+
   return (
     <header className="flex-shrink-0 border-b border-border bg-surface px-4 py-3 md:px-10">
       <div className="mx-auto flex max-w-4xl flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <Link
             to="/sessions"
-            className="text-muted hover:text-fg transition-colors p-1 -ml-1"
+            className="-ml-1 p-1 text-muted transition-colors hover:text-fg"
           >
-            <ArrowLeftIcon className="w-5 h-5" />
+            <ArrowLeftIcon className="h-5 w-5" />
           </Link>
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
@@ -197,67 +199,89 @@ export function SessionHeader({
           </div>
         </div>
 
-        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end md:gap-3">
-          <button
-            type="button"
-            onClick={onShare}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-muted hover:text-fg md:px-2.5"
-          >
-            <ShareNetworkIcon className="size-4" />
-            <span className="hidden md:inline">Share</span>
-            <span className="sr-only md:hidden">Share</span>
-          </button>
-          <button
-            type="button"
-            onClick={onExport}
-            disabled={!session || session.status === "archived"}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-muted hover:text-fg disabled:opacity-50 md:px-2.5"
-          >
-            <DownloadSimpleIcon className="size-4" />
-            <span className="hidden md:inline">Export</span>
-            <span className="sr-only md:hidden">Export</span>
-          </button>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-8 px-2 md:px-3"
-            onClick={onRestart}
-            disabled={
-              !session ||
-              session.status === "archived" ||
-              sandboxStatus?.status === "creating" ||
-              sandboxStatus?.capabilities?.restart === false ||
-              isRestarting
-            }
-            loading={isRestarting}
-          >
-            <ArrowClockwiseIcon className="size-4" />
-            <span className="hidden md:inline">Restart</span>
-            <span className="sr-only md:hidden">Restart</span>
-          </Button>
-          <button
-            type="button"
-            onClick={onArchive}
-            disabled={!session || session.status === "archived" || isArchiving}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-muted hover:text-fg disabled:opacity-50 md:px-2.5"
-          >
-            <ArchiveBoxIcon className="size-4" />
-            <span className="hidden md:inline">Archive</span>
-            <span className="sr-only md:hidden">Archive</span>
-          </button>
-          {session?.status === "archived" && (
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={isDeleting}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-status-err/30 px-2 text-xs text-status-err hover:bg-status-err/10 disabled:opacity-50 md:px-2.5"
-            >
-              <TrashIcon className="size-4" />
-              <span className="hidden md:inline">Delete</span>
-              <span className="sr-only md:hidden">Delete</span>
-            </button>
-          )}
+        <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-end md:gap-3">
           <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+
+          <Menu.Root
+            composite={false}
+            positioning={{ placement: "bottom-end" }}
+          >
+            <Menu.Trigger asChild>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-8 px-2.5"
+                aria-label="Session actions"
+              >
+                <DotsThreeIcon className="size-4" weight="bold" />
+                <span className="hidden sm:inline">Actions</span>
+              </Button>
+            </Menu.Trigger>
+            <Menu.Positioner className="z-[120]">
+              <Menu.Content className="min-w-52 rounded-lg border border-border bg-bg p-1 shadow-xl">
+                <Menu.Item
+                  value="toggle-files"
+                  onClick={onToggleFiles}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg outline-none data-[highlighted]:bg-surface"
+                >
+                  <FilesIcon className="size-4" />
+                  {filePanelOpen ? "Hide files" : "Show files"}
+                </Menu.Item>
+                <Menu.Item
+                  value="share"
+                  onClick={onShare}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg outline-none data-[highlighted]:bg-surface"
+                >
+                  <ShareNetworkIcon className="size-4" />
+                  Share
+                </Menu.Item>
+                <Menu.Item
+                  value="export"
+                  disabled={!canMutate}
+                  onClick={onExport}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-surface"
+                >
+                  <DownloadSimpleIcon className="size-4" />
+                  Export
+                </Menu.Item>
+                <Menu.Item
+                  value="restart"
+                  disabled={
+                    !canMutate ||
+                    sandboxStatus?.status === "creating" ||
+                    sandboxStatus?.capabilities?.restart === false ||
+                    isRestarting
+                  }
+                  onClick={onRestart}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-surface"
+                >
+                  <ArrowClockwiseIcon className="size-4" />
+                  Restart
+                </Menu.Item>
+                <Menu.Item
+                  value="archive"
+                  disabled={!canMutate || isArchiving}
+                  onClick={onArchive}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-surface"
+                >
+                  <ArchiveBoxIcon className="size-4" />
+                  Archive
+                </Menu.Item>
+                {session?.status === "archived" ? (
+                  <Menu.Item
+                    value="delete"
+                    disabled={isDeleting}
+                    onClick={onDelete}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-status-err outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-status-err/10"
+                  >
+                    <TrashIcon className="size-4" />
+                    Delete
+                  </Menu.Item>
+                ) : null}
+              </Menu.Content>
+            </Menu.Positioner>
+          </Menu.Root>
         </div>
       </div>
     </header>
