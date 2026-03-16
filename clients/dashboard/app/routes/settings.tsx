@@ -279,7 +279,7 @@ function AddSecretForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1 block text-xs text-muted">Name</span>
           <input
@@ -302,7 +302,7 @@ function AddSecretForm({
         </label>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <span className="mb-1 block text-xs text-muted">Kind</span>
           <Select
@@ -424,11 +424,11 @@ function SecretRow({
   };
 
   return (
-    <div className="flex items-start gap-4 rounded-lg border border-border bg-surface/30 p-4">
+    <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface/30 p-4 sm:flex-row sm:items-start">
       <div className="flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-fg">{secret.name}</span>
-          <span className="rounded bg-bg px-1.5 py-0.5 font-mono text-xs text-muted">
+          <span className="max-w-full truncate rounded bg-bg px-1.5 py-0.5 font-mono text-xs text-muted sm:max-w-[16rem]">
             {secret.envVar}
           </span>
           <span
@@ -474,13 +474,13 @@ function SecretRow({
           </div>
         )}
 
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           <input
             type="password"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="(enter new value)"
-            className="flex-1 rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+            className="min-w-[14rem] flex-1 rounded-lg border border-border bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
           />
 
           <Button
@@ -618,25 +618,25 @@ export default function SettingsPage() {
       </div>
 
       {/* Kind filter tabs + add button */}
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
         <Tabs
           value={kindFilter}
           onValueChange={(details) =>
             setKindFilter(details.value as KindFilter)
           }
-          className="flex-1"
+          className="w-full sm:flex-1"
         >
-          <Tabs.List className="gap-1 rounded-lg border border-border bg-bg p-1">
+          <Tabs.List className="w-full gap-1 overflow-x-auto rounded-lg border border-border bg-bg p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Tabs.Trigger
               value="all"
-              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs whitespace-nowrap data-[selected]:text-fg"
             >
               All
               <span className="ml-0.5 text-muted">{secrets.length}</span>
             </Tabs.Trigger>
             <Tabs.Trigger
               value="ai_provider"
-              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs whitespace-nowrap data-[selected]:text-fg"
             >
               <KeyIcon className="size-3.5" weight="bold" />
               AI Providers
@@ -644,7 +644,7 @@ export default function SettingsPage() {
             </Tabs.Trigger>
             <Tabs.Trigger
               value="env_var"
-              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs whitespace-nowrap data-[selected]:text-fg"
             >
               <TerminalIcon className="size-3.5" weight="bold" />
               Env Vars
@@ -652,7 +652,7 @@ export default function SettingsPage() {
             </Tabs.Trigger>
             <Tabs.Trigger
               value="sandbox_provider"
-              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs data-[selected]:text-fg"
+              className="relative z-10 gap-1.5 rounded-md border-none px-3 py-1.5 text-xs whitespace-nowrap data-[selected]:text-fg"
             >
               <CubeIcon className="size-3.5" weight="bold" />
               Sandbox
@@ -665,7 +665,7 @@ export default function SettingsPage() {
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+          className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors sm:w-auto sm:justify-start ${
             showAddForm
               ? "border-accent/30 bg-accent/10 text-accent"
               : "border-border bg-bg text-muted hover:text-fg"
