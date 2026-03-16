@@ -299,40 +299,21 @@ export default function DashboardPage() {
                 : "mb-0 max-h-0 -translate-y-1 opacity-0 pointer-events-none",
             )}
           >
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <span className="text-xs text-muted">Repository</span>
-                {isLoading ? (
-                  <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-sm text-muted">
-                    Loading repositories...
-                  </div>
-                ) : (
-                  <SearchableSelect
-                    items={repoItems}
-                    value={selectedRepoId}
-                    onValueChange={setSelectedRepoId}
-                    placeholder="Select repository"
-                    icon={<GithubLogoIcon className="size-4" />}
-                  />
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-xs text-muted">Environment</span>
-                {isLoading ? (
-                  <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-sm text-muted">
-                    Loading environments...
-                  </div>
-                ) : (
-                  <SearchableSelect
-                    items={environmentItems}
-                    value={selectedEnvironmentId}
-                    onValueChange={setSelectedEnvironmentId}
-                    placeholder="Select environment"
-                    icon={<CloudIcon className="size-4" />}
-                  />
-                )}
-              </div>
+            <div className="space-y-2">
+              <span className="text-xs text-muted">Repository</span>
+              {isLoading ? (
+                <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-sm text-muted">
+                  Loading repositories...
+                </div>
+              ) : (
+                <SearchableSelect
+                  items={repoItems}
+                  value={selectedRepoId}
+                  onValueChange={setSelectedRepoId}
+                  placeholder="Select repository"
+                  icon={<GithubLogoIcon className="size-4" />}
+                />
+              )}
             </div>
           </div>
 
@@ -365,10 +346,10 @@ export default function DashboardPage() {
                 onClick={handleSubmit}
                 disabled={!canSubmit || isSubmitting || isLoading}
                 className={cn(
-                  "flex size-8 items-center justify-center rounded-full transition-colors",
+                  "flex size-8 items-center justify-center rounded-md transition-colors",
                   canSubmit && !isSubmitting && !isLoading
-                    ? "bg-accent text-accent-fg hover:bg-accent-hover"
-                    : "bg-muted/20 text-muted/40 cursor-not-allowed",
+                    ? "text-fg hover:bg-surface"
+                    : "text-muted/40 cursor-not-allowed",
                 )}
                 aria-label="Create session"
               >
@@ -376,6 +357,26 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
+
+          {mode === "code" ? (
+            <div className="mt-2 flex items-center justify-between gap-2 px-1 text-[11px]">
+              <span className="text-muted">Environment</span>
+              {isLoading ? (
+                <span className="text-muted">Loading environments...</span>
+              ) : environments.length > 0 ? (
+                <SearchableSelect
+                  items={environmentItems}
+                  value={selectedEnvironmentId}
+                  onValueChange={setSelectedEnvironmentId}
+                  placeholder="Select environment"
+                  icon={<CloudIcon className="size-3.5" />}
+                  className="h-7 w-auto min-w-[180px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
+                />
+              ) : (
+                <span className="text-status-warn">No environments available</span>
+              )}
+            </div>
+          ) : null}
 
           {error && <p className="mt-3 text-sm text-status-err">{error}</p>}
 
