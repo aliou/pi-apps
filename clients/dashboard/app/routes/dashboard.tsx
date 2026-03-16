@@ -13,6 +13,7 @@ import {
   api,
   type Environment,
   type GitHubRepo,
+  type GitHubRepoListResponse,
   type ModelInfo,
   type ModelsResponse,
 } from "../lib/api";
@@ -172,13 +173,18 @@ export default function DashboardPage() {
     const load = async () => {
       setIsLoading(true);
       const [reposRes, envsRes, modelsRes, settingsRes] = await Promise.all([
-        api.get<GitHubRepo[]>("/github/repos"),
+        api.get<GitHubRepo[] | GitHubRepoListResponse>("/github/repos"),
         api.get<Environment[]>("/environments"),
         api.get<ModelsResponse>("/models"),
         api.get<Record<string, unknown>>("/settings"),
       ]);
 
-      if (reposRes.data) setRepos(reposRes.data);
+      if (reposRes.data) {
+        const reposData = Array.isArray(reposRes.data)
+          ? reposRes.data
+          : (reposRes.data.repos ?? []);
+        setRepos(reposData);
+      }
       if (envsRes.data) {
         setEnvironments(envsRes.data);
         const defaultEnv =
