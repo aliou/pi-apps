@@ -11,11 +11,11 @@ import {
   TerminalWindowIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { SandboxStatusResponse, Session } from "../lib/api";
 import type { ConnectionStatus } from "../lib/use-session-events";
 import { cn } from "../lib/utils";
-import { ActionSplitButton } from "./ui";
 
 export type ViewMode = "chat" | "debug" | "terminal";
 
@@ -146,6 +146,36 @@ export interface SessionHeaderProps {
   isRestarting: boolean;
 }
 
+function ActionItem({
+  label,
+  icon,
+  onClick,
+  disabled,
+  danger,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition-colors",
+        danger ? "text-status-err hover:bg-status-err/10" : "text-fg hover:bg-surface",
+        disabled && "cursor-not-allowed opacity-50",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 export function SessionHeader({
   session,
   sessionId,
@@ -165,9 +195,22 @@ export function SessionHeader({
   isRestarting,
 }: SessionHeaderProps) {
   const canMutate = !!session && session.status !== "archived";
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (!actionsRef.current) return;
+      if (!actionsRef.current.contains(event.target as Node)) {
+        setActionsOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
 
   return (
-    <header className="flex-shrink-0 border-b border-border bg-surface px-4 py-3 md:px-10">
+    <header className="relative z-20 flex-shrink-0 border-b border-border bg-surface px-4 py-3 md:px-10">
       <div className="mx-auto flex max-w-4xl flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <Link
@@ -201,116 +244,94 @@ export function SessionHeader({
         <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-end md:gap-3">
           <ViewToggle mode={viewMode} onChange={onViewModeChange} />
 
-          <ActionSplitButton.Root>
-            <ActionSplitButton.Main
+          <div ref={actionsRef} className="relative">
+            <button
               type="button"
-              variant="secondary"
-              size="sm"
-              className="h-8 px-2.5"
-              onClick={onToggleFiles}
-              title={filePanelOpen ? "Hide files" : "Show files"}
+              onClick={() => setActionsOpen((prev) => !prev)}
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-border px-2.5 text-xs font-medium text-muted transition-colors hover:text-fg"
+              aria-expanded={actionsOpen}
+              aria-label="Session actions"
             >
               <DotsThreeIcon className="size-4" weight="bold" />
               <span className="hidden sm:inline">Actions</span>
-            </ActionSplitButton.Main>
-            <ActionSplitButton.Menu variant="secondary" size="sm">
-              <ActionSplitButton.Item
-                value="toggle-files"
-                onSelect={onToggleFiles}
-              >
-                <span className="inline-flex items-center gap-2">
-                  <FilesIcon className="size-4" />
-                  {filePanelOpen ? "Hide files" : "Show files"}
-                </span>
-              </ActionSplitButton.Item>
-              <ActionSplitButton.Item value="share" onSelect={onShare}>
-                <span className="inline-flex items-center gap-2">
-                  <ShareNetworkIcon className="size-4" />
-                  Share
-                </span>
-              </ActionSplitButton.Item>
-              <ActionSplitButton.Item
-                value="export"
-                onSelect={() => {
-                  if (!canMutate) return;
-                  onExport();
-                }}
-              >
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-2",
-                    !canMutate && "opacity-50",
-                  )}
-                >
-                  <DownloadSimpleIcon className="size-4" />
-                  Export
-                </span>
-              </ActionSplitButton.Item>
-              <ActionSplitButton.Item
-                value="restart"
-                onSelect={() => {
-                  if (
+            </button>
+
+            {actionsOpen ? (
+              <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-border bg-bg p-1 shadow-xl">
+                <ActionItem
+                  label={filePanelOpen ? "Hide files" : "Show files"}
+                  icon={<FilesIcon className="size-4" />}
+                  onClick={() => {
+                    onToggleFiles();
+                    setActionsOpen(false);
+                  }}
+                />
+                <ActionItem
+                  label="Share"
+                  icon={<ShareNetworkIcon className="size-4" />}
+                  onClick={() => {
+                    onShare();
+                    setActionsOpen(false);
+                  }}
+                />
+                <ActionItem
+                  label="Export"
+                  icon={<DownloadSimpleIcon className="size-4" />}
+                  disabled={!canMutate}
+                  onClick={() => {
+                    if (!canMutate) return;
+                    onExport();
+                    setActionsOpen(false);
+                  }}
+                />
+                <ActionItem
+                  label="Restart"
+                  icon={<ArrowClockwiseIcon className="size-4" />}
+                  disabled={
                     !canMutate ||
                     sandboxStatus?.status === "creating" ||
                     sandboxStatus?.capabilities?.restart === false ||
                     isRestarting
-                  ) {
-                    return;
                   }
-                  onRestart();
-                }}
-              >
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-2",
-                    (!canMutate ||
+                  onClick={() => {
+                    if (
+                      !canMutate ||
                       sandboxStatus?.status === "creating" ||
                       sandboxStatus?.capabilities?.restart === false ||
-                      isRestarting) && "opacity-50",
-                  )}
-                >
-                  <ArrowClockwiseIcon className="size-4" />
-                  Restart
-                </span>
-              </ActionSplitButton.Item>
-              <ActionSplitButton.Item
-                value="archive"
-                onSelect={() => {
-                  if (!canMutate || isArchiving) return;
-                  onArchive();
-                }}
-              >
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-2",
-                    (!canMutate || isArchiving) && "opacity-50",
-                  )}
-                >
-                  <ArchiveBoxIcon className="size-4" />
-                  Archive
-                </span>
-              </ActionSplitButton.Item>
-              {session?.status === "archived" ? (
-                <ActionSplitButton.Item
-                  value="delete"
-                  onSelect={() => {
-                    if (isDeleting) return;
-                    onDelete();
+                      isRestarting
+                    ) {
+                      return;
+                    }
+                    onRestart();
+                    setActionsOpen(false);
                   }}
-                >
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-2 text-status-err",
-                      isDeleting && "opacity-50",
-                    )}
-                  >
-                    <TrashIcon className="size-4" />
-                    Delete
-                  </span>
-                </ActionSplitButton.Item>
-              ) : null}
-            </ActionSplitButton.Menu>
-          </ActionSplitButton.Root>
+                />
+                <ActionItem
+                  label="Archive"
+                  icon={<ArchiveBoxIcon className="size-4" />}
+                  disabled={!canMutate || isArchiving}
+                  onClick={() => {
+                    if (!canMutate || isArchiving) return;
+                    onArchive();
+                    setActionsOpen(false);
+                  }}
+                />
+                {session?.status === "archived" ? (
+                  <ActionItem
+                    label="Delete"
+                    icon={<TrashIcon className="size-4" />}
+                    danger
+                    disabled={isDeleting}
+                    onClick={() => {
+                      if (isDeleting) return;
+                      onDelete();
+                      setActionsOpen(false);
+                    }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>
