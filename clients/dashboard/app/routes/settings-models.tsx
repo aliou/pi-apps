@@ -7,6 +7,7 @@ import {
   type ModelsIntrospectionSetting,
   type ModelsResponse,
 } from "../lib/api";
+import { useEnvironmentLabel } from "../hooks/use-environment";
 
 interface SessionDefaults {
   chat?: { modelProvider?: string; modelId?: string };
@@ -260,6 +261,10 @@ export default function SettingsModelsPage() {
     })),
   ];
 
+  const { label: modelsEnvironmentLabel } = useEnvironmentLabel(
+    modelsEnvironmentId,
+  );
+
   return (
     <div>
       <div className="mb-6">
@@ -271,7 +276,7 @@ export default function SettingsModelsPage() {
           <span>
             Source: <strong>{formatSource(modelsSource)}</strong>
           </span>
-          {modelsEnvironmentId && <span>Env: {modelsEnvironmentId}</span>}
+          {modelsEnvironmentLabel && <span>Env: {modelsEnvironmentLabel}</span>}
           {refreshingModels && <span>Refreshing models...</span>}
         </div>
       </div>

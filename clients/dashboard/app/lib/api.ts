@@ -299,6 +299,10 @@ export interface UpdateEnvironmentRequest {
   isDefault?: boolean;
 }
 
+export function getEnvironmentById(id: string) {
+  return api.get<Environment>(`/environments/${id}`);
+}
+
 export interface SandboxProviderStatus {
   docker: { available: boolean };
   gondolin: { available: boolean };

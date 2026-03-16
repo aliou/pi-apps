@@ -302,24 +302,36 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-2">
                 <span className="text-xs text-muted">Repository</span>
-                <SearchableSelect
-                  items={repoItems}
-                  value={selectedRepoId}
-                  onValueChange={setSelectedRepoId}
-                  placeholder="Select repository"
-                  icon={<GithubLogoIcon className="size-4" />}
-                />
+                {isLoading ? (
+                  <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-sm text-muted">
+                    Loading repositories...
+                  </div>
+                ) : (
+                  <SearchableSelect
+                    items={repoItems}
+                    value={selectedRepoId}
+                    onValueChange={setSelectedRepoId}
+                    placeholder="Select repository"
+                    icon={<GithubLogoIcon className="size-4" />}
+                  />
+                )}
               </div>
 
               <div className="space-y-2">
                 <span className="text-xs text-muted">Environment</span>
-                <SearchableSelect
-                  items={environmentItems}
-                  value={selectedEnvironmentId}
-                  onValueChange={setSelectedEnvironmentId}
-                  placeholder="Select environment"
-                  icon={<CloudIcon className="size-4" />}
-                />
+                {isLoading ? (
+                  <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-sm text-muted">
+                    Loading environments...
+                  </div>
+                ) : (
+                  <SearchableSelect
+                    items={environmentItems}
+                    value={selectedEnvironmentId}
+                    onValueChange={setSelectedEnvironmentId}
+                    placeholder="Select environment"
+                    icon={<CloudIcon className="size-4" />}
+                  />
+                )}
               </div>
             </div>
           </div>

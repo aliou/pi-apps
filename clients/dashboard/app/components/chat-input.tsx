@@ -1,13 +1,9 @@
 import { ArrowUpIcon, CaretDownIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchableSelect } from "../components/ui";
-import {
-  api,
-  type ModelInfo,
-  type Session,
-  type SessionFileRecord,
-} from "../lib/api";
+import { api, type ModelInfo, type Session, type SessionFileRecord } from "../lib/api";
 import type { ConnectionStatus } from "../lib/use-session-events";
+import { useEnvironmentLabel } from "../hooks/use-environment";
 import { cn } from "../lib/utils";
 import {
   AttachmentsPicker,
@@ -124,6 +120,10 @@ export function ChatInput({
     const timer = window.setTimeout(() => setModelError(null), 3000);
     return () => window.clearTimeout(timer);
   }, [modelError]);
+
+  const { label: environmentLabel } = useEnvironmentLabel(
+    session?.environmentId,
+  );
 
   const handleSubmit = async () => {
     if (!canSend) return;
@@ -343,7 +343,7 @@ export function ChatInput({
                   className="inline-flex items-center rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:text-fg"
                   title="Environment context"
                 >
-                  Env: {session.environmentId}
+                  Env: {environmentLabel ?? session.environmentId}
                 </a>
               ) : null}
               <AttachmentsPicker
