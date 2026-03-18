@@ -456,7 +456,8 @@ export function sessionsRoutes(): Hono<AppEnv> {
                 sandboxType: sandboxProvider as
                   | "docker"
                   | "cloudflare"
-                  | "gondolin",
+                  | "gondolin"
+                  | "local",
               },
               {
                 repoUrl,
@@ -1187,7 +1188,11 @@ export function sessionsRoutes(): Hono<AppEnv> {
       const createPromise = sandboxManager.createForSession(
         id,
         envConfig ?? {
-          sandboxType: sandboxProvider as "docker" | "cloudflare" | "gondolin",
+          sandboxType: sandboxProvider as
+            | "docker"
+            | "cloudflare"
+            | "gondolin"
+            | "local",
         },
         {
           repoUrl,

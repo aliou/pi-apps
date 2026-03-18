@@ -471,6 +471,7 @@ describe("SandboxManager cloudflare wiring", () => {
       {
         docker: { sessionDataDir: "/tmp/test", secretsBaseDir: "/tmp/test" },
         gondolin: { sessionDataDir: "/tmp/test" },
+        local: { sessionDataDir: "/tmp/test" },
       },
       secretsService,
     );
@@ -490,6 +491,7 @@ describe("SandboxManager cloudflare wiring", () => {
       {
         docker: { sessionDataDir: "/tmp/test", secretsBaseDir: "/tmp/test" },
         gondolin: { sessionDataDir: "/tmp/test" },
+        local: { sessionDataDir: "/tmp/test" },
       },
       secretsService,
     );

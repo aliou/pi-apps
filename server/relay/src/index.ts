@@ -125,6 +125,9 @@ async function main() {
       gondolin: {
         sessionDataDir,
       },
+      local: {
+        sessionDataDir,
+      },
       logStore: sandboxLogStore,
     },
     secretsService,
@@ -134,6 +137,12 @@ async function main() {
   // Initialize environment service
   const environmentService = new EnvironmentService(db);
   log.info("environment service initialized");
+  environmentService.upsertSystemLocal({
+    workspaceMode: "local-directory",
+    localPath: process.cwd(),
+    systemManaged: true,
+  });
+  log.info("system local environment ensured");
 
   // Initialize extension services
   const extensionConfigService = new ExtensionConfigService(db);

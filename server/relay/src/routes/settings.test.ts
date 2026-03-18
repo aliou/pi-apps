@@ -114,6 +114,31 @@ describe("Settings Routes", () => {
       expect(json.data.github_repos_access_token).toBeUndefined();
       expect(json.data.public_setting).toBe("visible");
     });
+    describe("GET /api/settings/sandbox-providers", () => {
+      it("includes local provider status", async () => {
+        const app = createApp({ services });
+        const res = await app.request("/api/settings/sandbox-providers");
+
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        expect(json.data.local).toBeDefined();
+        expect(typeof json.data.local.available).toBe("boolean");
+      });
+
+      it("rechecks local provider status", async () => {
+        const app = createApp({ services });
+        const res = await app.request(
+          "/api/settings/sandbox-providers/local/recheck",
+          {
+            method: "POST",
+          },
+        );
+
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        expect(json.data).toHaveProperty("available");
+      });
+    });
   });
 
   describe("PUT /api/settings", () => {

@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { settings } from "../db/schema";
 
-// Keys that should not be exposed via the general settings API
 const PROTECTED_KEYS = ["github_repos_access_token", "github_app_config"];
 
 interface ModelsIntrospectionSetting {
@@ -18,10 +17,8 @@ interface IdlePolicySetting {
 
 function validateSettingValue(key: string, value: unknown): string | null {
   if (key === "models_introspection") {
-    if (!value || typeof value !== "object") {
+    if (!value || typeof value !== "object")
       return "models_introspection must be an object";
-    }
-
     const payload = value as ModelsIntrospectionSetting;
     if (
       payload.environmentId !== undefined &&
@@ -30,21 +27,16 @@ function validateSettingValue(key: string, value: unknown): string | null {
     ) {
       return "models_introspection.environmentId must be a non-empty string when provided";
     }
-
     return null;
   }
 
-  if (key === "chat_mode_prompt_profile") {
-    if (typeof value !== "string") {
-      return "chat_mode_prompt_profile must be a string";
-    }
+  if (key === "chat_mode_prompt_profile" && typeof value !== "string") {
+    return "chat_mode_prompt_profile must be a string";
   }
 
   if (key === "idle_policy") {
-    if (!value || typeof value !== "object") {
+    if (!value || typeof value !== "object")
       return "idle_policy must be an object";
-    }
-
     const payload = value as IdlePolicySetting;
     if (
       !Number.isInteger(payload.defaultTimeoutSeconds) ||
@@ -52,25 +44,20 @@ function validateSettingValue(key: string, value: unknown): string | null {
     ) {
       return "idle_policy.defaultTimeoutSeconds must be a positive integer";
     }
-
     if (
       !Number.isInteger(payload.graceAfterDisconnectSeconds) ||
       payload.graceAfterDisconnectSeconds < 0
     ) {
       return "idle_policy.graceAfterDisconnectSeconds must be a non-negative integer";
     }
-
     if (payload.disableForModes !== undefined) {
-      if (!Array.isArray(payload.disableForModes)) {
+      if (!Array.isArray(payload.disableForModes))
         return "idle_policy.disableForModes must be an array when provided";
-      }
-
       const invalidMode = payload.disableForModes.find(
         (mode) => mode !== "chat" && mode !== "code",
       );
-      if (invalidMode) {
+      if (invalidMode)
         return "idle_policy.disableForModes entries must be 'chat' or 'code'";
-      }
     }
   }
 
@@ -80,45 +67,49 @@ function validateSettingValue(key: string, value: unknown): string | null {
 export function settingsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  // Get sandbox provider status
   app.get("/sandbox-providers", async (c) => {
     const sandboxManager = c.get("sandboxManager");
 
-    // Check Docker availability
     let dockerAvailable = false;
     try {
       dockerAvailable = await sandboxManager.isProviderAvailable({
         sandboxType: "docker",
-        image: "pi-sandbox:local", // dummy image, just checks Docker daemon
+        image: "pi-sandbox:local",
       });
     } catch {
-      // Docker not available
+      // noop
     }
 
-    // Check Gondolin availability
     let gondolinAvailable = false;
     try {
       gondolinAvailable = await sandboxManager.isProviderAvailable({
         sandboxType: "gondolin",
       });
     } catch {
-      // Gondolin not available
+      // noop
     }
+
+    const local = await sandboxManager.getLocalProviderStatus();
 
     return c.json({
       data: {
         docker: { available: dockerAvailable },
         gondolin: { available: gondolinAvailable },
+        local,
       },
       error: null,
     });
   });
 
-  // Get all settings (except protected keys)
+  app.post("/sandbox-providers/local/recheck", async (c) => {
+    const sandboxManager = c.get("sandboxManager");
+    const result = await sandboxManager.getLocalProviderStatus();
+    return c.json({ data: result, error: null });
+  });
+
   app.get("/", (c) => {
     const db = c.get("db");
     const allSettings = db.select().from(settings).all();
-
     const result: Record<string, unknown> = {};
     for (const setting of allSettings) {
       if (!PROTECTED_KEYS.includes(setting.key)) {
@@ -129,11 +120,9 @@ export function settingsRoutes(): Hono<AppEnv> {
         }
       }
     }
-
     return c.json({ data: result, error: null });
   });
 
-  // Set a setting
   app.put("/", async (c) => {
     const db = c.get("db");
 
@@ -148,7 +137,6 @@ export function settingsRoutes(): Hono<AppEnv> {
     if (!key || typeof key !== "string" || key.trim() === "") {
       return c.json({ data: null, error: "Key is required" }, 400);
     }
-
     if (PROTECTED_KEYS.includes(key)) {
       return c.json(
         { data: null, error: "Cannot modify protected setting" },
@@ -156,15 +144,12 @@ export function settingsRoutes(): Hono<AppEnv> {
       );
     }
 
-    const value = body.value;
-    const validationError = validateSettingValue(key, value);
-    if (validationError) {
+    const validationError = validateSettingValue(key, body.value);
+    if (validationError)
       return c.json({ data: null, error: validationError }, 400);
-    }
 
     const now = new Date().toISOString();
-    const valueStr = JSON.stringify(value);
-
+    const valueStr = JSON.stringify(body.value);
     const existing = db
       .select()
       .from(settings)
@@ -178,11 +163,7 @@ export function settingsRoutes(): Hono<AppEnv> {
         .run();
     } else {
       db.insert(settings)
-        .values({
-          key,
-          value: valueStr,
-          updatedAt: now,
-        })
+        .values({ key, value: valueStr, updatedAt: now })
         .run();
     }
 

@@ -4,7 +4,12 @@
  */
 
 /** Supported sandbox provider backends. */
-export type SandboxProviderType = "mock" | "docker" | "cloudflare" | "gondolin";
+export type SandboxProviderType =
+  | "mock"
+  | "docker"
+  | "cloudflare"
+  | "gondolin"
+  | "local";
 
 /** All supported sandbox provider types. Used as default and for status checks. */
 export const ALL_PROVIDER_TYPES: SandboxProviderType[] = [
@@ -12,6 +17,7 @@ export const ALL_PROVIDER_TYPES: SandboxProviderType[] = [
   "docker",
   "cloudflare",
   "gondolin",
+  "local",
 ];
 
 /** Provider types shown in UI. Mock is internal-only. */
@@ -19,6 +25,7 @@ export const USER_FACING_PROVIDER_TYPES: readonly SandboxProviderType[] = [
   "docker",
   "cloudflare",
   "gondolin",
+  "local",
 ] as const;
 
 /** Provider-neutral resource tiers. Each provider maps these to its own limits. */

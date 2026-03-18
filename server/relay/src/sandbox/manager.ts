@@ -4,12 +4,14 @@ import type { SecretsService } from "../services/secrets.service";
 import { CloudflareSandboxProvider } from "./cloudflare";
 import { DockerSandboxProvider } from "./docker";
 import { GondolinSandboxProvider } from "./gondolin";
+import { LocalSandboxProvider } from "./local";
 import type { SandboxLogStore } from "./log-store";
 import { MockSandboxProvider } from "./mock";
 import type { SandboxProviderType } from "./provider-types";
 
 export type { SandboxProviderType };
 
+import type { PiDetectionResult } from "./local/detect-pi";
 import type {
   CleanupResult,
   CreateSandboxOptions,
@@ -22,33 +24,24 @@ import type {
 
 const log = createLogger("sandbox");
 
-/**
- * Per-environment sandbox config as stored in the environments table.
- * The manager uses this to build provider instances on-demand.
- */
-/**
- * Per-environment sandbox config resolved at runtime.
- * Callers resolve secrets before passing this to the manager.
- */
 export interface EnvironmentSandboxConfig {
-  sandboxType: "docker" | "cloudflare" | "gondolin";
-  /** Docker image name (for docker type) */
+  sandboxType: "docker" | "cloudflare" | "gondolin" | "local";
   image?: string;
-  /** Cloudflare Worker URL (for cloudflare type) */
   workerUrl?: string;
-  /** Decrypted shared secret for Worker auth (for cloudflare type) */
   apiToken?: string;
-  /** Optional custom guest assets directory for Gondolin (for gondolin type) */
   imagePath?: string;
-  /** Non-secret environment variables resolved from the environment config. */
   env?: Record<string, string>;
+  workspaceMode?: "github-clone" | "local-directory" | "git-worktree";
+  repoUrl?: string;
+  repoBranch?: string;
+  localPath?: string;
+  worktreeRepoPath?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+  systemManaged?: boolean;
 }
 
 export interface SandboxManagerConfig {
-  /**
-   * Base Docker config (host paths, etc). Provider instances are built
-   * on-demand with per-environment image overrides.
-   */
   docker: {
     sessionDataDir: string;
     secretsBaseDir: string;
@@ -56,25 +49,16 @@ export interface SandboxManagerConfig {
   gondolin: {
     sessionDataDir: string;
   };
-  /** Optional log store for buffering sandbox stderr lines. */
+  local: {
+    sessionDataDir: string;
+  };
   logStore?: SandboxLogStore;
 }
 
-/**
- * Manages sandbox lifecycle with support for multiple providers.
- * Builds provider instances on-demand from per-environment config
- * rather than creating them once at boot.
- *
- * Stateless -- does not track sessions in memory.
- * The DB is the source of truth for session -> provider/providerId mappings.
- */
 export class SandboxManager {
   private config: SandboxManagerConfig;
-  /** Cached provider instances keyed by a config fingerprint. */
   private providerCache = new Map<string, SandboxProvider>();
-  /** Mock provider singleton (for tests only). */
   private mockProvider: MockSandboxProvider | null = null;
-  /** Abort controller for the currently running extension validation. */
   private activeValidationAbort: AbortController | null = null;
   private secretsService: SecretsService;
 
@@ -83,17 +67,10 @@ export class SandboxManager {
     this.secretsService = secretsService;
   }
 
-  /**
-   * Get or create a provider instance for a given environment config.
-   * Docker providers are keyed by image name.
-   * Cloudflare providers are keyed by workerUrl.
-   * Mock provider is a singleton.
-   */
   private getProvider(envConfig: EnvironmentSandboxConfig): SandboxProvider {
     if (envConfig.sandboxType === "docker") {
       const image = envConfig.image ?? "pi-sandbox:local";
       const cacheKey = `docker:${image}`;
-
       let provider = this.providerCache.get(cacheKey);
       if (!provider) {
         provider = new DockerSandboxProvider(
@@ -111,18 +88,14 @@ export class SandboxManager {
 
     if (envConfig.sandboxType === "cloudflare") {
       const { workerUrl, apiToken } = envConfig;
-      if (!workerUrl) {
+      if (!workerUrl)
         throw new Error("Cloudflare environment missing workerUrl in config");
-      }
       if (!apiToken) {
         throw new Error(
           "Cloudflare environment missing apiToken in config. Set it in the environment settings.",
         );
       }
-
       const cacheKey = `cloudflare:${workerUrl}`;
-
-      // Always rebuild -- token may have changed.
       const provider = new CloudflareSandboxProvider({ workerUrl, apiToken });
       this.providerCache.set(cacheKey, provider);
       return provider;
@@ -131,7 +104,6 @@ export class SandboxManager {
     if (envConfig.sandboxType === "gondolin") {
       const imagePath = envConfig.imagePath;
       const cacheKey = `gondolin:${imagePath ?? "default"}`;
-
       let provider = this.providerCache.get(cacheKey);
       if (!provider) {
         provider = new GondolinSandboxProvider(
@@ -146,12 +118,19 @@ export class SandboxManager {
       return provider;
     }
 
+    if (envConfig.sandboxType === "local") {
+      return new LocalSandboxProvider(
+        {
+          sessionDataDir: this.config.local.sessionDataDir,
+          envConfig,
+        },
+        this.config.logStore,
+      );
+    }
+
     throw new Error(`Unknown sandbox type: ${envConfig.sandboxType}`);
   }
 
-  /**
-   * Get the mock provider (for tests/dev). Not exposed in UI.
-   */
   getMockProvider(): MockSandboxProvider {
     if (!this.mockProvider) {
       this.mockProvider = new MockSandboxProvider();
@@ -159,9 +138,6 @@ export class SandboxManager {
     return this.mockProvider;
   }
 
-  /**
-   * Check if a provider type is available for a given config.
-   */
   async isProviderAvailable(
     envConfig: EnvironmentSandboxConfig,
   ): Promise<boolean> {
@@ -173,10 +149,18 @@ export class SandboxManager {
     }
   }
 
-  /**
-   * Validate a package source by running `pi install` in an ephemeral
-   * Gondolin VM. Returns null if Gondolin is not available (skip validation).
-   */
+  async getLocalProviderStatus(): Promise<PiDetectionResult> {
+    const provider = this.getProvider({
+      sandboxType: "local",
+      workspaceMode: "local-directory",
+      localPath: process.cwd(),
+    });
+    if (!(provider instanceof LocalSandboxProvider)) {
+      return { available: false, error: "Local provider unavailable" };
+    }
+    return provider.getStatus();
+  }
+
   async validateExtensionPackage(
     source: string,
     options?: { ignoreScripts?: boolean },
@@ -187,19 +171,16 @@ export class SandboxManager {
 
     try {
       const provider = this.getGondolinProvider();
-      if (!provider) {
-        return null;
-      }
+      if (!provider) return null;
       const available = await provider.isAvailable();
       if (!available) return null;
 
       const abortController = new AbortController();
       this.activeValidationAbort = abortController;
-      const result = await provider.validatePackage(source, {
+      return await provider.validatePackage(source, {
         signal: abortController.signal,
         ignoreScripts: options?.ignoreScripts,
       });
-      return result;
     } catch {
       return null;
     } finally {
@@ -208,26 +189,18 @@ export class SandboxManager {
   }
 
   cancelExtensionValidation(): boolean {
-    if (!this.activeValidationAbort) {
-      return false;
-    }
+    if (!this.activeValidationAbort) return false;
     this.activeValidationAbort.abort();
     this.activeValidationAbort = null;
     return true;
   }
 
-  /**
-   * Get a Gondolin provider instance (using default config).
-   * Returns null if not configured.
-   */
   private getGondolinProvider(): GondolinSandboxProvider | null {
     const cacheKey = "gondolin:default";
     let provider = this.providerCache.get(cacheKey);
     if (!provider) {
       provider = new GondolinSandboxProvider(
-        {
-          sessionDataDir: this.config.gondolin.sessionDataDir,
-        },
+        { sessionDataDir: this.config.gondolin.sessionDataDir },
         this.config.logStore,
       );
       this.providerCache.set(cacheKey, provider);
@@ -235,12 +208,8 @@ export class SandboxManager {
     return provider as GondolinSandboxProvider;
   }
 
-  /**
-   * Resolve secret material for a given provider type.
-   * Fetches fresh secrets from the secrets service.
-   */
   async resolveSecretMaterial(
-    providerType: "docker" | "cloudflare" | "gondolin" | "mock",
+    providerType: "docker" | "cloudflare" | "gondolin" | "mock" | "local",
   ): Promise<SandboxSecretMaterial> {
     const material = await this.secretsService.getSecretMaterial(providerType);
     return {
@@ -252,11 +221,6 @@ export class SandboxManager {
     };
   }
 
-  /**
-   * Create a sandbox for a session using environment config.
-   * Resolves secrets internally from the secrets service.
-   * Returns the handle. Caller should persist handle.providerId to DB.
-   */
   async createForSession(
     sessionId: string,
     envConfig: EnvironmentSandboxConfig,
@@ -267,7 +231,12 @@ export class SandboxManager {
   ): Promise<SandboxHandle> {
     const provider = this.getProvider(envConfig);
     const material = await this.resolveSecretMaterial(
-      envConfig.sandboxType as "docker" | "cloudflare" | "gondolin" | "mock",
+      envConfig.sandboxType as
+        | "docker"
+        | "cloudflare"
+        | "gondolin"
+        | "mock"
+        | "local",
     );
     const mergedEnv = { ...(envConfig.env ?? {}), ...(options?.env ?? {}) };
     const mergedDirectEnv = { ...material.directEnv, ...mergedEnv };
@@ -276,16 +245,10 @@ export class SandboxManager {
       ...options,
       env: mergedEnv,
       secrets: mergedDirectEnv,
-      secretMaterial: {
-        ...material,
-        directEnv: mergedDirectEnv,
-      },
+      secretMaterial: { ...material, directEnv: mergedDirectEnv },
     });
   }
 
-  /**
-   * Create a sandbox using the mock provider (for tests/dev).
-   */
   async createMockForSession(
     sessionId: string,
     options?: Omit<
@@ -302,10 +265,6 @@ export class SandboxManager {
     });
   }
 
-  /**
-   * Get sandbox handle for a session by its provider-specific ID.
-   * Needs environment config to resolve the correct provider instance.
-   */
   async getHandle(
     envConfig: EnvironmentSandboxConfig,
     providerId: string,
@@ -314,11 +273,6 @@ export class SandboxManager {
     return provider.getSandbox(providerId);
   }
 
-  /**
-   * Get handle using raw provider type + providerId.
-   * Used when environment config is not available (e.g., mock sessions).
-   * Falls back to mock provider for "mock" type.
-   */
   async getHandleByType(
     providerType: SandboxProviderType,
     providerId: string,
@@ -335,10 +289,6 @@ export class SandboxManager {
     return this.getHandle(envConfig, providerId);
   }
 
-  /**
-   * Resume a sandbox session: get handle and call resume().
-   * Resolves secrets internally from the secrets service.
-   */
   async resumeSession(
     providerType: SandboxProviderType,
     providerId: string,
@@ -351,7 +301,7 @@ export class SandboxManager {
       envConfig,
     );
     const material = await this.resolveSecretMaterial(
-      providerType as "docker" | "cloudflare" | "gondolin" | "mock",
+      providerType as "docker" | "cloudflare" | "gondolin" | "mock" | "local",
     );
     const mergedDirectEnv = {
       ...material.directEnv,
@@ -364,10 +314,6 @@ export class SandboxManager {
     return handle;
   }
 
-  /**
-   * Attach to a sandbox: get handle + channel in one call.
-   * Used by the WS handler.
-   */
   async attachSession(
     providerType: SandboxProviderType,
     providerId: string,
@@ -382,9 +328,6 @@ export class SandboxManager {
     return { handle, channel };
   }
 
-  /**
-   * Terminate a sandbox by provider-specific ID.
-   */
   async terminateByProviderId(
     providerType: SandboxProviderType,
     providerId: string,
@@ -402,12 +345,10 @@ export class SandboxManager {
     }
   }
 
-  /** List all active sandboxes across all cached providers */
   async listAll(): Promise<
     (SandboxInfo & { provider: SandboxProviderType })[]
   > {
     const results: (SandboxInfo & { provider: SandboxProviderType })[] = [];
-
     for (const [key, provider] of this.providerCache) {
       const type = key.split(":")[0] as SandboxProviderType;
       const sandboxes = await provider.listSandboxes();
@@ -415,42 +356,32 @@ export class SandboxManager {
         results.push({ ...sandbox, provider: type });
       }
     }
-
     if (this.mockProvider) {
       const sandboxes = await this.mockProvider.listSandboxes();
       for (const sandbox of sandboxes) {
         results.push({ ...sandbox, provider: "mock" });
       }
     }
-
     return results;
   }
 
-  /** Cleanup stopped sandboxes across all cached providers */
   async cleanup(): Promise<CleanupResult> {
     let sandboxesRemoved = 0;
     let artifactsRemoved = 0;
-
     for (const provider of this.providerCache.values()) {
       const result = await provider.cleanup();
       sandboxesRemoved += result.sandboxesRemoved;
       artifactsRemoved += result.artifactsRemoved;
     }
-
     if (this.mockProvider) {
       const result = await this.mockProvider.cleanup();
       sandboxesRemoved += result.sandboxesRemoved;
       artifactsRemoved += result.artifactsRemoved;
     }
-
     return { sandboxesRemoved, artifactsRemoved };
   }
 }
 
-/**
- * Resolve an environment DB record into an EnvironmentSandboxConfig.
- * For cloudflare environments, decrypts the referenced shared secret.
- */
 export async function resolveEnvConfig(
   env: EnvironmentRecord,
   secretsService: SecretsService,
@@ -461,13 +392,33 @@ export async function resolveEnvConfig(
     secretId?: string;
     imagePath?: string;
     envVars?: Array<{ key: string; value: string }>;
+    workspaceMode?: "github-clone" | "local-directory" | "git-worktree";
+    repoUrl?: string;
+    repoBranch?: string;
+    localPath?: string;
+    worktreeRepoPath?: string;
+    worktreePath?: string;
+    worktreeBranch?: string;
+    systemManaged?: boolean;
   };
 
   const result: EnvironmentSandboxConfig = {
-    sandboxType: env.sandboxType as "docker" | "cloudflare" | "gondolin",
+    sandboxType: env.sandboxType as
+      | "docker"
+      | "cloudflare"
+      | "gondolin"
+      | "local",
     image: config.image,
     workerUrl: config.workerUrl,
     imagePath: config.imagePath,
+    workspaceMode: config.workspaceMode,
+    repoUrl: config.repoUrl,
+    repoBranch: config.repoBranch,
+    localPath: config.localPath,
+    worktreeRepoPath: config.worktreeRepoPath,
+    worktreePath: config.worktreePath,
+    worktreeBranch: config.worktreeBranch,
+    systemManaged: config.systemManaged,
     env:
       config.envVars && config.envVars.length > 0
         ? Object.fromEntries(

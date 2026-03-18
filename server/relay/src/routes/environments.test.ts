@@ -117,4 +117,38 @@ describe("Environments Routes", () => {
       { key: "FOO_BAR", value: "baz" },
     ]);
   });
+
+  it("rejects manual creation of local environment", async () => {
+    const app = createApp({ services });
+    const res = await app.request("/api/environments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Local",
+        sandboxType: "local",
+        config: { workspaceMode: "local-directory", localPath: "/tmp" },
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toContain("built-in");
+  });
+
+  it("prevents deleting built-in local environment", async () => {
+    const local = services.environmentService.upsertSystemLocal({
+      workspaceMode: "local-directory",
+      localPath: "/tmp",
+      systemManaged: true,
+    });
+
+    const app = createApp({ services });
+    const res = await app.request(`/api/environments/${local.id}`, {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toContain("cannot be deleted");
+  });
 });

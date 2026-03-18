@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { mkdir, readdir } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { mkdir, readdir, stat } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import type { AppEnv } from "../app";
 import { createLogger } from "../lib/logger";
@@ -10,6 +10,7 @@ import {
   AVAILABLE_DOCKER_IMAGES,
   type EnvironmentConfig,
   type SandboxType,
+  SYSTEM_LOCAL_ENV_NAME,
 } from "../services/environment.service";
 
 interface CreateEnvironmentRequest {
@@ -47,6 +48,14 @@ function toSandboxConfig(
     workerUrl: config.workerUrl,
     apiToken,
     imagePath: config.imagePath,
+    workspaceMode: config.workspaceMode,
+    repoUrl: config.repoUrl,
+    repoBranch: config.repoBranch,
+    localPath: config.localPath,
+    worktreeRepoPath: config.worktreeRepoPath,
+    worktreePath: config.worktreePath,
+    worktreeBranch: config.worktreeBranch,
+    systemManaged: config.systemManaged,
     env: config.envVars
       ? Object.fromEntries(
           config.envVars.map((entry) => [entry.key, entry.value]),
@@ -56,31 +65,22 @@ function toSandboxConfig(
 }
 
 function validateEnvVars(envVars: EnvironmentConfig["envVars"]): string | null {
-  if (envVars === undefined) {
-    return null;
-  }
-  if (!Array.isArray(envVars)) {
+  if (envVars === undefined) return null;
+  if (!Array.isArray(envVars))
     return "config.envVars must be an array when provided";
-  }
 
   const seen = new Set<string>();
   for (const [index, entry] of envVars.entries()) {
-    if (!entry || typeof entry !== "object") {
+    if (!entry || typeof entry !== "object")
       return `config.envVars[${index}] must be an object`;
-    }
-    if (typeof entry.key !== "string" || !entry.key.trim()) {
+    if (typeof entry.key !== "string" || !entry.key.trim())
       return `config.envVars[${index}].key is required`;
-    }
-    if (!ENV_VAR_KEY_RE.test(entry.key.trim())) {
+    if (!ENV_VAR_KEY_RE.test(entry.key.trim()))
       return `Invalid env var key: ${entry.key}`;
-    }
-    if (typeof entry.value !== "string") {
+    if (typeof entry.value !== "string")
       return `config.envVars[${index}].value must be a string`;
-    }
     const key = entry.key.trim();
-    if (seen.has(key)) {
-      return `Duplicate env var key: ${key}`;
-    }
+    if (seen.has(key)) return `Duplicate env var key: ${key}`;
     seen.add(key);
   }
 
@@ -93,17 +93,38 @@ function normalizeConfig(config: EnvironmentConfig): EnvironmentConfig {
     envVars: config.envVars
       ?.map((entry) => ({ key: entry.key.trim(), value: entry.value }))
       .filter((entry) => entry.key.length > 0),
+    repoUrl: config.repoUrl?.trim(),
+    repoBranch: config.repoBranch?.trim(),
+    localPath: config.localPath?.trim(),
+    worktreeRepoPath: config.worktreeRepoPath?.trim(),
+    worktreePath: config.worktreePath?.trim(),
+    worktreeBranch: config.worktreeBranch?.trim(),
+    workspaceMode:
+      config.workspaceMode ??
+      (config.localPath ? "local-directory" : undefined),
   };
 }
 
-function validateConfig(
+async function pathMustBeDirectory(
+  path: string,
+  label: string,
+): Promise<string | null> {
+  try {
+    const info = await stat(path);
+    if (!info.isDirectory()) return `${label} must be a directory`;
+    return null;
+  } catch {
+    return `${label} does not exist`;
+  }
+}
+
+async function validateConfig(
   sandboxType: SandboxType,
   config: EnvironmentConfig,
-): string | null {
+): Promise<string | null> {
   if (sandboxType === "docker") {
-    if (!config.image) {
+    if (!config.image)
       return "config.image is required for docker environments";
-    }
     const stripTag = (value: string) => value.replace(/:[\w.-]+$/, "");
     const validBases = AVAILABLE_DOCKER_IMAGES.map((img) =>
       stripTag(img.image),
@@ -112,9 +133,8 @@ function validateConfig(
       return `Invalid image. Must be one of: ${AVAILABLE_DOCKER_IMAGES.map((img) => img.image).join(", ")}`;
     }
   } else if (sandboxType === "cloudflare") {
-    if (!config.workerUrl) {
+    if (!config.workerUrl)
       return "config.workerUrl is required for cloudflare environments";
-    }
     try {
       new URL(config.workerUrl);
     } catch {
@@ -129,6 +149,40 @@ function validateConfig(
       typeof config.imagePath !== "string"
     ) {
       return "config.imagePath must be a string when provided";
+    }
+  } else if (sandboxType === "local") {
+    const mode = config.workspaceMode;
+    if (!mode) return "config.workspaceMode is required for local environments";
+    if (mode === "github-clone") {
+      if (!config.repoUrl)
+        return "config.repoUrl is required for local github-clone mode";
+      try {
+        new URL(config.repoUrl);
+      } catch {
+        return "config.repoUrl must be a valid URL";
+      }
+    } else if (mode === "local-directory") {
+      if (!config.localPath)
+        return "config.localPath is required for local-directory mode";
+      if (!isAbsolute(config.localPath))
+        return "config.localPath must be an absolute path";
+      return (
+        (await pathMustBeDirectory(config.localPath, "config.localPath")) ??
+        validateEnvVars(config.envVars)
+      );
+    } else if (mode === "git-worktree") {
+      if (!config.worktreeRepoPath)
+        return "config.worktreeRepoPath is required for git-worktree mode";
+      if (!isAbsolute(config.worktreeRepoPath))
+        return "config.worktreeRepoPath must be an absolute path";
+      const pathError = await pathMustBeDirectory(
+        config.worktreeRepoPath,
+        "config.worktreeRepoPath",
+      );
+      if (pathError) return pathError;
+      if (config.worktreePath && !isAbsolute(config.worktreePath)) {
+        return "config.worktreePath must be an absolute path when provided";
+      }
     }
   }
 
@@ -163,12 +217,9 @@ function assertAllowedInstallBase(dest: string): string | null {
   const baseDir = getDefaultGondolinInstallBaseDir();
   const resolved = resolve(dest);
   const rel = relative(baseDir, resolved);
-  if (rel === "") {
-    return null;
-  }
-  if (rel.startsWith("..") || rel === "..") {
+  if (rel === "") return null;
+  if (rel.startsWith("..") || rel === "..")
     return `Destination must stay within ${baseDir}`;
-  }
   return null;
 }
 
@@ -187,9 +238,9 @@ export function environmentsRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const logger = createLogger("environments");
 
-  app.get("/images", (c) => {
-    return c.json({ data: AVAILABLE_DOCKER_IMAGES, error: null });
-  });
+  app.get("/images", (c) =>
+    c.json({ data: AVAILABLE_DOCKER_IMAGES, error: null }),
+  );
 
   app.get("/gondolin", async (c) => {
     const requestedPath = c.req.query("imagePath")?.trim();
@@ -224,9 +275,8 @@ export function environmentsRoutes(): Hono<AppEnv> {
       body.destination?.trim() || getDefaultGondolinInstallBaseDir(),
     );
     const destinationError = assertAllowedInstallBase(destination);
-    if (destinationError) {
+    if (destinationError)
       return c.json({ data: null, error: destinationError }, 400);
-    }
 
     await mkdir(destination, { recursive: true });
 
@@ -265,12 +315,12 @@ export function environmentsRoutes(): Hono<AppEnv> {
       child.stderr?.on("data", (chunk) => {
         stderr += chunk.toString();
       });
-      child.on("close", (exitCode) => {
-        resolvePromise({ exitCode, stdout, stderr });
-      });
-      child.on("error", (error) => {
-        resolvePromise({ exitCode: 1, stdout, stderr: error.message });
-      });
+      child.on("close", (exitCode) =>
+        resolvePromise({ exitCode, stdout, stderr }),
+      );
+      child.on("error", (error) =>
+        resolvePromise({ exitCode: 1, stdout, stderr: error.message }),
+      );
     });
 
     if (result.exitCode !== 0) {
@@ -311,7 +361,12 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const validTypes: SandboxType[] = ["docker", "cloudflare", "gondolin"];
+    const validTypes: SandboxType[] = [
+      "docker",
+      "cloudflare",
+      "gondolin",
+      "local",
+    ];
     if (!body.sandboxType || !validTypes.includes(body.sandboxType)) {
       return c.json(
         {
@@ -323,10 +378,11 @@ export function environmentsRoutes(): Hono<AppEnv> {
     }
 
     const normalizedConfig = normalizeConfig(body.config ?? {});
-    const configError = validateConfig(body.sandboxType, normalizedConfig);
-    if (configError) {
-      return c.json({ data: null, error: configError }, 400);
-    }
+    const configError = await validateConfig(
+      body.sandboxType,
+      normalizedConfig,
+    );
+    if (configError) return c.json({ data: null, error: configError }, 400);
 
     try {
       let apiToken: string | undefined;
@@ -380,14 +436,14 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    if (!body.name?.trim()) {
+    if (!body.name?.trim())
       return c.json({ data: null, error: "name is required" }, 400);
-    }
 
     const validSandboxTypes: SandboxType[] = [
       "docker",
       "cloudflare",
       "gondolin",
+      "local",
     ];
     if (!body.sandboxType || !validSandboxTypes.includes(body.sandboxType)) {
       return c.json(
@@ -398,12 +454,22 @@ export function environmentsRoutes(): Hono<AppEnv> {
         400,
       );
     }
+    if (body.sandboxType === "local") {
+      return c.json(
+        {
+          data: null,
+          error: "Local environment is built-in and cannot be created manually",
+        },
+        400,
+      );
+    }
 
     const normalizedConfig = normalizeConfig(body.config ?? {});
-    const configError = validateConfig(body.sandboxType, normalizedConfig);
-    if (configError) {
-      return c.json({ data: null, error: configError }, 400);
-    }
+    const configError = await validateConfig(
+      body.sandboxType,
+      normalizedConfig,
+    );
+    if (configError) return c.json({ data: null, error: configError }, 400);
 
     try {
       const configToStore = { ...normalizedConfig };
@@ -419,7 +485,6 @@ export function environmentsRoutes(): Hono<AppEnv> {
         config: configToStore,
         isDefault: body.isDefault,
       });
-
       return c.json({
         data: { ...env, config: JSON.parse(env.config) },
         error: null,
@@ -436,11 +501,8 @@ export function environmentsRoutes(): Hono<AppEnv> {
     const environmentService = c.get("environmentService");
     const id = c.req.param("id");
     const env = environmentService.get(id);
-
-    if (!env) {
+    if (!env)
       return c.json({ data: null, error: "Environment not found" }, 404);
-    }
-
     return c.json({
       data: { ...env, config: JSON.parse(env.config) },
       error: null,
@@ -450,11 +512,9 @@ export function environmentsRoutes(): Hono<AppEnv> {
   app.put("/:id", async (c) => {
     const environmentService = c.get("environmentService");
     const id = c.req.param("id");
-
     const existing = environmentService.get(id);
-    if (!existing) {
+    if (!existing)
       return c.json({ data: null, error: "Environment not found" }, 404);
-    }
 
     let body: UpdateEnvironmentRequest;
     try {
@@ -463,27 +523,56 @@ export function environmentsRoutes(): Hono<AppEnv> {
       return c.json({ data: null, error: "Invalid JSON body" }, 400);
     }
 
-    const sandboxType =
+    const existingConfig = JSON.parse(existing.config) as EnvironmentConfig;
+    const requestedSandboxType =
       body.sandboxType ?? (existing.sandboxType as SandboxType);
+    if (existing.sandboxType === "local" && requestedSandboxType !== "local") {
+      return c.json(
+        {
+          data: null,
+          error: "Built-in local environment cannot change sandboxType",
+        },
+        400,
+      );
+    }
+    if (existing.sandboxType !== "local" && requestedSandboxType === "local") {
+      return c.json(
+        {
+          data: null,
+          error:
+            "Local environment is built-in and cannot be converted from another type",
+        },
+        400,
+      );
+    }
+
     const normalizedConfig = body.config
-      ? normalizeConfig(body.config)
+      ? normalizeConfig({
+          ...existingConfig,
+          ...body.config,
+          systemManaged: existingConfig.systemManaged,
+        })
       : undefined;
     if (normalizedConfig) {
-      const configError = validateConfig(sandboxType, normalizedConfig);
-      if (configError) {
-        return c.json({ data: null, error: configError }, 400);
-      }
+      const configError = await validateConfig(
+        requestedSandboxType,
+        normalizedConfig,
+      );
+      if (configError) return c.json({ data: null, error: configError }, 400);
     }
 
     try {
       let configToUpdate = normalizedConfig;
-      if (configToUpdate && sandboxType === "cloudflare") {
+      if (configToUpdate && requestedSandboxType === "cloudflare") {
         const { idleTimeoutSeconds: _, ...rest } = configToUpdate;
         configToUpdate = rest;
       }
 
       environmentService.update(id, {
-        name: body.name?.trim(),
+        name:
+          existing.sandboxType === "local"
+            ? SYSTEM_LOCAL_ENV_NAME
+            : body.name?.trim(),
         config: configToUpdate,
         isDefault: body.isDefault,
       });
@@ -506,14 +595,18 @@ export function environmentsRoutes(): Hono<AppEnv> {
   app.delete("/:id", (c) => {
     const environmentService = c.get("environmentService");
     const id = c.req.param("id");
-
     const existing = environmentService.get(id);
-    if (!existing) {
+    if (!existing)
       return c.json({ data: null, error: "Environment not found" }, 404);
-    }
 
-    environmentService.delete(id);
-    return c.json({ data: { ok: true }, error: null });
+    try {
+      environmentService.delete(id);
+      return c.json({ data: { ok: true }, error: null });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete environment";
+      return c.json({ data: null, error: message }, 400);
+    }
   });
 
   return app;

@@ -38,6 +38,9 @@ describe("ModelsIntrospectionService", () => {
         gondolin: {
           sessionDataDir: "/tmp/pi-test-sessions",
         },
+        local: {
+          sessionDataDir: "/tmp/pi-test-sessions",
+        },
       },
       mockSecrets,
     );

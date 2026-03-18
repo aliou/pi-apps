@@ -3,40 +3,27 @@ import type { AppDatabase } from "../db/connection";
 import { type Environment, environments } from "../db/schema";
 import type { SandboxResourceTier } from "../sandbox/provider-types";
 
-/**
- * Per-environment config stored as JSON in the environments table.
- * Fields are provider-specific:
- * - Docker: image (required), resourceTier (optional)
- * - Cloudflare: workerUrl (required), resourceTier (optional)
- * - Gondolin: imagePath (optional), resourceTier (optional)
- */
-/**
- * Per-environment config stored as JSON in the environments table.
- * Fields are provider-specific:
- * - Docker: image (required), resourceTier (optional)
- * - Cloudflare: workerUrl (required), secretId (required, references secrets table), resourceTier (optional)
- * - Gondolin: imagePath (optional), resourceTier (optional)
- */
+export const SYSTEM_LOCAL_ENV_NAME = "Local";
+
 export interface EnvironmentConfig {
-  /** Docker image name (required for docker type) */
   image?: string;
-  /** Cloudflare Worker URL (required for cloudflare type) */
   workerUrl?: string;
-  /** Secret ID referencing the shared secret in the secrets table (required for cloudflare type) */
   secretId?: string;
-  /** Optional custom guest assets directory for Gondolin environments. */
   imagePath?: string;
   resourceTier?: SandboxResourceTier;
-  /** Idle timeout in seconds before the reaper idles the session. Default: 3600 (1 hour). */
   idleTimeoutSeconds?: number;
-  /**
-   * Non-secret environment variables to pass to the sandbox.
-   * Keys must match /^[A-Z_][A-Z0-9_]*$/ and must be unique.
-   */
   envVars?: Array<{ key: string; value: string }>;
+  workspaceMode?: "github-clone" | "local-directory" | "git-worktree";
+  repoUrl?: string;
+  repoBranch?: string;
+  localPath?: string;
+  worktreeRepoPath?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+  systemManaged?: boolean;
 }
 
-export type SandboxType = "docker" | "cloudflare" | "gondolin";
+export type SandboxType = "docker" | "cloudflare" | "gondolin" | "local";
 
 export interface CreateEnvironmentParams {
   name: string;
@@ -53,10 +40,6 @@ export interface UpdateEnvironmentParams {
 
 export type EnvironmentRecord = Environment;
 
-/**
- * Hardcoded list of available Docker images.
- * In the future, this could be fetched from a container registry.
- */
 export const AVAILABLE_DOCKER_IMAGES = [
   {
     id: "codex-universal",
@@ -74,10 +57,6 @@ export const AVAILABLE_DOCKER_IMAGES = [
 
 export type AvailableImage = (typeof AVAILABLE_DOCKER_IMAGES)[number];
 
-/**
- * Validate environment variable keys and values.
- * Returns an error message or null if valid.
- */
 export function validateEnvVars(
   envVars?: Array<{ key: string; value: string }>,
 ): string | null {
@@ -85,34 +64,23 @@ export function validateEnvVars(
     return null;
   }
 
-  // Key validation pattern: uppercase letters, digits, underscore, must start with letter or underscore
   const keyPattern = /^[A-Z_][A-Z0-9_]*$/;
-
   const seenKeys = new Set<string>();
 
   for (let i = 0; i < envVars.length; i++) {
     const entry = envVars[i];
-    if (!entry) {
-      return `envVars[${i}]: entry is required`;
-    }
+    if (!entry) return `envVars[${i}]: entry is required`;
     const { key, value } = entry;
-
-    // Validate key format
     if (!key || typeof key !== "string") {
       return `envVars[${i}]: key is required and must be a string`;
     }
-
     if (!keyPattern.test(key)) {
       return `envVars[${i}]: key "${key}" must match pattern /^[A-Z_][A-Z0-9_]*$/ (uppercase letters, digits, underscore, must start with letter or underscore)`;
     }
-
-    // Check for duplicates
     if (seenKeys.has(key)) {
       return `envVars: duplicate key "${key}" found`;
     }
     seenKeys.add(key);
-
-    // Validate value
     if (value !== undefined && typeof value !== "string") {
       return `envVars[${i}]: value must be a string when provided`;
     }
@@ -124,17 +92,16 @@ export function validateEnvVars(
 export class EnvironmentService {
   constructor(private db: AppDatabase) {}
 
-  /**
-   * Create a new environment.
-   */
   create(params: CreateEnvironmentParams): EnvironmentRecord {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-
     const existingCount = this.list().length;
     const shouldDefault = params.isDefault ?? existingCount === 0;
 
-    // If setting as default, clear other defaults first
+    if (params.sandboxType === "local" && this.findSystemLocal()) {
+      throw new Error("Local environment already exists");
+    }
+
     if (shouldDefault) {
       this.clearOtherDefaults();
     }
@@ -150,14 +117,11 @@ export class EnvironmentService {
     };
 
     this.db.insert(environments).values(newEnv).run();
-
-    // biome-ignore lint/style/noNonNullAssertion: just inserted
-    return this.get(id)!;
+    const created = this.get(id);
+    if (!created) throw new Error(`Failed to create environment: ${id}`);
+    return created;
   }
 
-  /**
-   * Get an environment by ID.
-   */
   get(id: string): EnvironmentRecord | undefined {
     return this.db
       .select()
@@ -166,16 +130,10 @@ export class EnvironmentService {
       .get();
   }
 
-  /**
-   * List all environments.
-   */
   list(): EnvironmentRecord[] {
     return this.db.select().from(environments).all();
   }
 
-  /**
-   * Get the default environment, if one is set.
-   */
   getDefault(): EnvironmentRecord | undefined {
     return this.db
       .select()
@@ -184,16 +142,12 @@ export class EnvironmentService {
       .get();
   }
 
-  /**
-   * Update an environment.
-   */
   update(id: string, params: UpdateEnvironmentParams): void {
     const existing = this.get(id);
     if (!existing) {
       throw new Error(`Environment not found: ${id}`);
     }
 
-    // If setting as default, clear other defaults first
     if (params.isDefault) {
       this.clearOtherDefaults(id);
     }
@@ -202,15 +156,10 @@ export class EnvironmentService {
       updatedAt: new Date().toISOString(),
     };
 
-    if (params.name !== undefined) {
-      updates.name = params.name;
-    }
-    if (params.config !== undefined) {
+    if (params.name !== undefined) updates.name = params.name;
+    if (params.config !== undefined)
       updates.config = JSON.stringify(params.config);
-    }
-    if (params.isDefault !== undefined) {
-      updates.isDefault = params.isDefault;
-    }
+    if (params.isDefault !== undefined) updates.isDefault = params.isDefault;
 
     this.db
       .update(environments)
@@ -219,16 +168,58 @@ export class EnvironmentService {
       .run();
   }
 
-  /**
-   * Delete an environment.
-   */
   delete(id: string): void {
+    const existing = this.get(id);
+    if (!existing) {
+      return;
+    }
+    const config = JSON.parse(existing.config) as EnvironmentConfig;
+    if (existing.sandboxType === "local" || config.systemManaged) {
+      throw new Error("System-managed local environment cannot be deleted");
+    }
     this.db.delete(environments).where(eq(environments.id, id)).run();
   }
 
-  /**
-   * Clear isDefault on all environments except the specified one.
-   */
+  findSystemLocal(): EnvironmentRecord | undefined {
+    return this.list().find((env) => {
+      if (env.sandboxType !== "local") return false;
+      const config = JSON.parse(env.config) as EnvironmentConfig;
+      return (
+        config.systemManaged === true || env.name === SYSTEM_LOCAL_ENV_NAME
+      );
+    });
+  }
+
+  upsertSystemLocal(config: EnvironmentConfig): EnvironmentRecord {
+    const existing = this.findSystemLocal();
+    const normalizedConfig: EnvironmentConfig = {
+      workspaceMode: "local-directory",
+      ...config,
+      systemManaged: true,
+    };
+
+    if (existing) {
+      const hasNonLocal = this.list().some((env) => env.id !== existing.id);
+      this.update(existing.id, {
+        name: SYSTEM_LOCAL_ENV_NAME,
+        config: normalizedConfig,
+        isDefault: existing.isDefault || !hasNonLocal,
+      });
+      const updated = this.get(existing.id);
+      if (!updated)
+        throw new Error(`Failed to update environment: ${existing.id}`);
+      return updated;
+    }
+
+    const hasOtherEnvs = this.list().length > 0;
+    return this.create({
+      name: SYSTEM_LOCAL_ENV_NAME,
+      sandboxType: "local",
+      config: normalizedConfig,
+      isDefault: !hasOtherEnvs,
+    });
+  }
+
   private clearOtherDefaults(exceptId?: string): void {
     if (exceptId) {
       this.db
@@ -236,11 +227,12 @@ export class EnvironmentService {
         .set({ isDefault: false, updatedAt: new Date().toISOString() })
         .where(ne(environments.id, exceptId))
         .run();
-    } else {
-      this.db
-        .update(environments)
-        .set({ isDefault: false, updatedAt: new Date().toISOString() })
-        .run();
+      return;
     }
+
+    this.db
+      .update(environments)
+      .set({ isDefault: false, updatedAt: new Date().toISOString() })
+      .run();
   }
 }

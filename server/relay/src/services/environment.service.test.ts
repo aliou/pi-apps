@@ -178,6 +178,35 @@ describe("EnvironmentService", () => {
       expect(service.list()).toEqual([]);
     });
   });
+  describe("system local environment", () => {
+    it("upserts built-in local environment", () => {
+      const env = service.upsertSystemLocal({
+        workspaceMode: "local-directory",
+        localPath: "/tmp",
+        systemManaged: true,
+      });
+
+      expect(env.sandboxType).toBe("local");
+      expect(env.name).toBe("Local");
+      expect(JSON.parse(env.config)).toMatchObject({
+        workspaceMode: "local-directory",
+        localPath: "/tmp",
+        systemManaged: true,
+      });
+    });
+
+    it("prevents deleting built-in local environment", () => {
+      const env = service.upsertSystemLocal({
+        workspaceMode: "local-directory",
+        localPath: "/tmp",
+        systemManaged: true,
+      });
+
+      expect(() => service.delete(env.id)).toThrow(
+        "System-managed local environment cannot be deleted",
+      );
+    });
+  });
 
   describe("update", () => {
     it("updates environment name", () => {
