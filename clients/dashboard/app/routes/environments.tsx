@@ -4,6 +4,9 @@ import {
   CopyIcon,
   CubeIcon,
   DownloadSimpleIcon,
+  FolderIcon,
+  GitBranchIcon,
+  HardDrivesIcon,
   InfoIcon,
   PencilSimpleIcon,
   PlusIcon,
@@ -19,9 +22,11 @@ import {
   api,
   type CreateEnvironmentRequest,
   type Environment,
+  type EnvironmentConfig,
   type GondolinInstallResponse,
   type GondolinMetadata,
   type ProbeResult,
+  type SandboxProviderStatus,
   type UpdateEnvironmentRequest,
 } from "../lib/api";
 
@@ -36,7 +41,90 @@ interface SecretInfo {
   keyVersion: number;
 }
 
-// -- Dialog Component -------------------------------------------------
+type EditableSandboxType = "docker" | "cloudflare" | "gondolin";
+type WorkspaceMode = "github-clone" | "local-directory" | "git-worktree";
+
+function formatIdleTimeout(seconds?: number): string | null {
+  if (!seconds) return null;
+  const minutes = seconds / 60;
+  const hours = seconds / 3600;
+  if (seconds % 3600 === 0) return `Idle: ${hours}h`;
+  return `Idle: ${minutes}m`;
+}
+
+function formatWorkspaceMode(mode?: WorkspaceMode): string {
+  switch (mode) {
+    case "github-clone":
+      return "GitHub clone";
+    case "local-directory":
+      return "Local directory";
+    case "git-worktree":
+      return "Git worktree";
+    default:
+      return "Local workspace";
+  }
+}
+
+function buildLocalSummary(config: EnvironmentConfig): string {
+  const mode = config.workspaceMode;
+  if (mode === "github-clone") {
+    return [
+      formatWorkspaceMode(mode),
+      config.repoUrl,
+      config.repoBranch ? `Branch: ${config.repoBranch}` : null,
+    ]
+      .filter(Boolean)
+      .join(" • ");
+  }
+
+  if (mode === "git-worktree") {
+    return [
+      formatWorkspaceMode(mode),
+      config.worktreeRepoPath,
+      config.worktreeBranch ? `Branch: ${config.worktreeBranch}` : null,
+      config.worktreePath ? `Path: ${config.worktreePath}` : null,
+    ]
+      .filter(Boolean)
+      .join(" • ");
+  }
+
+  return [formatWorkspaceMode(mode), config.localPath]
+    .filter(Boolean)
+    .join(" • ");
+}
+
+function buildProbeConfig(
+  sandboxType: EditableSandboxType,
+  values: {
+    image: string;
+    workerUrl: string;
+    secretId: string;
+    imagePath: string;
+  },
+) {
+  if (sandboxType === "docker") return { image: values.image };
+  if (sandboxType === "cloudflare") {
+    return { workerUrl: values.workerUrl, secretId: values.secretId };
+  }
+  return {
+    ...(values.imagePath.trim() ? { imagePath: values.imagePath.trim() } : {}),
+  };
+}
+
+function getInitialSandboxType(environment?: Environment): EditableSandboxType {
+  if (
+    environment?.sandboxType === "docker" ||
+    environment?.sandboxType === "cloudflare" ||
+    environment?.sandboxType === "gondolin"
+  ) {
+    return environment.sandboxType;
+  }
+  return "docker";
+}
+
+function getInitialWorkspaceMode(environment?: Environment): WorkspaceMode {
+  return environment?.config.workspaceMode ?? "local-directory";
+}
 
 function EnvironmentDialog({
   environment,
@@ -54,10 +142,11 @@ function EnvironmentDialog({
   onClose: () => void;
 }) {
   const isEdit = !!environment;
+  const isLocal = environment?.sandboxType === "local";
   const [name, setName] = useState(environment?.name ?? "");
-  const [sandboxType, setSandboxType] = useState<
-    "docker" | "cloudflare" | "gondolin"
-  >(environment?.sandboxType ?? "docker");
+  const [sandboxType, setSandboxType] = useState<EditableSandboxType>(
+    getInitialSandboxType(environment),
+  );
   const [image, setImage] = useState(
     environment?.config.image ?? images[0]?.image ?? "",
   );
@@ -67,6 +156,25 @@ function EnvironmentDialog({
   const [secretId, setSecretId] = useState(environment?.config.secretId ?? "");
   const [imagePath, setImagePath] = useState(
     environment?.config.imagePath ?? "",
+  );
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(
+    getInitialWorkspaceMode(environment),
+  );
+  const [repoUrl, setRepoUrl] = useState(environment?.config.repoUrl ?? "");
+  const [repoBranch, setRepoBranch] = useState(
+    environment?.config.repoBranch ?? "",
+  );
+  const [localPath, setLocalPath] = useState(
+    environment?.config.localPath ?? "",
+  );
+  const [worktreeRepoPath, setWorktreeRepoPath] = useState(
+    environment?.config.worktreeRepoPath ?? "",
+  );
+  const [worktreePath, setWorktreePath] = useState(
+    environment?.config.worktreePath ?? "",
+  );
+  const [worktreeBranch, setWorktreeBranch] = useState(
+    environment?.config.worktreeBranch ?? "",
   );
   const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>(
     environment?.config.envVars ?? [],
@@ -83,7 +191,6 @@ function EnvironmentDialog({
   const [secrets, setSecrets] = useState<SecretInfo[]>([]);
   const dialogLayerRef = useRef<HTMLDivElement | null>(null);
 
-  // Gondolin-specific state
   const [gondolinMetadata, setGondolinMetadata] =
     useState<GondolinMetadata | null>(null);
   const [gondolinLoading, setGondolinLoading] = useState(false);
@@ -110,20 +217,37 @@ function EnvironmentDialog({
     [secrets],
   );
 
-  // Fetch secrets on mount
+  const workspaceModeOptions = useMemo(
+    () => [
+      {
+        value: "github-clone",
+        label: "GitHub clone",
+        description: "Clone a repository into a relay-managed workspace.",
+      },
+      {
+        value: "local-directory",
+        label: "Local directory",
+        description: "Use an existing absolute path on the host machine.",
+      },
+      {
+        value: "git-worktree",
+        label: "Git worktree",
+        description: "Create or reuse a worktree from an existing local repo.",
+      },
+    ],
+    [],
+  );
+
   useEffect(() => {
     const fetchSecrets = async () => {
       const res = await api.get<SecretInfo[]>("/secrets");
-      if (res.data) {
-        setSecrets(res.data);
-      }
+      if (res.data) setSecrets(res.data);
     };
     fetchSecrets();
   }, []);
 
-  // Fetch Gondolin metadata when dialog opens and sandbox type is gondolin
   useEffect(() => {
-    if (!open || sandboxType !== "gondolin") {
+    if (!open || sandboxType !== "gondolin" || isLocal) {
       setGondolinMetadata(null);
       return;
     }
@@ -134,16 +258,20 @@ function EnvironmentDialog({
         ? `/environments/gondolin?imagePath=${encodeURIComponent(imagePath.trim())}`
         : "/environments/gondolin";
       const res = await api.get<GondolinMetadata>(query);
-      if (res.data) {
-        setGondolinMetadata(res.data);
-      }
+      if (res.data) setGondolinMetadata(res.data);
       setGondolinLoading(false);
     };
-    fetchGondolinMetadata();
-  }, [open, sandboxType, imagePath]);
 
-  // Auto-probe availability when config changes (debounced)
+    fetchGondolinMetadata();
+  }, [open, sandboxType, imagePath, isLocal]);
+
   useEffect(() => {
+    if (isLocal) {
+      setProbeStatus("available");
+      setProbeError(null);
+      return;
+    }
+
     setProbeStatus(null);
     setProbeError(null);
 
@@ -155,24 +283,19 @@ function EnvironmentDialog({
     if (!isConfigComplete) return;
 
     let cancelled = false;
-
     const timeout = setTimeout(async () => {
       setProbeStatus("probing");
-
-      const config =
-        sandboxType === "docker"
-          ? { image }
-          : sandboxType === "cloudflare"
-            ? { workerUrl, secretId }
-            : { ...(imagePath.trim() ? { imagePath: imagePath.trim() } : {}) };
-
       const res = await api.post<ProbeResult>("/environments/probe", {
         sandboxType,
-        config,
+        config: buildProbeConfig(sandboxType, {
+          image,
+          workerUrl,
+          secretId,
+          imagePath,
+        }),
       });
 
       if (cancelled) return;
-
       if (res.error) {
         setProbeStatus("unavailable");
         setProbeError(res.error);
@@ -188,13 +311,55 @@ function EnvironmentDialog({
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [sandboxType, image, workerUrl, secretId, imagePath]);
+  }, [isLocal, sandboxType, image, workerUrl, secretId, imagePath]);
+
+  const handleCopyCommand = async () => {
+    if (!gondolinMetadata?.installCommand) return;
+    try {
+      await navigator.clipboard.writeText(gondolinMetadata.installCommand);
+      setCopiedCommand(true);
+      setTimeout(() => setCopiedCommand(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy command:", err);
+    }
+  };
+
+  const handleInstallAssets = async () => {
+    setInstallingAssets(true);
+    try {
+      const res = await api.post<GondolinInstallResponse>(
+        "/environments/gondolin/install",
+        {
+          destination:
+            imagePath.trim() ||
+            gondolinMetadata?.defaultInstallBaseDir ||
+            undefined,
+        },
+      );
+      if (res.error) {
+        alert(`Failed to install assets: ${res.error}`);
+      } else if (res.data?.ok) {
+        const metaRes = await api.get<GondolinMetadata>(
+          `/environments/gondolin?imagePath=${encodeURIComponent(res.data.destination)}`,
+        );
+        if (metaRes.data) setGondolinMetadata(metaRes.data);
+        if (!imagePath && res.data.destination)
+          setImagePath(res.data.destination);
+      }
+    } finally {
+      setInstallingAssets(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    if (sandboxType === "docker" && !image) return;
-    if (sandboxType === "cloudflare" && (!workerUrl.trim() || !secretId)) {
+    if (!isLocal && sandboxType === "docker" && !image) return;
+    if (
+      !isLocal &&
+      sandboxType === "cloudflare" &&
+      (!workerUrl.trim() || !secretId)
+    ) {
       return;
     }
 
@@ -205,8 +370,32 @@ function EnvironmentDialog({
       );
       const sharedConfig =
         normalizedEnvVars.length > 0 ? { envVars: normalizedEnvVars } : {};
-      const config =
-        sandboxType === "docker"
+
+      const config: EnvironmentConfig = isLocal
+        ? {
+            workspaceMode,
+            idleTimeoutSeconds: idleTimeout,
+            ...(workspaceMode === "github-clone"
+              ? {
+                  repoUrl: repoUrl.trim(),
+                  ...(repoBranch.trim()
+                    ? { repoBranch: repoBranch.trim() }
+                    : {}),
+                }
+              : workspaceMode === "local-directory"
+                ? { localPath: localPath.trim() }
+                : {
+                    worktreeRepoPath: worktreeRepoPath.trim(),
+                    ...(worktreeBranch.trim()
+                      ? { worktreeBranch: worktreeBranch.trim() }
+                      : {}),
+                    ...(worktreePath.trim()
+                      ? { worktreePath: worktreePath.trim() }
+                      : {}),
+                  }),
+            ...sharedConfig,
+          }
+        : sandboxType === "docker"
           ? { image, idleTimeoutSeconds: idleTimeout, ...sharedConfig }
           : sandboxType === "cloudflare"
             ? { workerUrl, secretId, ...sharedConfig }
@@ -237,48 +426,12 @@ function EnvironmentDialog({
     }
   };
 
-  const handleCopyCommand = async () => {
-    if (!gondolinMetadata?.installCommand) return;
-    try {
-      await navigator.clipboard.writeText(gondolinMetadata.installCommand);
-      setCopiedCommand(true);
-      setTimeout(() => setCopiedCommand(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy command:", err);
-    }
-  };
-
-  const handleInstallAssets = async () => {
-    setInstallingAssets(true);
-    try {
-      const res = await api.post<GondolinInstallResponse>(
-        "/environments/gondolin/install",
-        {
-          destination:
-            imagePath.trim() ||
-            gondolinMetadata?.defaultInstallBaseDir ||
-            undefined,
-        },
-      );
-      if (res.error) {
-        alert(`Failed to install assets: ${res.error}`);
-      } else if (res.data?.ok) {
-        // Refresh metadata to update assetsExist status
-        const metaRes = await api.get<GondolinMetadata>(
-          `/environments/gondolin?imagePath=${encodeURIComponent(res.data.destination)}`,
-        );
-        if (metaRes.data) {
-          setGondolinMetadata(metaRes.data);
-        }
-        // Update imagePath field if it was empty
-        if (!imagePath && res.data.destination) {
-          setImagePath(res.data.destination);
-        }
-      }
-    } finally {
-      setInstallingAssets(false);
-    }
-  };
+  const submitDisabled =
+    !name.trim() ||
+    (!isLocal &&
+      ((sandboxType === "docker" && !image) ||
+        (sandboxType === "cloudflare" && (!workerUrl.trim() || !secretId)) ||
+        probeStatus !== "available"));
 
   return (
     <Dialog open={open} onOpenChange={(e) => !e.open && onClose()}>
@@ -296,7 +449,6 @@ function EnvironmentDialog({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Name */}
               <div>
                 <label
                   htmlFor="env-name"
@@ -309,74 +461,218 @@ function EnvironmentDialog({
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Default, Python Dev, Node.js"
-                  className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                  disabled={isLocal}
+                  className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                   required
                 />
+                {isLocal && (
+                  <p className="mt-1 text-xs text-muted">
+                    The built-in local environment keeps its system-managed
+                    name.
+                  </p>
+                )}
               </div>
 
-              {/* Sandbox Type */}
-              <div>
-                <span className="mb-2.5 block text-xs font-medium text-muted">
-                  Sandbox Type
-                </span>
-                <div className="flex gap-3">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      value="docker"
-                      checked={sandboxType === "docker"}
-                      onChange={(e) =>
-                        setSandboxType(
-                          e.target.value as
-                            | "docker"
-                            | "cloudflare"
-                            | "gondolin",
-                        )
-                      }
-                      className="size-4 border-border accent-accent"
-                    />
-                    <span className="text-sm text-fg">Docker</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      value="cloudflare"
-                      checked={sandboxType === "cloudflare"}
-                      onChange={(e) =>
-                        setSandboxType(
-                          e.target.value as
-                            | "docker"
-                            | "cloudflare"
-                            | "gondolin",
-                        )
-                      }
-                      className="size-4 border-border accent-accent"
-                    />
-                    <span className="text-sm text-fg">Cloudflare</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      value="gondolin"
-                      checked={sandboxType === "gondolin"}
-                      onChange={(e) =>
-                        setSandboxType(
-                          e.target.value as
-                            | "docker"
-                            | "cloudflare"
-                            | "gondolin",
-                        )
-                      }
-                      className="size-4 border-border accent-accent"
-                    />
-                    <span className="text-sm text-fg">Gondolin</span>
-                  </label>
+              {isLocal ? (
+                <div className="rounded-lg border border-border bg-surface/20 px-3 py-2.5 text-sm text-muted">
+                  Sandbox Type: Local
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <span className="mb-2.5 block text-xs font-medium text-muted">
+                    Sandbox Type
+                  </span>
+                  <div className="flex gap-3">
+                    {(["docker", "cloudflare", "gondolin"] as const).map(
+                      (type) => (
+                        <label key={type} className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            value={type}
+                            checked={sandboxType === type}
+                            onChange={(e) =>
+                              setSandboxType(
+                                e.target.value as EditableSandboxType,
+                              )
+                            }
+                            className="size-4 border-border accent-accent"
+                          />
+                          <span className="text-sm text-fg">
+                            {type === "docker"
+                              ? "Docker"
+                              : type === "cloudflare"
+                                ? "Cloudflare"
+                                : "Gondolin"}
+                          </span>
+                        </label>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
 
-              {/* Image (Docker only) */}
-              {sandboxType === "docker" && (
+              {isLocal ? (
+                <div className="space-y-4">
+                  <div>
+                    <span className="mb-1.5 block text-xs font-medium text-muted">
+                      Workspace Mode
+                    </span>
+                    <Select
+                      value={workspaceMode}
+                      onValueChange={(value) =>
+                        setWorkspaceMode(value as WorkspaceMode)
+                      }
+                      portalContainer={dialogLayerRef}
+                      items={workspaceModeOptions}
+                      renderItem={(item) => (
+                        <div>
+                          <p className="truncate">{item.label}</p>
+                          <p className="truncate text-xs text-muted">
+                            {item.description}
+                          </p>
+                        </div>
+                      )}
+                    />
+                  </div>
+
+                  {workspaceMode === "github-clone" && (
+                    <>
+                      <div>
+                        <label
+                          htmlFor="env-local-repo-url"
+                          className="mb-1.5 block text-xs font-medium text-muted"
+                        >
+                          Repository URL
+                        </label>
+                        <input
+                          id="env-local-repo-url"
+                          type="text"
+                          value={repoUrl}
+                          onChange={(e) => setRepoUrl(e.target.value)}
+                          placeholder="https://github.com/owner/repo.git"
+                          className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="env-local-repo-branch"
+                          className="mb-1.5 block text-xs font-medium text-muted"
+                        >
+                          Branch (optional)
+                        </label>
+                        <input
+                          id="env-local-repo-branch"
+                          type="text"
+                          value={repoBranch}
+                          onChange={(e) => setRepoBranch(e.target.value)}
+                          placeholder="main"
+                          className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {workspaceMode === "local-directory" && (
+                    <div>
+                      <label
+                        htmlFor="env-local-path"
+                        className="mb-1.5 block text-xs font-medium text-muted"
+                      >
+                        Local Directory Path
+                      </label>
+                      <input
+                        id="env-local-path"
+                        type="text"
+                        value={localPath}
+                        onChange={(e) => setLocalPath(e.target.value)}
+                        placeholder="/absolute/path/to/project"
+                        className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {workspaceMode === "git-worktree" && (
+                    <>
+                      <div>
+                        <label
+                          htmlFor="env-worktree-repo-path"
+                          className="mb-1.5 block text-xs font-medium text-muted"
+                        >
+                          Repository Path
+                        </label>
+                        <input
+                          id="env-worktree-repo-path"
+                          type="text"
+                          value={worktreeRepoPath}
+                          onChange={(e) => setWorktreeRepoPath(e.target.value)}
+                          placeholder="/absolute/path/to/repo"
+                          className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="env-worktree-branch"
+                          className="mb-1.5 block text-xs font-medium text-muted"
+                        >
+                          Worktree Branch (optional)
+                        </label>
+                        <input
+                          id="env-worktree-branch"
+                          type="text"
+                          value={worktreeBranch}
+                          onChange={(e) => setWorktreeBranch(e.target.value)}
+                          placeholder="feature/pi-session"
+                          className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="env-worktree-path"
+                          className="mb-1.5 block text-xs font-medium text-muted"
+                        >
+                          Worktree Path (optional)
+                        </label>
+                        <input
+                          id="env-worktree-path"
+                          type="text"
+                          value={worktreePath}
+                          onChange={(e) => setWorktreePath(e.target.value)}
+                          placeholder="/absolute/path/to/worktree"
+                          className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label
+                      htmlFor="env-idle-timeout-local"
+                      className="mb-1.5 block text-xs font-medium text-muted"
+                    >
+                      Idle Timeout
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="env-idle-timeout-local"
+                        type="number"
+                        min="1"
+                        max="1440"
+                        value={Math.round(idleTimeout / 60)}
+                        onChange={(e) =>
+                          setIdleTimeout(Number(e.target.value) * 60)
+                        }
+                        className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                      />
+                      <span className="shrink-0 text-xs text-muted">
+                        minutes
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : sandboxType === "docker" ? (
                 <>
                   <div>
                     <div className="mb-1.5 flex h-4 items-center gap-2">
@@ -417,11 +713,6 @@ function EnvironmentDialog({
                         </div>
                       )}
                     />
-                    {images.find((img) => img.image === image)?.description && (
-                      <p className="mt-1 text-xs text-muted">
-                        {images.find((img) => img.image === image)?.description}
-                      </p>
-                    )}
                   </div>
 
                   <div>
@@ -447,34 +738,25 @@ function EnvironmentDialog({
                         minutes
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-muted">
-                      Suspend session after this period of inactivity.
-                    </p>
                   </div>
                 </>
-              )}
-
-              {/* Gondolin options */}
-              {sandboxType === "gondolin" && (
+              ) : sandboxType === "gondolin" ? (
                 <div className="space-y-4">
-                  {/* Asset setup info */}
                   <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 p-3">
                     <div className="flex items-start gap-2">
-                      <InfoIcon className="mt-0.5 shrink-0 size-4 text-violet-500" />
+                      <InfoIcon className="mt-0.5 size-4 shrink-0 text-violet-500" />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium text-violet-500">
                           Guest assets required
                         </p>
                         <p className="mt-1 text-xs text-muted">
-                          Gondolin requires guest VM assets (kernel, initrd,
-                          etc.). Assets are downloaded from GitHub release
-                          artifacts.
+                          Gondolin requires guest VM assets downloaded on the
+                          relay host.
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Assets status */}
                   {!gondolinLoading && gondolinMetadata && (
                     <div className="rounded-lg border border-border bg-surface/30 p-3">
                       <div className="flex items-center gap-2">
@@ -503,7 +785,6 @@ function EnvironmentDialog({
                     </div>
                   )}
 
-                  {/* Install command */}
                   {gondolinMetadata && !gondolinMetadata.assetsExist && (
                     <div>
                       <div className="mb-2 flex items-center justify-between">
@@ -525,7 +806,6 @@ function EnvironmentDialog({
                     </div>
                   )}
 
-                  {/* Install button */}
                   {gondolinMetadata && !gondolinMetadata.assetsExist && (
                     <Button
                       type="button"
@@ -558,13 +838,6 @@ function EnvironmentDialog({
                       }
                       className="w-full rounded-lg border border-border bg-surface/30 px-3 py-2 text-sm text-fg placeholder:text-muted/50 focus:border-accent focus:outline-none"
                     />
-                    <p className="mt-1 text-xs text-muted">
-                      Leave empty to use default path:{" "}
-                      <code className="rounded bg-surface/50 px-1 py-0.5">
-                        {gondolinMetadata?.defaultInstallBaseDir ||
-                          "gondolin/assets"}
-                      </code>
-                    </p>
                   </div>
 
                   <div>
@@ -591,29 +864,8 @@ function EnvironmentDialog({
                       </span>
                     </div>
                   </div>
-
-                  {probeStatus === "probing" && (
-                    <p className="text-xs text-muted">
-                      Checking availability...
-                    </p>
-                  )}
-                  {probeStatus === "available" && (
-                    <p className="flex items-center gap-1 text-xs text-green-500">
-                      <CheckCircleIcon className="size-3" weight="fill" />
-                      Available
-                    </p>
-                  )}
-                  {probeStatus === "unavailable" && (
-                    <p className="flex items-center gap-1 text-xs text-red-500">
-                      <WarningCircleIcon className="size-3" weight="fill" />
-                      {probeError ?? "Not available"}
-                    </p>
-                  )}
                 </div>
-              )}
-
-              {/* Worker URL (Cloudflare only) */}
-              {sandboxType === "cloudflare" && (
+              ) : (
                 <div className="space-y-4">
                   <div>
                     <label
@@ -659,24 +911,6 @@ function EnvironmentDialog({
                       />
                     )}
                   </div>
-
-                  {probeStatus === "probing" && (
-                    <p className="text-xs text-muted">
-                      Checking availability...
-                    </p>
-                  )}
-                  {probeStatus === "available" && (
-                    <p className="flex items-center gap-1 text-xs text-green-500">
-                      <CheckCircleIcon className="size-3" weight="fill" />
-                      Available
-                    </p>
-                  )}
-                  {probeStatus === "unavailable" && (
-                    <p className="flex items-center gap-1 text-xs text-red-500">
-                      <WarningCircleIcon className="size-3" weight="fill" />
-                      {probeError ?? "Not available"}
-                    </p>
-                  )}
                 </div>
               )}
 
@@ -765,7 +999,6 @@ function EnvironmentDialog({
                 </p>
               </div>
 
-              {/* Default */}
               <label
                 htmlFor="env-default"
                 className="flex items-center gap-2.5 rounded-lg border border-border bg-surface/30 px-3 py-2.5"
@@ -787,20 +1020,13 @@ function EnvironmentDialog({
                 </div>
               </label>
 
-              {/* Actions */}
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="secondary" onClick={onClose}>
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  disabled={
-                    !name.trim() ||
-                    (sandboxType === "docker" && !image) ||
-                    (sandboxType === "cloudflare" &&
-                      (!workerUrl.trim() || !secretId)) ||
-                    probeStatus !== "available"
-                  }
+                  disabled={submitDisabled}
                   loading={saving}
                 >
                   {isEdit ? "Update" : "Create"}
@@ -814,28 +1040,29 @@ function EnvironmentDialog({
   );
 }
 
-// -- Environment Row --------------------------------------------------
-
 function EnvironmentRow({
   environment,
   images,
+  providerStatus,
   onEdit,
   onDelete,
+  onRecheckLocal,
 }: {
   environment: Environment;
   images: AvailableImage[];
+  providerStatus: SandboxProviderStatus | null;
   onEdit: (env: Environment) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
+  onRecheckLocal: () => Promise<void>;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const [recheckingLocal, setRecheckingLocal] = useState(false);
   const [secrets, setSecrets] = useState<SecretInfo[]>([]);
 
   useEffect(() => {
     const fetchSecrets = async () => {
       const res = await api.get<SecretInfo[]>("/secrets");
-      if (res.data) {
-        setSecrets(res.data);
-      }
+      if (res.data) setSecrets(res.data);
     };
     fetchSecrets();
   }, []);
@@ -843,102 +1070,194 @@ function EnvironmentRow({
   const imageMeta = images.find(
     (img) => img.image === environment.config.image,
   );
-
   const secretMeta = secrets.find((s) => s.id === environment.config.secretId);
+  const isCloudflare = environment.sandboxType === "cloudflare";
+  const isGondolin = environment.sandboxType === "gondolin";
+  const isLocal = environment.sandboxType === "local";
+  const localStatus = providerStatus?.local;
+  const localAvailable = isLocal ? (localStatus?.available ?? false) : true;
 
   const handleDelete = async () => {
     if (!confirm(`Delete environment "${environment.name}"?`)) return;
     setDeleting(true);
-    onDelete(environment.id);
-  };
-
-  const isCloudflare = environment.sandboxType === "cloudflare";
-  const isGondolin = environment.sandboxType === "gondolin";
-
-  const formatIdleTimeout = (seconds: number) => {
-    const minutes = seconds / 60;
-    const hours = seconds / 3600;
-    if (seconds % 3600 === 0) {
-      return `Idle: ${hours}h`;
+    try {
+      await onDelete(environment.id);
+    } finally {
+      setDeleting(false);
     }
-    return `Idle: ${minutes}m`;
   };
+
+  const handleRecheck = async () => {
+    setRecheckingLocal(true);
+    try {
+      await onRecheckLocal();
+    } finally {
+      setRecheckingLocal(false);
+    }
+  };
+
+  const summary = isLocal
+    ? buildLocalSummary(environment.config)
+    : isCloudflare
+      ? secretMeta
+        ? `${environment.config.workerUrl} (Secret: ${secretMeta.name})`
+        : (environment.config.workerUrl ?? "Cloudflare worker")
+      : isGondolin
+        ? `Gondolin${environment.config.imagePath ? ` (${environment.config.imagePath})` : ""}${formatIdleTimeout(environment.config.idleTimeoutSeconds) ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}` : ""}`
+        : `${imageMeta?.name ?? environment.config.image ?? "Docker"}${formatIdleTimeout(environment.config.idleTimeoutSeconds) ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}` : ""}`;
+
+  const iconClasses = isLocal
+    ? localAvailable
+      ? "bg-emerald-500/10 text-emerald-500"
+      : "bg-amber-500/10 text-amber-500"
+    : isCloudflare
+      ? "bg-orange-500/10 text-orange-500"
+      : isGondolin
+        ? "bg-violet-500/10 text-violet-500"
+        : "bg-accent/10 text-accent";
 
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-border bg-surface/30 p-4">
-      <div
-        className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
-          isCloudflare
-            ? "bg-orange-500/10 text-orange-500"
-            : isGondolin
-              ? "bg-violet-500/10 text-violet-500"
-              : "bg-accent/10 text-accent"
-        }`}
-      >
-        {isCloudflare ? (
-          <CloudIcon className="size-5" weight="duotone" />
-        ) : (
-          <CubeIcon className="size-5" weight="duotone" />
-        )}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-fg">{environment.name}</span>
-          {environment.isDefault && (
-            <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
-              <StarIcon className="size-3" weight="fill" />
-              Default
-            </span>
+    <div
+      className={`rounded-lg border border-border bg-surface/30 p-4 transition-opacity ${
+        isLocal && !localAvailable ? "opacity-65" : "opacity-100"
+      }`}
+    >
+      <div className="flex items-start gap-4">
+        <div
+          className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${iconClasses}`}
+        >
+          {isLocal ? (
+            <HardDrivesIcon className="size-5" weight="duotone" />
+          ) : isCloudflare ? (
+            <CloudIcon className="size-5" weight="duotone" />
+          ) : (
+            <CubeIcon className="size-5" weight="duotone" />
           )}
         </div>
-        <p className="mt-0.5 text-xs text-muted">
-          {isCloudflare
-            ? secretMeta
-              ? `${environment.config.workerUrl} (Secret: ${secretMeta.name})`
-              : environment.config.workerUrl
-            : isGondolin
-              ? `Gondolin${environment.config.imagePath ? ` (${environment.config.imagePath})` : ""}${
-                  environment.config.idleTimeoutSeconds
-                    ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
-                    : ""
-                }`
-              : `${imageMeta?.name ?? environment.config.image}${
-                  environment.config.idleTimeoutSeconds
-                    ? ` • ${formatIdleTimeout(environment.config.idleTimeoutSeconds)}`
-                    : ""
-                }`}
-        </p>
-      </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => onEdit(environment)}
-          className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-fg"
-          title="Edit"
-        >
-          <PencilSimpleIcon className="size-4" />
-        </button>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleting}
-          className="rounded-md p-1.5 text-muted transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
-          title="Delete"
-        >
-          <TrashIcon className="size-4" />
-        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-fg">{environment.name}</span>
+            {environment.isDefault && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
+                <StarIcon className="size-3" weight="fill" />
+                Default
+              </span>
+            )}
+            {isLocal && (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs ${
+                  localAvailable
+                    ? "bg-emerald-500/10 text-emerald-500"
+                    : "bg-amber-500/10 text-amber-500"
+                }`}
+              >
+                {localAvailable ? "Local available" : "Local unavailable"}
+              </span>
+            )}
+          </div>
+
+          <p className="mt-0.5 text-xs text-muted">{summary}</p>
+
+          {isLocal && (
+            <div className="mt-3 space-y-1.5 text-xs text-muted">
+              {environment.config.workspaceMode === "local-directory" &&
+                environment.config.localPath && (
+                  <p className="flex items-center gap-1.5">
+                    <FolderIcon className="size-3.5" />
+                    {environment.config.localPath}
+                  </p>
+                )}
+              {environment.config.workspaceMode === "github-clone" &&
+                environment.config.repoUrl && (
+                  <p className="flex items-center gap-1.5">
+                    <GitBranchIcon className="size-3.5" />
+                    {environment.config.repoUrl}
+                    {environment.config.repoBranch
+                      ? ` • ${environment.config.repoBranch}`
+                      : ""}
+                  </p>
+                )}
+              {environment.config.workspaceMode === "git-worktree" && (
+                <>
+                  {environment.config.worktreeRepoPath && (
+                    <p className="flex items-center gap-1.5">
+                      <FolderIcon className="size-3.5" />
+                      Repo: {environment.config.worktreeRepoPath}
+                    </p>
+                  )}
+                  {(environment.config.worktreeBranch ||
+                    environment.config.worktreePath) && (
+                    <p className="flex items-center gap-1.5">
+                      <GitBranchIcon className="size-3.5" />
+                      {environment.config.worktreeBranch
+                        ? `Branch: ${environment.config.worktreeBranch}`
+                        : "Worktree"}
+                      {environment.config.worktreePath
+                        ? ` • ${environment.config.worktreePath}`
+                        : ""}
+                    </p>
+                  )}
+                </>
+              )}
+              {localStatus?.path && <p>pi: {localStatus.path}</p>}
+              {localStatus?.version && <p>Version: {localStatus.version}</p>}
+              {!localAvailable && localStatus?.error && (
+                <p className="flex items-start gap-1.5 text-amber-500">
+                  <WarningCircleIcon
+                    className="mt-0.5 size-3.5 shrink-0"
+                    weight="fill"
+                  />
+                  <span>{localStatus.error}</span>
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          {isLocal && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleRecheck}
+              loading={recheckingLocal}
+              disabled={recheckingLocal}
+              className="px-3 py-1.5 text-xs"
+            >
+              Check again
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={() => onEdit(environment)}
+            className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-fg"
+            title="Edit"
+          >
+            <PencilSimpleIcon className="size-4" />
+          </button>
+          {!isLocal && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-md p-1.5 text-muted transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
+              title="Delete"
+            >
+              <TrashIcon className="size-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// -- Main Page --------------------------------------------------------
-
 export default function EnvironmentsPage() {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [images, setImages] = useState<AvailableImage[]>([]);
+  const [providerStatus, setProviderStatus] =
+    useState<SandboxProviderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -946,21 +1265,22 @@ export default function EnvironmentsPage() {
   const [createDialogVersion, setCreateDialogVersion] = useState(0);
 
   const loadData = useCallback(async () => {
-    const [envsRes, imagesRes] = await Promise.all([
+    setLoading(true);
+    const [envsRes, imagesRes, providerRes] = await Promise.all([
       api.get<Environment[]>("/environments"),
       api.get<AvailableImage[]>("/environments/images"),
+      api.get<SandboxProviderStatus>("/settings/sandbox-providers"),
     ]);
 
     if (envsRes.error) {
       setError(envsRes.error);
     } else if (envsRes.data) {
+      setError(null);
       setEnvironments(envsRes.data);
     }
 
-    if (imagesRes.data) {
-      setImages(imagesRes.data);
-    }
-
+    if (imagesRes.data) setImages(imagesRes.data);
+    if (providerRes.data) setProviderStatus(providerRes.data);
     setLoading(false);
   }, []);
 
@@ -1004,6 +1324,29 @@ export default function EnvironmentsPage() {
     if (res.error) {
       alert(`Failed to delete: ${res.error}`);
       return;
+    }
+    await loadData();
+  };
+
+  const handleRecheckLocal = async () => {
+    const res = await api.post<SandboxProviderStatus["local"]>(
+      "/settings/sandbox-providers/local/recheck",
+      {},
+    );
+    if (res.error) {
+      alert(`Failed to re-check local provider: ${res.error}`);
+      return;
+    }
+    if (res.data) {
+      setProviderStatus((current) =>
+        current
+          ? { ...current, local: res.data }
+          : {
+              docker: { available: false },
+              gondolin: { available: false },
+              local: res.data,
+            },
+      );
     }
     await loadData();
   };
@@ -1067,14 +1410,15 @@ export default function EnvironmentsPage() {
               key={env.id}
               environment={env}
               images={images}
+              providerStatus={providerStatus}
               onEdit={openEdit}
               onDelete={handleDelete}
+              onRecheckLocal={handleRecheckLocal}
             />
           ))}
         </div>
       )}
 
-      {/* Create/Edit Dialog */}
       <EnvironmentDialog
         key={editingEnv?.id ?? `create-${createDialogVersion}`}
         environment={editingEnv}

@@ -259,7 +259,7 @@ export interface SessionHistoryEntry {
 export interface Environment {
   id: string;
   name: string;
-  sandboxType: "docker" | "cloudflare" | "gondolin";
+  sandboxType: "docker" | "cloudflare" | "gondolin" | "local";
   config: EnvironmentConfig;
   isDefault: boolean;
   createdAt: string;
@@ -273,6 +273,14 @@ export interface EnvironmentConfig {
   imagePath?: string;
   idleTimeoutSeconds?: number;
   envVars?: Array<{ key: string; value: string }>;
+  workspaceMode?: "github-clone" | "local-directory" | "git-worktree";
+  repoUrl?: string;
+  repoBranch?: string;
+  localPath?: string;
+  worktreeRepoPath?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+  systemManaged?: boolean;
   resources?: {
     cpuShares?: number;
     memoryMB?: number;
@@ -303,9 +311,17 @@ export function getEnvironmentById(id: string) {
   return api.get<Environment>(`/environments/${id}`);
 }
 
+export interface LocalSandboxProviderStatus {
+  available: boolean;
+  path?: string;
+  version?: string;
+  error?: string;
+}
+
 export interface SandboxProviderStatus {
   docker: { available: boolean };
   gondolin: { available: boolean };
+  local: LocalSandboxProviderStatus;
 }
 
 export interface ProbeResult {
