@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { EnvironmentSandboxConfig } from "../manager";
 import type { CreateSandboxOptions } from "../types";
 
 export interface PreparedWorkspace {
@@ -108,42 +107,37 @@ async function branchExists(
 
 export async function prepareLocalWorkspace(
   sessionDataDir: string,
-  envConfig: EnvironmentSandboxConfig,
   options: CreateSandboxOptions,
 ): Promise<PreparedWorkspace> {
-  const mode =
-    envConfig.workspaceMode ??
-    (options.repoUrl ? "github-clone" : "local-directory");
+  const workspace = options.localWorkspace;
+  if (!workspace) {
+    // No workspace config — ephemeral sandbox (e.g. model introspection).
+    // Use a temp directory under session data.
+    const tempPath = join(sessionDataDir, options.sessionId, "workspace");
+    await mkdir(tempPath, { recursive: true });
+    return { path: tempPath, persistent: false };
+  }
 
-  if (mode === "local-directory") {
-    const localPath = envConfig.localPath;
-    if (!localPath) {
-      throw new Error("Local environment missing localPath");
-    }
-    const resolvedPath = resolve(localPath);
+  if (workspace.mode === "local-directory") {
+    const resolvedPath = resolve(workspace.localPath);
     await ensureDirectory(resolvedPath, "Local path");
     return { path: resolvedPath, persistent: true };
   }
 
-  if (mode === "git-worktree") {
-    const repoPath = envConfig.worktreeRepoPath;
-    if (!repoPath) {
-      throw new Error("Local environment missing worktreeRepoPath");
-    }
-
-    const resolvedRepoPath = resolve(repoPath);
+  if (workspace.mode === "git-worktree") {
+    const resolvedRepoPath = resolve(workspace.worktreeRepoPath);
     await ensureDirectory(resolvedRepoPath, "Worktree repo path");
     await ensureGitRepo(resolvedRepoPath);
 
-    const explicitPath = envConfig.worktreePath?.trim();
+    const explicitPath = workspace.worktreePath?.trim();
     const managedPath = explicitPath
       ? resolve(explicitPath)
       : join(sessionDataDir, options.sessionId, "workspace-worktree");
     await mkdir(dirname(managedPath), { recursive: true });
 
     const branch =
-      envConfig.worktreeBranch ?? `pi-session-${options.sessionId}`;
-    const branchProvidedByUser = Boolean(envConfig.worktreeBranch?.trim());
+      workspace.worktreeBranch ?? `pi-session-${options.sessionId}`;
+    const branchProvidedByUser = Boolean(workspace.worktreeBranch?.trim());
     const addArgs = branchProvidedByUser
       ? ["worktree", "add", managedPath, branch]
       : ["worktree", "add", "-b", branch, managedPath];
@@ -175,16 +169,17 @@ export async function prepareLocalWorkspace(
     };
   }
 
-  const repoUrl = envConfig.repoUrl ?? options.repoUrl;
+  // github-clone mode
+  const repoUrl = workspace.repoUrl ?? options.repoUrl;
   if (!repoUrl) {
-    throw new Error("Local GitHub clone environment requires repoUrl");
+    throw new Error("Local GitHub clone workspace requires repoUrl");
   }
 
   const parentDir = join(sessionDataDir, options.sessionId);
   await mkdir(parentDir, { recursive: true });
   const workspacePath = await mkdtemp(join(parentDir, "workspace-"));
   const cloneUrl = withGitHubToken(repoUrl, options.githubToken);
-  const branch = envConfig.repoBranch ?? options.repoBranch;
+  const branch = workspace.repoBranch ?? options.repoBranch;
   const cloneArgs = ["clone"];
   if (branch) {
     cloneArgs.push("--branch", branch);

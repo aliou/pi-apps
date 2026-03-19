@@ -16,6 +16,7 @@ import {
   type EnvironmentSandboxConfig,
   resolveEnvConfig,
 } from "../sandbox/manager";
+import type { LocalWorkspaceConfig } from "../sandbox/types";
 import type { SandboxProviderType } from "../sandbox/provider-types";
 import type {
   EnvironmentConfig,
@@ -49,6 +50,8 @@ interface CreateSessionRequest {
   systemPrompt?: string;
   /** Enable native tools bridge extension in the sandbox. */
   nativeToolsEnabled?: boolean;
+  /** Local workspace config (only used when environment is local). */
+  localWorkspace?: LocalWorkspaceConfig;
 }
 
 interface SessionFileRecord {
@@ -413,6 +416,10 @@ export function sessionsRoutes(): Hono<AppEnv> {
         firstUserMessage: body.firstPrompt?.trim() || undefined,
         systemPrompt: resolvedSystemPrompt,
         sandboxProvider,
+        workspaceConfigJson:
+          sandboxProvider === "local" && body.localWorkspace
+            ? JSON.stringify(body.localWorkspace)
+            : undefined,
       });
 
       if (body.mode === "code") {
@@ -467,9 +474,10 @@ export function sessionsRoutes(): Hono<AppEnv> {
                 gitAuthorEmail,
                 resourceTier: environmentConfig?.resourceTier,
                 nativeToolsEnabled: body.nativeToolsEnabled,
+                localWorkspace:
+                  sandboxProvider === "local" ? body.localWorkspace : undefined,
               },
             );
-
       createPromise
         .then(async (handle) => {
           try {
@@ -1201,9 +1209,12 @@ export function sessionsRoutes(): Hono<AppEnv> {
           gitAuthorName,
           gitAuthorEmail,
           resourceTier: environmentConfig?.resourceTier,
+          localWorkspace:
+            sandboxProvider === "local" && session.workspaceConfigJson
+              ? JSON.parse(session.workspaceConfigJson)
+              : undefined,
         },
       );
-
       createPromise
         .then(async (handle) => {
           try {

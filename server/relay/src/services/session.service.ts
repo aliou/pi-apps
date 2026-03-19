@@ -24,6 +24,7 @@ export interface CreateSessionParams {
   sandboxProvider?: SandboxProviderType;
   sandboxProviderId?: string;
   environmentId?: string;
+  workspaceConfigJson?: string;
 }
 
 export interface UpdateSessionParams {
@@ -78,6 +79,7 @@ export class SessionService {
       firstUserMessage: params.firstUserMessage ?? null,
       createdAt: now,
       lastActivityAt: now,
+      workspaceConfigJson: params.workspaceConfigJson ?? null,
     };
 
     this.db.insert(sessions).values(newSession).run();

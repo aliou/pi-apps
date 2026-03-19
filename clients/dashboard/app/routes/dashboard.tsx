@@ -3,6 +3,7 @@ import {
   ChatCircleIcon,
   CodeIcon,
   CloudIcon,
+  FolderIcon,
   GithubLogoIcon,
   GitBranchIcon,
   PaperclipIcon,
@@ -165,6 +166,8 @@ export default function DashboardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<"github-clone" | "local-directory" | "git-worktree">("github-clone");
+  const [localPath, setLocalPath] = useState("");
 
   useEffect(() => {
     setMode(requestedMode);
@@ -227,6 +230,12 @@ export default function DashboardPage() {
     [repos, selectedRepoId],
   );
 
+  const selectedEnvironment = useMemo(
+    () => environments.find((env) => env.id === selectedEnvironmentId) ?? null,
+    [environments, selectedEnvironmentId],
+  );
+  const isLocalEnv = selectedEnvironment?.sandboxType === "local";
+
   const branchItems: SearchableSelectItem[] = useMemo(
     () =>
       availableBranches.map((branch) => ({
@@ -236,9 +245,29 @@ export default function DashboardPage() {
     [availableBranches],
   );
 
+  const workspaceModeItems: SearchableSelectItem[] = useMemo(
+    () => [
+      { label: "GitHub clone", value: "github-clone" },
+      { label: "Local directory", value: "local-directory" },
+      { label: "Git worktree", value: "git-worktree" },
+    ],
+    [],
+  );
+
   const canSubmit =
     message.trim().length > 0 &&
-    (mode === "chat" || (!!selectedRepoId && !!selectedEnvironmentId));
+    (mode === "chat" ||
+      (!!selectedRepoId &&
+        !!selectedEnvironmentId &&
+        (!isLocalEnv || workspaceMode !== "local-directory" || localPath.trim().length > 0)));
+
+  useEffect(() => {
+    if (isLocalEnv) {
+      setWorkspaceMode("local-directory");
+    } else {
+      setWorkspaceMode("github-clone");
+    }
+  }, [isLocalEnv]);
 
   useEffect(() => {
     if (mode !== "code" || !selectedRepo) {
@@ -300,6 +329,17 @@ export default function DashboardPage() {
       : message.trim();
     const sessionName = generateSessionTitle({ firstPrompt, mode });
 
+    let localWorkspace: Record<string, string> | undefined;
+    if (isLocalEnv) {
+      if (workspaceMode === "local-directory") {
+        localWorkspace = { mode: "local-directory", localPath: localPath.trim() };
+      } else if (workspaceMode === "github-clone") {
+        localWorkspace = { mode: "github-clone" };
+      } else if (workspaceMode === "git-worktree") {
+        localWorkspace = { mode: "git-worktree" };
+      }
+    }
+
     const res = await api.post<{ id: string }>("/sessions", {
       mode,
       repoId: mode === "code" ? selectedRepoId : undefined,
@@ -309,6 +349,7 @@ export default function DashboardPage() {
       modelId: modeDefaults?.modelId,
       firstPrompt,
       sessionName,
+      localWorkspace,
     });
 
     if (res.error || !res.data?.id) {
@@ -507,6 +548,27 @@ export default function DashboardPage() {
                   <span className="text-status-warn">No environments available</span>
                 )}
               </div>
+              {isLocalEnv && (
+                <div className="flex w-full items-center gap-2 border-t border-border/50 pt-2 mt-1">
+                  <SearchableSelect
+                    items={workspaceModeItems}
+                    value={workspaceMode}
+                    onValueChange={(v) => setWorkspaceMode(v as "github-clone" | "local-directory" | "git-worktree")}
+                    placeholder="Workspace mode"
+                    icon={<FolderIcon className="size-3.5" />}
+                    className="h-7 min-w-[180px] border-none bg-transparent px-1 text-xs text-muted shadow-none hover:border-none hover:bg-transparent focus:border-none"
+                  />
+                  {workspaceMode === "local-directory" && (
+                    <input
+                      type="text"
+                      value={localPath}
+                      onChange={(e) => setLocalPath(e.target.value)}
+                      placeholder="/absolute/path/to/project"
+                      className="h-7 flex-1 rounded-md border-none bg-transparent px-2 text-xs text-fg placeholder:text-muted/60 focus:outline-none"
+                    />
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
 

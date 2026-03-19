@@ -49,6 +49,7 @@ export const sessions = sqliteTable("sessions", {
   currentModelProvider: text("current_model_provider"),
   currentModelId: text("current_model_id"),
   systemPrompt: text("system_prompt"),
+  workspaceConfigJson: text("workspace_config_json"),
   extensionsStale: integer("extensions_stale", { mode: "boolean" })
     .notNull()
     .default(false),

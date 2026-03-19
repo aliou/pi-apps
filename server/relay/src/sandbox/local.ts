@@ -57,7 +57,6 @@ export class LocalSandboxProvider implements SandboxProvider {
 
     const workspace = await prepareLocalWorkspace(
       this.config.sessionDataDir,
-      this.config.envConfig,
       options,
     );
 

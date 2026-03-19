@@ -150,6 +150,17 @@ export interface SandboxSecretMaterial {
   }>;
 }
 
+/** Local workspace configuration, chosen per-session. */
+export type LocalWorkspaceConfig =
+  | { mode: "github-clone"; repoUrl: string; repoBranch?: string }
+  | { mode: "local-directory"; localPath: string }
+  | {
+      mode: "git-worktree";
+      worktreeRepoPath: string;
+      worktreePath?: string;
+      worktreeBranch?: string;
+    };
+
 export interface CreateSandboxOptions {
   sessionId: string;
 
@@ -165,6 +176,9 @@ export interface CreateSandboxOptions {
   /** Git repo to clone into workspace (optional) */
   repoUrl?: string;
   repoBranch?: string;
+
+  /** Local provider workspace config (ignored by non-local providers). */
+  localWorkspace?: LocalWorkspaceConfig;
 
   /** GitHub PAT for git push and private repo clone */
   githubToken?: string;
